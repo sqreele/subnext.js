@@ -2,7 +2,7 @@ import NextAuth from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import jwt, { JwtPayload } from 'jsonwebtoken';
 import { NextAuthOptions } from 'next-auth';
-import { prisma } from '@/app/lib/prisma';
+import {prisma} from '@/app/lib/prisma';
 import { UserProfile, Property } from '@/app/lib/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 
@@ -30,7 +30,6 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
-          // Step 1: Get authentication tokens
           const tokenResponse = await fetch(`${API_BASE_URL}/api/token/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -42,40 +41,24 @@ export const authOptions: NextAuthOptions = {
             throw new Error('Invalid credentials or token response.');
           }
           
-          // Step 2: Decode the token to get user ID
           const decoded = jwt.decode(tokenData.access) as JwtPayload;
           if (!decoded || typeof decoded !== 'object') {
             throw new Error('Failed to decode access token.');
           }
           
           const userId = String(decoded.user_id);
-          
-          // Step 3: Fetch user from database or API
           let user = await prisma.user.findUnique({
             where: { id: userId },
             include: { properties: true },
           });
 
-          // Step 4: If user doesn't exist in database, fetch from API and create it
           let profileData: ProfileData = {};
           if (!user) {
-            console.log(`User ${userId} not found in database, fetching from API...`);
             const profileResponse = await fetch(`${API_BASE_URL}/api/user-profiles/${userId}/`, {
-              headers: { 
-                Authorization: `Bearer ${tokenData.access}`, 
-                'Content-Type': 'application/json' 
-              },
+              headers: { Authorization: `Bearer ${tokenData.access}`, 'Content-Type': 'application/json' },
             });
-            
-            if (!profileResponse.ok) {
-              console.error(`Failed to fetch profile for user ${userId}: ${profileResponse.status}`);
-              profileData = {};
-            } else {
-              profileData = await profileResponse.json();
-              console.log(`Fetched profile data for user ${userId}:`, profileData);
-            }
+            profileData = profileResponse.ok ? await profileResponse.json() : {};
 
-            // Create or update user in database
             user = await prisma.user.upsert({
               where: { id: userId },
               update: {
@@ -97,73 +80,24 @@ export const authOptions: NextAuthOptions = {
             });
           }
           
-          // Step 5: Fetch properties from API
-          console.log(`Fetching properties for user ${userId}...`);
-          let propertiesData = [];
-          try {
-            const propertiesResponse = await fetch(`${API_BASE_URL}/api/properties/`, {
-              headers: { 
-                Authorization: `Bearer ${tokenData.access}`, 
-                'Content-Type': 'application/json' 
-              },
-            });
-            
-            if (!propertiesResponse.ok) {
-              console.error(`Failed to fetch properties: ${propertiesResponse.status}`);
-            } else {
-              propertiesData = await propertiesResponse.json();
-              console.log(`Fetched ${propertiesData.length} properties from API`);
-            }
-          } catch (error) {
-            console.error('Error fetching properties:', error);
-          }
-          
-          // Step 6: Create normalized properties array
-          let normalizedProperties: Property[] = [];
-          
-          // Check if user has property associations
-          if (user.properties && user.properties.length > 0) {
-            console.log(`User has ${user.properties.length} properties in database`);
-            
-            normalizedProperties = user.properties.map((userProp: { propertyId: any }) => {
-              const propId = String(userProp.propertyId);
-              const apiProperty = propertiesData.find((p: any) => String(p.id) === propId);
-              
-              return {
-                property_id: propId,
-                id: propId,
-                name: apiProperty?.name || `Property ${propId}`,
-                description: apiProperty?.description || '',
-                created_at: apiProperty?.created_at || new Date().toISOString(),
-                users: [],
-              };
-            });
-          } else {
-            // If no properties in database, check API data for this user's properties
-            console.log(`User has no properties in database, checking API data...`);
-            
-            if (profileData.properties && profileData.properties.length > 0) {
-              console.log(`Found ${profileData.properties.length} properties in profile data`);
-              
-              normalizedProperties = profileData.properties.map((prop: any) => {
-                const propId = String(prop.id || prop.property_id);
-                return {
-                  property_id: propId,
-                  id: propId,
-                  name: prop.name || `Property ${propId}`,
-                  description: prop.description || '',
-                  created_at: prop.created_at || new Date().toISOString(),
-                  users: [],
-                };
-              });
-            } else {
-              console.log(`No properties found for user ${userId} in API data either`);
-            }
-          }
-          
-          console.log(`Normalized ${normalizedProperties.length} properties for user ${userId}`);
+          const propertiesData = await fetch(`${API_BASE_URL}/api/properties/`, {
+            headers: { Authorization: `Bearer ${tokenData.access}`, 'Content-Type': 'application/json' },
+          }).then(res => res.ok ? res.json() : []);
 
-          // Step 7: Create user profile with normalized properties
+          const normalizedProperties: Property[] = user.properties.map((userProp: { propertyId: any; }) => {
+  const apiProperty = propertiesData.find((p: any) => String(p.id) === String(userProp.propertyId));
+  
+  return {
+    property_id: String(userProp.propertyId),
+    id: String(userProp.propertyId),
+    name: apiProperty?.name || 'Unknown',
+    description: apiProperty?.description || '',
+    created_at: apiProperty?.created_at || new Date().toISOString(),
+    users: [],
+  };
+});
+
+
           const userProfile: UserProfile = {
             id: userId,
             username: credentials.username,
@@ -174,13 +108,9 @@ export const authOptions: NextAuthOptions = {
             created_at: user.created_at.toISOString(),
           };
 
-          return { 
-            ...userProfile, 
-            accessToken: tokenData.access, 
-            refreshToken: tokenData.refresh 
-          };
+          return { ...userProfile, accessToken: tokenData.access, refreshToken: tokenData.refresh };
         } catch (error) {
-          console.error('Authorization Error:', error);
+          console.error('Authorize Error:', error);
           throw new Error('Unable to log in. Please check your credentials.');
         }
       }
@@ -189,23 +119,13 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        // Make sure properties is at least an empty array
-        const safeUser = {
-          ...user,
-          properties: user.properties || []
-        };
-        Object.assign(token, safeUser);
+        Object.assign(token, { ...user });
       }
 
       return token;
     },
     async session({ session, token }) {
-      // Ensure properties is at least an empty array in the session
-      session.user = {
-        ...token,
-        properties: token.properties || []
-      } as any;
-      
+      session.user = token as any;
       return session;
     },
   },

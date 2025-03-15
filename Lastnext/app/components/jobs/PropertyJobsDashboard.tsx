@@ -6,7 +6,6 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/app/components/ui/card";
 import {
   PieChart,
@@ -35,7 +34,6 @@ import { fetchJobs } from "@/app/lib/data";
 import { Button } from "@/app/components/ui/button";
 import Link from "next/link";
 import { useJob } from "@/app/lib/JobContext";
-import { Building, Plus } from "lucide-react"; // Import icons
 
 interface PropertyJobsDashboardProps {
   initialJobs?: Job[];
@@ -49,7 +47,6 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
   const [filteredJobs, setFilteredJobs] = useState<Job[]>(initialJobs);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasProperties, setHasProperties] = useState(true); // Track if user has properties
 
   const loadJobs = async () => {
     if (status !== "authenticated" || !session?.user) return;
@@ -108,28 +105,12 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
     loadJobs();
   }, [status, selectedProperty, jobCreationCount]);
 
-  // Check if user has properties and update state
-  useEffect(() => {
-    if (session?.user?.properties) {
-      setHasProperties(session.user.properties.length > 0);
-    } else {
-      setHasProperties(false);
-    }
-  }, [session?.user?.properties]);
-
   // Filter jobs based on selected property
   useEffect(() => {
-    // Check if user has properties
-    if (!hasProperties) {
-      // Instead of setting an error, we'll still try to show all user's jobs
-      // if they don't have properties but have jobs
-      if (allJobs.length > 0) {
-        setFilteredJobs(allJobs);
-        setError(null);
-      } else {
-        setFilteredJobs([]);
-        setError("No jobs found");
-      }
+    const user = session?.user;
+    if (!user?.properties?.length) {
+      setError("No properties associated with this user");
+      setFilteredJobs([]);
       return;
     }
 
@@ -138,10 +119,9 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
       return;
     }
 
-    const user = session?.user;
     const effectiveProperty =
       selectedProperty ||
-      (user?.properties && user.properties.length > 0
+      (user.properties.length > 0
         ? String(user.properties[0].property_id)
         : null);
 
@@ -188,7 +168,7 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
 
     console.log(`Filtered to ${filtered.length} jobs for property ${effectiveProperty}`);
     setFilteredJobs(filtered);
-  }, [allJobs, selectedProperty, hasProperties, session?.user]);
+  }, [allJobs, selectedProperty, session?.user?.properties]);
 
   const jobStats = useMemo(() => {
     const total = filteredJobs.length;
@@ -267,42 +247,6 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
           <Button asChild variant="outline" className="w-full h-12 text-base">
             <Link href="/auth/signin">Log In</Link>
           </Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Special case for users with no properties
-  if (!hasProperties) {
-    return (
-      <Card className="w-full p-4 bg-blue-50 border border-blue-200 rounded-md">
-        <CardHeader>
-          <CardTitle className="text-lg text-blue-700">Welcome to Job Dashboard</CardTitle>
-          <CardDescription className="text-blue-600">
-            You currently don't have any properties assigned to your account.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="text-center space-y-4">
-          <div className="flex justify-center">
-            <Building className="h-20 w-20 text-blue-300" />
-          </div>
-          <p className="text-blue-600 text-base max-w-md mx-auto">
-            To get started, you'll need properties assigned to your account. Please contact your administrator or use the button below to request property access.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Button asChild variant="outline" className="h-12 text-base">
-              <Link href="/dashboard/properties/request">
-                <Building className="mr-2 h-4 w-4" />
-                Request Property Access
-              </Link>
-            </Button>
-            <Button asChild className="h-12 text-base bg-blue-600 hover:bg-blue-700">
-              <Link href="/dashboard/createJob">
-                <Plus className="mr-2 h-4 w-4" />
-                Create Job
-              </Link>
-            </Button>
-          </div>
         </CardContent>
       </Card>
     );
