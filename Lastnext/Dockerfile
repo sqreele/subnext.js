@@ -7,6 +7,9 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json* ./
+# Sync package-lock.json with package.json
+RUN npm install
+# Perform clean install with updated lockfile
 RUN npm ci --omit=dev --legacy-peer-deps
 
 # Builder stage
