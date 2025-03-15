@@ -1,12 +1,13 @@
 # Specify exact node version for better reproducibility
 FROM node:20.11.1-alpine AS base
+RUN npm install -g npm@11.2.0  # Update npm globally
 
 # Dependencies stage
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --legacy-peer-deps
 
 # Builder stage
 FROM base AS builder
@@ -32,37 +33,25 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID} \
     GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
 
-
-
-# Validate Prisma schema and generate client
-RUN npx prisma validate
-
-# Validate Prisma schema and generate client
-# Create and validate auth.prisma
-COPY prisma/auth.prisma ./prisma/auth.prisma
-RUN npx prisma validate
-RUN npx prisma generate
-RUN npx prisma validate --schema=./prisma/auth.prisma
-RUN npx prisma generate --schema=./prisma/auth.prisma
+# Simplify Prisma commands
+COPY prisma ./prisma
+RUN npx prisma validate && npx prisma generate
+RUN npx prisma validate --schema=./prisma/auth.prisma && npx prisma generate --schema=./prisma/auth.prisma
 RUN npm run build
+RUN chown -R nextjs:nodejs /app
 
 # Runner stage
 FROM base AS runner
 WORKDIR /app
-
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
-
-# Copy entrypoint script
 COPY app/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
-
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
-
 ENV PORT=3000 \
     NODE_ENV=production \
     HOSTNAME="0.0.0.0" \
@@ -74,7 +63,7 @@ ENV PORT=3000 \
     JWT_SECRET=${JWT_SECRET} \
     GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID} \
     GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-
 USER nextjs
 EXPOSE 3000
 ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["npm", "start"]
