@@ -40,13 +40,20 @@ COPY prisma ./prisma
 RUN npx prisma validate && npx prisma generate
 RUN npx prisma validate --schema=./prisma/auth.prisma && npx prisma generate --schema=./prisma/auth.prisma
 RUN npm run build
+
+# Create the user/group here in the builder stage
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
 RUN chown -R nextjs:nodejs /app
 
 # Runner stage
 FROM base AS runner
 WORKDIR /app
+
+# Add the same user/group in the runner stage
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
+
 COPY app/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
@@ -57,7 +64,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 
 # Make sure the nextjs user can write to necessary directories
 RUN mkdir -p /app/.npm && chown -R nextjs:nodejs /app/.npm
-RUN chown -R nextjs:nodejs /app
+RUN mkdir -p /home/nextjs/.npm && chown -R nextjs:nodejs /home/nextjs
 
 ENV PORT=3000 \
     NODE_ENV=production \
