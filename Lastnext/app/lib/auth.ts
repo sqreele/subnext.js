@@ -84,7 +84,7 @@ export const authOptions: NextAuthOptions = {
             headers: { Authorization: `Bearer ${tokenData.access}`, 'Content-Type': 'application/json' },
           }).then(res => res.ok ? res.json() : []);
 
-          const normalizedProperties: Property[] = user.properties.map(userProp => {
+          const normalizedProperties: Property[] = user.properties.map((userProp: { propertyId: any; }) => {
   const apiProperty = propertiesData.find((p: any) => String(p.id) === String(userProp.propertyId));
   
   return {
