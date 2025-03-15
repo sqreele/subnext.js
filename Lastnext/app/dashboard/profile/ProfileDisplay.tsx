@@ -17,6 +17,7 @@ import { Badge } from '@/app/components/ui/badge';
 import { Alert, AlertDescription } from '@/app/components/ui/alert';
 import { ProfileImage } from '@/app/components/profile/ProfileImage';
 import { UserProfile, Property } from '@/app/lib/types';
+import { useProperty } from '@/app/lib/PropertyContext';
 
 interface ProfileFieldProps {
   icon: React.ElementType;
@@ -67,6 +68,13 @@ function ProfileField({ icon: Icon, label, value }: ProfileFieldProps) {
 }
 
 function PropertyCard({ property }: PropertyCardProps) {
+  const { setSelectedProperty } = useProperty();
+  
+  const handleSelectProperty = () => {
+    // Ensure we're setting the ID, not the whole object
+    setSelectedProperty(property.property_id);
+  };
+  
   return (
     <div className="rounded-lg border p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -74,7 +82,17 @@ function PropertyCard({ property }: PropertyCardProps) {
           <Building2 className="h-5 w-5 text-muted-foreground" />
           <h3 className="font-semibold">{property.name}</h3>
         </div>
-        <Badge variant="outline">{property.property_id}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline">{property.property_id}</Badge>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={handleSelectProperty} 
+            className="text-xs"
+          >
+            Select
+          </Button>
+        </div>
       </div>
       <p className="text-sm text-muted-foreground">{property.description}</p>
       <div className="space-y-2">
@@ -87,10 +105,10 @@ function PropertyCard({ property }: PropertyCardProps) {
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center gap-2">
           <Users className="h-4 w-4 text-muted-foreground" />
-          <span className="text-muted-foreground">{property.users.length} users assigned</span>
+          <span className="text-muted-foreground">{property.users?.length || 0} users assigned</span>
         </div>
         <span className="text-muted-foreground">
-          {new Date(property.created_at).toLocaleDateString()}
+          {property.created_at ? new Date(property.created_at).toLocaleDateString() : 'N/A'}
         </span>
       </div>
     </div>
@@ -134,17 +152,23 @@ export default function ProfileDisplay() {
     return null;
   }
 
-  // Use session.user directly without id conversion
-  // Properties are already properly formatted in the auth.ts file
+  // Create a properly typed user profile from session data
   const userProfile = {
     ...session.user,
     // Ensure properties is at least an empty array
     properties: session.user.properties || [],
   } as UserProfile;
 
-  console.log('Session User:', session.user);
-  console.log('User Profile:', userProfile);
-  console.log('Properties:', userProfile.properties);
+  // Debug logging - Use format that properly stringifies objects
+  console.log('Session User:', JSON.stringify(session.user, null, 2));
+  console.log('User Profile:', JSON.stringify(userProfile, null, 2));
+  console.log('Properties:', JSON.stringify(userProfile.properties, null, 2));
+
+  // Check if properties have the expected format
+  if (userProfile.properties.length > 0) {
+    console.log('First property ID type:', typeof userProfile.properties[0].property_id);
+    console.log('First property ID:', userProfile.properties[0].property_id);
+  }
 
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-8 space-y-6">

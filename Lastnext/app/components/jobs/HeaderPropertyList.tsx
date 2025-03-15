@@ -17,6 +17,12 @@ import { useSession } from "next-auth/react";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+interface Property {
+  property_id: string;
+  name: string;
+  // Add other property fields if needed
+}
+
 const HeaderPropertyList = () => {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -31,7 +37,7 @@ const HeaderPropertyList = () => {
   }, [status, router]);
 
   // Determine properties from either source, preferring user context
-  const properties = useMemo(() => {
+  const properties: Property[] = useMemo(() => {
     const userProps = userProfile?.properties || [];
     const sessionProps = session?.user?.properties || [];
     
@@ -41,30 +47,88 @@ const HeaderPropertyList = () => {
 
   // Find current property, with fallback to first property or null if none
   const currentProperty = useMemo(() => {
-    return properties.find((p) => p.property_id === selectedProperty) || properties[0] || null;
+    // Debug current selectedProperty value
+    console.log("In currentProperty memo - selectedProperty type:", typeof selectedProperty);
+    console.log("In currentProperty memo - selectedProperty value:", 
+      typeof selectedProperty === 'object' 
+        ? JSON.stringify(selectedProperty, null, 2) 
+        : selectedProperty);
+    
+    // Make sure we're working with property IDs consistently
+    const propertyId = typeof selectedProperty === 'string' ? selectedProperty : 
+                      (selectedProperty as any)?.property_id || null;
+    
+    console.log("Extracted property ID:", propertyId);
+    
+    const found = properties.find((p) => p.property_id === propertyId);
+    const result = found || properties[0] || null;
+    
+    console.log("Current property resolved to:", 
+      result ? JSON.stringify(result, null, 2) : "null");
+    
+    return result;
   }, [properties, selectedProperty]);
 
   // Memoized handler to select property
   const handlePropertySelect = useCallback(
     (propertyId: string) => {
-      console.log("Selected property:", propertyId);
+      // Log the property object for debugging (properly formatted)
+      const selectedProp = properties.find(p => p.property_id === propertyId);
+      console.log("Selected property ID:", propertyId);
+      console.log("Property details:", JSON.stringify(selectedProp, null, 2));
+      console.log("All properties:", JSON.stringify(properties, null, 2));
+      
+      // Debug logging for setSelectedProperty
+      console.log("Before setSelectedProperty - Current value:", 
+        typeof selectedProperty === 'object' 
+          ? JSON.stringify(selectedProperty, null, 2) 
+          : selectedProperty);
+      
       setSelectedProperty(propertyId);
+      
+      // Log after state update is queued (won't show new value yet due to React's batching)
+      console.log("After setSelectedProperty call");
       
       // Persist selection in localStorage
       localStorage.setItem("selectedPropertyId", propertyId);
+      console.log("Saved to localStorage:", propertyId);
+      
+      // Add console trace to see call stack
+      console.trace("Property selection call stack");
     },
-    [setSelectedProperty]
+    [properties, setSelectedProperty, selectedProperty]
   );
 
   // Sync selectedProperty with localStorage or first property on mount
   useEffect(() => {
-    if (!selectedProperty && properties.length > 0) {
+    console.log("useEffect for property sync triggered");
+    console.log("Current selectedProperty:", 
+      typeof selectedProperty === 'object' 
+        ? JSON.stringify(selectedProperty, null, 2) 
+        : selectedProperty);
+    console.log("Properties available:", properties.length);
+    
+    if ((!selectedProperty || 
+         selectedProperty === '[object Object]' || 
+         typeof selectedProperty === 'object') && 
+        properties.length > 0) {
+      
       const storedPropertyId = localStorage.getItem("selectedPropertyId");
-      const defaultPropertyId = storedPropertyId && properties.some(p => p.property_id === storedPropertyId)
+      console.log("Stored property ID from localStorage:", storedPropertyId);
+      
+      // Check if stored ID exists in available properties
+      const storedPropertyExists = storedPropertyId && 
+        properties.some(p => p.property_id === storedPropertyId);
+      console.log("Stored property exists in available properties:", storedPropertyExists);
+      
+      const defaultPropertyId = storedPropertyExists
         ? storedPropertyId
         : properties[0]?.property_id;
       
+      console.log("Using default property ID:", defaultPropertyId);
+      
       if (defaultPropertyId) {
+        console.log("Setting selected property to:", defaultPropertyId);
         setSelectedProperty(defaultPropertyId);
       }
     }
@@ -125,7 +189,8 @@ const HeaderPropertyList = () => {
               onClick={() => handlePropertySelect(property.property_id)}
               className={cn(
                 "flex items-center gap-2 px-3 py-2.5 text-sm sm:text-base cursor-pointer min-h-[44px]",
-                selectedProperty === property.property_id
+                (selectedProperty === property.property_id || 
+                 (typeof selectedProperty === 'object' && (selectedProperty as any)?.property_id === property.property_id))
                   ? "bg-blue-600 text-white"
                   : "hover:bg-gray-100 text-gray-700"
               )}
