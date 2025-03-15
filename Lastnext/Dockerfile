@@ -41,30 +41,21 @@ RUN npx prisma validate && npx prisma generate
 RUN npx prisma validate --schema=./prisma/auth.prisma && npx prisma generate --schema=./prisma/auth.prisma
 RUN npm run build
 
-# Create the user/group here in the builder stage
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
-RUN chown -R nextjs:nodejs /app
-
-# Runner stage
+# Runner stage - NO USER SWITCHING
 FROM base AS runner
 WORKDIR /app
 
-# Add the same user/group in the runner stage
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
-
 COPY app/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
-COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
-COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/prisma ./prisma
 
-# Make sure the nextjs user can write to necessary directories
-RUN mkdir -p /app/.npm && chown -R nextjs:nodejs /app/.npm
-RUN mkdir -p /home/nextjs/.npm && chown -R nextjs:nodejs /home/nextjs
+# Make sure necessary directories exist
+RUN mkdir -p /app/.npm
+RUN mkdir -p /home/node/.npm && chown -R node:node /home/node
 
 ENV PORT=3000 \
     NODE_ENV=production \
@@ -79,7 +70,7 @@ ENV PORT=3000 \
     GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET} \
     DATABASE_URL="postgresql://postgres:postgres@db:5432/postgres"
 
-USER nextjs
+# Don't switch users - run as root
 EXPOSE 3000
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["npm", "start"]
