@@ -10,11 +10,12 @@ import {
   DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
 import { Button } from "@/app/components/ui/button";
-import { ChevronDown, Building2, Loader2 } from "lucide-react";
+import { ChevronDown, Building2 } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 import { useSession } from "next-auth/react";
+import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { Property } from "@/app/lib/types"; // Ensure Property type is imported
+import { Property } from "@/app/lib/types";
 
 const HeaderPropertyList = () => {
   const { data: session, status } = useSession();
@@ -29,101 +30,91 @@ const HeaderPropertyList = () => {
     }
   }, [status, router]);
 
+  // Helper function to safely get the string ID from any property object format
+  const getPropertyId = useCallback((property: any): string => {
+    if (!property) return "";
+    if (typeof property === "string" || typeof property === "number") return String(property);
+    if (typeof property.property_id === "string" || typeof property.property_id === "number") {
+      return String(property.property_id);
+    }
+    if (typeof property.id === "string" || typeof property.id === "number") {
+      return String(property.id);
+    }
+    return "";
+  }, []);
+
+  // Helper function to safely get the display name from any property object format
+  const getPropertyName = useCallback((property: any): string => {
+    if (!property) return "Select Property";
+    if (typeof property === "string" || typeof property === "number") return `Property ${property}`;
+    return property.name || `Property ${getPropertyId(property)}`;
+  }, [getPropertyId]);
+
   // Determine properties from either source, preferring user context
   const properties = useMemo(() => {
     const userProps = userProfile?.properties || [];
     const sessionProps = session?.user?.properties || [];
-    const result = userProps.length > 0 ? userProps : sessionProps;
-    console.log("Properties array resolved to:", result);
-    return result;
+    
+    console.log("User properties:", userProps);
+    console.log("Session properties:", sessionProps);
+    
+    // Use userProfile.properties if available and not empty, otherwise fall back to session
+    return userProps.length > 0 ? userProps : sessionProps;
   }, [userProfile?.properties, session?.user?.properties]);
 
-  // Get a safe string ID from a property
-  const getPropertyStringId = useCallback((property: Property): string => {
-    if (!property) {
-      console.log("Property is null or undefined");
-      return "";
-    }
-    if (typeof property.property_id === "string") {
-      return property.property_id;
-    }
-    if (typeof property.property_id === "number") {
-      return String(property.property_id);
-    }
-    if (property.id) {
-      return typeof property.id === "string" ? property.id : String(property.id);
-    }
-    console.log("No valid ID found for property:", property);
-    return "";
-  }, []);
-
-  // Find current property by matching ID strings
+  // Find current property by selectedProperty ID
   const currentProperty = useMemo(() => {
-    if (!selectedProperty || properties.length === 0) {
-      console.log(
-        "No selectedProperty or properties empty, returning:",
-        properties[0] || null
-      );
-      return properties[0] || null;
-    }
-
-    console.log("Searching for property with ID:", selectedProperty);
-    for (const prop of properties) {
-      const propId = getPropertyStringId(prop);
-      console.log("Checking property:", prop, "with ID:", propId);
-      if (propId === selectedProperty) {
-        console.log("Match found:", prop);
-        return prop;
+    if (!properties.length) return null;
+    
+    console.log("Looking for property with ID:", selectedProperty);
+    console.log("Available properties:", properties);
+    
+    if (selectedProperty) {
+      // Try to find the property with matching ID
+      for (const prop of properties) {
+        const propId = getPropertyId(prop);
+        if (propId === selectedProperty) {
+          console.log("Found matching property:", prop);
+          return prop;
+        }
       }
     }
+    
+    // Fallback to first property if selected not found
+    console.log("No matching property found, using first property:", properties[0]);
+    return properties[0];
+  }, [properties, selectedProperty, getPropertyId]);
 
-    console.log("No match found, falling back to:", properties[0] || null);
-    return properties[0] || null;
-  }, [properties, selectedProperty, getPropertyStringId]);
-
-  // Get a display name for the property
-  const getPropertyDisplayName = useCallback((property: Property | null): string => {
-    if (!property) {
-      console.log("No property provided for display name");
-      return "Select Property";
-    }
-    const name = typeof property.name === "string" ? property.name : "Unnamed Property";
-    console.log("Property display name resolved to:", name, "for property:", property);
-    return name;
-  }, []);
-
-  // Handler to select property
+  // Handle property selection
   const handlePropertySelect = useCallback(
-    (property: Property) => {
-      const propId = getPropertyStringId(property);
-      console.log("Selected property ID:", propId);
+    (property: any) => {
+      const propId = getPropertyId(property);
+      console.log("Selected property:", property);
+      console.log("Property ID:", propId);
       setSelectedProperty(propId);
-      // Persist selection in localStorage
-      localStorage.setItem("selectedPropertyId", propId);
     },
-    [getPropertyStringId, setSelectedProperty]
+    [setSelectedProperty, getPropertyId]
   );
 
-  // Sync selectedProperty with localStorage or first property on mount
+  // Initialize selected property from localStorage or first property
   useEffect(() => {
-    if (!selectedProperty && properties.length > 0) {
+    if (properties.length > 0 && !selectedProperty) {
       const storedPropertyId = localStorage.getItem("selectedPropertyId");
-      console.log("Stored property ID from localStorage:", storedPropertyId);
-
-      // Find property with matching ID in localStorage
-      const storedProperty = storedPropertyId
-        ? properties.find((p) => getPropertyStringId(p) === storedPropertyId)
-        : null;
-
-      // Use stored property if found, otherwise first property
-      const defaultProperty = storedProperty || properties[0];
-      if (defaultProperty) {
-        console.log("Syncing to default property:", defaultProperty);
-        handlePropertySelect(defaultProperty);
+      
+      // Find property with matching stored ID
+      let defaultProperty = null;
+      if (storedPropertyId) {
+        defaultProperty = properties.find(p => getPropertyId(p) === storedPropertyId);
+      }
+      
+      // Use found property or first property
+      const propertyToSelect = defaultProperty || properties[0];
+      console.log("Setting default property:", propertyToSelect);
+      if (propertyToSelect) {
+        handlePropertySelect(propertyToSelect);
       }
     }
-    console.log("Properties available:", properties.length, "Current selectedProperty:", selectedProperty);
-  }, [properties, selectedProperty, handlePropertySelect, getPropertyStringId]);
+  }, [properties, selectedProperty, handlePropertySelect, getPropertyId]);
 
   // Loading state if session or user data is not yet available
   if (status === "loading" || !userProfile) {
@@ -164,7 +155,7 @@ const HeaderPropertyList = () => {
             <div className="flex items-center gap-2 truncate">
               <Building2 className="h-4 w-4 flex-shrink-0 text-gray-600" />
               <span className="truncate text-gray-700">
-                {getPropertyDisplayName(currentProperty)}
+                {getPropertyName(currentProperty)}
               </span>
             </div>
             <ChevronDown className="h-4 w-4 flex-shrink-0 text-gray-400" />
@@ -174,24 +165,21 @@ const HeaderPropertyList = () => {
           className="w-full sm:w-[200px] bg-white border-gray-200 shadow-md rounded-md mt-1"
           align="start"
         >
-          {properties.map((property) => {
-            const propId = getPropertyStringId(property);
-            return (
-              <DropdownMenuItem
-                key={propId || Math.random().toString()} // Fallback key if propId is empty
-                onClick={() => handlePropertySelect(property)}
-                className={cn(
-                  "flex items-center gap-2 px-3 py-2.5 text-sm sm:text-base cursor-pointer min-h-[44px]",
-                  selectedProperty === propId
-                    ? "bg-blue-600 text-white"
-                    : "hover:bg-gray-100 text-gray-700"
-                )}
-              >
-                <Building2 className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">{getPropertyDisplayName(property)}</span>
-              </DropdownMenuItem>
-            );
-          })}
+          {properties.map((property, index) => (
+            <DropdownMenuItem
+              key={getPropertyId(property) || `property-${index}`}
+              onClick={() => handlePropertySelect(property)}
+              className={cn(
+                "flex items-center gap-2 px-3 py-2.5 text-sm sm:text-base cursor-pointer min-h-[44px]",
+                selectedProperty === getPropertyId(property)
+                  ? "bg-blue-600 text-white"
+                  : "hover:bg-gray-100 text-gray-700"
+              )}
+            >
+              <Building2 className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate">{getPropertyName(property)}</span>
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

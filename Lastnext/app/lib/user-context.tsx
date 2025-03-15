@@ -36,6 +36,19 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const [selectedProperty, setSelectedProperty] = useState('');
   const [lastFetched, setLastFetched] = useState(0);
 
+  // Helper function to safely extract property ID
+  const getPropertyId = useCallback((property: any): string => {
+    if (!property) return "";
+    if (typeof property === "string" || typeof property === "number") return String(property);
+    if (typeof property.property_id === "string" || typeof property.property_id === "number") {
+      return String(property.property_id);
+    }
+    if (typeof property.id === "string" || typeof property.id === "number") {
+      return String(property.id);
+    }
+    return "";
+  }, []);
+
   const fetchUserProfile = useCallback(async () => {
     if (!session?.user?.accessToken) return null;
     if (Date.now() - lastFetched < CACHE_DURATION && userProfile) {
@@ -87,47 +100,16 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
       const propertiesData = await propertiesResponse.json();
       console.log('Fetched properties:', propertiesData);
-
-      // Prepare properties for user profile
-      let userProperties: Property[] = [];
       
-      // If profile has properties property that is an array of IDs
-      if (profileData.properties && Array.isArray(profileData.properties)) {
-        // If properties are IDs, map them to full property objects
-        if (profileData.properties.length > 0 && (typeof profileData.properties[0] === 'number' || typeof profileData.properties[0] === 'string')) {
-          userProperties = profileData.properties
-            .map((propId: number | string) => {
-              const foundProperty = propertiesData.find((p: any) => 
-                String(p.id) === String(propId) || String(p.property_id) === String(propId)
-              );
-              
-              if (foundProperty) {
-                return {
-                  ...foundProperty,
-                  property_id: foundProperty.property_id || String(foundProperty.id),
-                  name: foundProperty.name || `Property ${propId}`
-                };
-              }
-              return null;
-            })
-            .filter(Boolean) as Property[];
-        } 
-        // If properties are already objects, use them directly
-        else if (profileData.properties.length > 0 && typeof profileData.properties[0] === 'object') {
-          userProperties = profileData.properties;
-        }
-      } 
-      // If no properties in profile, get all accessible properties
-      else {
-        userProperties = propertiesData.map((p: any) => ({
-          ...p,
-          property_id: p.property_id || String(p.id),
-          name: p.name || `Property ${p.id || p.property_id}`
-        }));
-      }
-      
-      console.log('Processed user properties:', userProperties);
+      // Ensure each property has a valid property_id
+      const normalizedProperties = propertiesData.map((property: any) => {
+        return {
+          ...property,
+          property_id: property.property_id || String(property.id)
+        };
+      });
 
+      // Create user profile with properties
       const profile: UserProfile = {
         id: profileData.id,
         username: profileData.username,
@@ -135,7 +117,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         positions: profileData.positions,
         email: profileData.email,
         created_at: profileData.created_at,
-        properties: userProperties
+        properties: normalizedProperties
       };
       
       console.log('Final user profile:', profile);
@@ -145,13 +127,13 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       setError(null);
 
       // Set selected property if not already set
-      if (userProperties.length > 0 && !selectedProperty) {
+      if (normalizedProperties.length > 0 && !selectedProperty) {
         const storedPropertyId = localStorage.getItem('selectedPropertyId');
-        const defaultPropertyId = storedPropertyId && userProperties.some(p => 
-          p.property_id === storedPropertyId || String(p.id) === storedPropertyId
+        const defaultPropertyId = storedPropertyId && normalizedProperties.some((p: any) => 
+          getPropertyId(p) === storedPropertyId
         ) 
           ? storedPropertyId 
-          : userProperties[0].property_id || String(userProperties[0].id);
+          : getPropertyId(normalizedProperties[0]);
           
         console.log('Setting selected property to:', defaultPropertyId);
         setSelectedProperty(defaultPropertyId);
@@ -167,7 +149,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [session?.user?.accessToken, selectedProperty, lastFetched, userProfile]);
+  }, [session?.user?.accessToken, selectedProperty, lastFetched, userProfile, getPropertyId]);
 
   useEffect(() => {
     let mounted = true;
