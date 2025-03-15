@@ -1,6 +1,7 @@
 # Use a Node.js version compatible with npm@11.2.0
 FROM node:20.17.0-alpine AS base
 RUN npm install -g npm@11.2.0  # Update npm globally
+RUN npm config set legacy-peer-deps true  # Set legacy-peer-deps globally
 
 # Dependencies stage
 FROM base AS deps
@@ -53,6 +54,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+
+# Make sure the nextjs user can write to necessary directories
+RUN mkdir -p /app/.npm && chown -R nextjs:nodejs /app/.npm
+RUN chown -R nextjs:nodejs /app
+
 ENV PORT=3000 \
     NODE_ENV=production \
     HOSTNAME="0.0.0.0" \
@@ -63,7 +69,9 @@ ENV PORT=3000 \
     NEXTAUTH_SECRET=${NEXTAUTH_SECRET} \
     JWT_SECRET=${JWT_SECRET} \
     GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID} \
-    GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+    GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET} \
+    DATABASE_URL="postgresql://postgres:postgres@db:5432/postgres"
+
 USER nextjs
 EXPOSE 3000
 ENTRYPOINT ["/app/entrypoint.sh"]
