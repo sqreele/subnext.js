@@ -1,4 +1,3 @@
-// ./app/components/jobs/HeaderPropertyList.tsx
 "use client";
 
 import React, { useCallback, useMemo, useEffect } from "react";
@@ -16,12 +15,7 @@ import { cn } from "@/app/lib/utils";
 import { useSession } from "next-auth/react";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-
-interface Property {
-  property_id: string;
-  name: string;
-  // Add other property fields if needed
-}
+import { Property } from "@/app/lib/types"; // Make sure to import Property type
 
 const HeaderPropertyList = () => {
   const { data: session, status } = useSession();
@@ -37,7 +31,7 @@ const HeaderPropertyList = () => {
   }, [status, router]);
 
   // Determine properties from either source, preferring user context
-  const properties: Property[] = useMemo(() => {
+  const properties = useMemo(() => {
     const userProps = userProfile?.properties || [];
     const sessionProps = session?.user?.properties || [];
     
@@ -45,94 +39,75 @@ const HeaderPropertyList = () => {
     return userProps.length > 0 ? userProps : sessionProps;
   }, [userProfile?.properties, session?.user?.properties]);
 
-  // Find current property, with fallback to first property or null if none
-  const currentProperty = useMemo(() => {
-    // Debug current selectedProperty value
-    console.log("In currentProperty memo - selectedProperty type:", typeof selectedProperty);
-    console.log("In currentProperty memo - selectedProperty value:", 
-      typeof selectedProperty === 'object' 
-        ? JSON.stringify(selectedProperty, null, 2) 
-        : selectedProperty);
-    
-    // Make sure we're working with property IDs consistently
-    const propertyId = typeof selectedProperty === 'string' ? selectedProperty : 
-                      (selectedProperty as any)?.property_id || null;
-    
-    console.log("Extracted property ID:", propertyId);
-    
-    const found = properties.find((p) => p.property_id === propertyId);
-    const result = found || properties[0] || null;
-    
-    console.log("Current property resolved to:", 
-      result ? JSON.stringify(result, null, 2) : "null");
-    
-    return result;
-  }, [properties, selectedProperty]);
+  // Get a safe string ID from a property
+  const getPropertyStringId = useCallback((property: Property): string => {
+    if (typeof property.property_id === 'string') {
+      return property.property_id;
+    }
+    if (typeof property.property_id === 'number') {
+      return String(property.property_id);
+    }
+    // Fallback to id if available
+    if (property.id) {
+      return typeof property.id === 'string' ? property.id : String(property.id);
+    }
+    return "";
+  }, []);
 
-  // Memoized handler to select property
+  // Find current property by matching ID strings
+  const currentProperty = useMemo(() => {
+    if (!selectedProperty || properties.length === 0) {
+      return properties[0] || null;
+    }
+    
+    // Try to find the property with matching string ID
+    for (const prop of properties) {
+      const propId = getPropertyStringId(prop);
+      if (propId === selectedProperty) {
+        return prop;
+      }
+    }
+    
+    // Fallback to first property if not found
+    return properties[0] || null;
+  }, [properties, selectedProperty, getPropertyStringId]);
+
+  // Get a display name for the property
+  const getPropertyDisplayName = useCallback((property: Property | null): string => {
+    if (!property) return "Select Property";
+    return property.name || "Unnamed Property";
+  }, []);
+
+  // Handler to select property
   const handlePropertySelect = useCallback(
-    (propertyId: string) => {
-      // Log the property object for debugging (properly formatted)
-      const selectedProp = properties.find(p => p.property_id === propertyId);
-      console.log("Selected property ID:", propertyId);
-      console.log("Property details:", JSON.stringify(selectedProp, null, 2));
-      console.log("All properties:", JSON.stringify(properties, null, 2));
-      
-      // Debug logging for setSelectedProperty
-      console.log("Before setSelectedProperty - Current value:", 
-        typeof selectedProperty === 'object' 
-          ? JSON.stringify(selectedProperty, null, 2) 
-          : selectedProperty);
-      
-      setSelectedProperty(propertyId);
-      
-      // Log after state update is queued (won't show new value yet due to React's batching)
-      console.log("After setSelectedProperty call");
+    (property: Property) => {
+      const propId = getPropertyStringId(property);
+      console.log("Selected property:", propId);
+      setSelectedProperty(propId);
       
       // Persist selection in localStorage
-      localStorage.setItem("selectedPropertyId", propertyId);
-      console.log("Saved to localStorage:", propertyId);
-      
-      // Add console trace to see call stack
-      console.trace("Property selection call stack");
+      localStorage.setItem("selectedPropertyId", propId);
     },
-    [properties, setSelectedProperty, selectedProperty]
+    [getPropertyStringId, setSelectedProperty]
   );
 
   // Sync selectedProperty with localStorage or first property on mount
   useEffect(() => {
-    console.log("useEffect for property sync triggered");
-    console.log("Current selectedProperty:", 
-      typeof selectedProperty === 'object' 
-        ? JSON.stringify(selectedProperty, null, 2) 
-        : selectedProperty);
-    console.log("Properties available:", properties.length);
-    
-    if ((!selectedProperty || 
-         selectedProperty === '[object Object]' || 
-         typeof selectedProperty === 'object') && 
-        properties.length > 0) {
-      
+    if (!selectedProperty && properties.length > 0) {
       const storedPropertyId = localStorage.getItem("selectedPropertyId");
-      console.log("Stored property ID from localStorage:", storedPropertyId);
       
-      // Check if stored ID exists in available properties
-      const storedPropertyExists = storedPropertyId && 
-        properties.some(p => p.property_id === storedPropertyId);
-      console.log("Stored property exists in available properties:", storedPropertyExists);
+      // Find property with matching ID in localStorage
+      const storedProperty = storedPropertyId 
+        ? properties.find(p => getPropertyStringId(p) === storedPropertyId)
+        : null;
       
-      const defaultPropertyId = storedPropertyExists
-        ? storedPropertyId
-        : properties[0]?.property_id;
-      
-      console.log("Using default property ID:", defaultPropertyId);
-      
-      if (defaultPropertyId) {
-        console.log("Setting selected property to:", defaultPropertyId);
-        setSelectedProperty(defaultPropertyId);
+      // Use stored property if found, otherwise first property
+      const defaultProperty = storedProperty || properties[0];
+      if (defaultProperty) {
+        handlePropertySelect(defaultProperty);
       }
     }
-  }, [properties, selectedProperty, setSelectedProperty]);
+  }, [properties, selectedProperty, handlePropertySelect, getPropertyStringId]);
 
   // Loading state if session or user data is not yet available
   if (status === "loading" || !userProfile) {
@@ -173,7 +148,7 @@ const HeaderPropertyList = () => {
             <div className="flex items-center gap-2 truncate">
               <Building2 className="h-4 w-4 flex-shrink-0 text-gray-600" />
               <span className="truncate text-gray-700">
-                {currentProperty?.name || "Select Property"}
+                {getPropertyDisplayName(currentProperty)}
               </span>
             </div>
             <ChevronDown className="h-4 w-4 flex-shrink-0 text-gray-400" />
@@ -185,18 +160,17 @@ const HeaderPropertyList = () => {
         >
           {properties.map((property) => (
             <DropdownMenuItem
-              key={property.property_id}
-              onClick={() => handlePropertySelect(property.property_id)}
+              key={getPropertyStringId(property) || Math.random().toString()}
+              onClick={() => handlePropertySelect(property)}
               className={cn(
                 "flex items-center gap-2 px-3 py-2.5 text-sm sm:text-base cursor-pointer min-h-[44px]",
-                (selectedProperty === property.property_id || 
-                 (typeof selectedProperty === 'object' && (selectedProperty as any)?.property_id === property.property_id))
+                selectedProperty === getPropertyStringId(property)
                   ? "bg-blue-600 text-white"
                   : "hover:bg-gray-100 text-gray-700"
               )}
             >
               <Building2 className="h-4 w-4 flex-shrink-0" />
-              <span className="truncate">{property.name}</span>
+              <span className="truncate">{getPropertyDisplayName(property)}</span>
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>
