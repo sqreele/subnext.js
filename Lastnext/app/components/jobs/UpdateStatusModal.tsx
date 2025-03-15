@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, ReactNode, MouseEvent } from 'react';
+import { useState, ReactNode, MouseEvent, useEffect } from 'react';
 import { Job, JobStatus } from '@/app/lib/types';
 import axios from 'axios';
+import { useSession } from 'next-auth/react';
 import {
   Dialog,
   DialogContent,
@@ -13,17 +14,11 @@ import {
 } from "@/app/components/ui/dialog";
 import { Button } from "@/app/components/ui/button";
 import { Label } from "@/app/components/ui/label";
-import { Circle, Loader2 } from 'lucide-react';
+import { Circle, Loader2, AlertCircle } from 'lucide-react';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-const axiosInstance = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  }
-});
-
+// We'll create the axios instance inside the component to access the session
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 interface UpdateStatusModalProps {
@@ -33,10 +28,27 @@ interface UpdateStatusModalProps {
 }
 
 export function UpdateStatusModal({ job, onComplete, children }: UpdateStatusModalProps) {
+  const { data: session } = useSession();
   const [selectedStatus, setSelectedStatus] = useState<JobStatus>(job.status);
   const [isUpdating, setIsUpdating] = useState(false);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Create axios instance with authentication token
+  const getAxiosInstance = () => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (session?.user?.accessToken) {
+      headers['Authorization'] = `Bearer ${session.user.accessToken}`;
+    }
+
+    return axios.create({
+      baseURL: API_BASE_URL,
+      headers
+    });
+  };
 
   const statuses = [
     { value: 'pending' as JobStatus, label: 'Pending' },
@@ -49,16 +61,30 @@ export function UpdateStatusModal({ job, onComplete, children }: UpdateStatusMod
   const handleUpdate = async () => {
     if (selectedStatus === job.status) return;
 
+    if (!session?.user?.accessToken) {
+      setError('Authentication token is missing. Please sign in again.');
+      return;
+    }
+
     setIsUpdating(true);
     setError(null);
 
     try {
-      await delay(1000); // Reduced delay for better mobile experience
-      await axiosInstance.patch(`/api/jobs/${job.job_id}/`, {
+      const axiosInstance = getAxiosInstance();
+      
+      // Log the request for debugging
+      console.log(`Updating job ${job.job_id} status to ${selectedStatus}`);
+      console.log('Using authorization header:', axiosInstance.defaults.headers.Authorization ? 'Yes' : 'No');
+      
+      // Make the API request
+      const response = await axiosInstance.patch(`/api/jobs/${job.job_id}/`, {
         status: selectedStatus
       });
-
-      await delay(300); // Reduced delay
+      
+      console.log('Update successful:', response.data);
+      
+      // Short delay for better UX
+      await delay(300);
       setOpen(false);
       
       // Call onComplete handler if provided
@@ -67,7 +93,29 @@ export function UpdateStatusModal({ job, onComplete, children }: UpdateStatusMod
       }
     } catch (error) {
       console.error('Failed to update status:', error);
-      setError(axios.isAxiosError(error) ? error.response?.data?.detail || error.message : 'Failed to update status');
+      
+      if (axios.isAxiosError(error)) {
+        if (error.response) {
+          // The request was made and the server responded with a status code
+          // that falls out of the range of 2xx
+          console.error('Response data:', error.response.data);
+          console.error('Response status:', error.response.status);
+          
+          if (error.response.status === 401 || error.response.status === 403) {
+            setError('Authentication failed. Please sign in again.');
+          } else {
+            setError(error.response.data?.detail || `Server error: ${error.response.status}`);
+          }
+        } else if (error.request) {
+          // The request was made but no response was received
+          setError('No response from server. Check your connection.');
+        } else {
+          // Something happened in setting up the request that triggered an Error
+          setError(`Request error: ${error.message}`);
+        }
+      } else {
+        setError('Failed to update status');
+      }
     } finally {
       setIsUpdating(false);
     }
@@ -110,8 +158,9 @@ export function UpdateStatusModal({ job, onComplete, children }: UpdateStatusMod
         </DialogHeader>
         <div className="grid gap-4 py-3">
           {error && (
-            <div className="bg-red-50 text-red-600 px-3 py-2 rounded-md text-sm">
-              {error}
+            <div className="bg-red-50 text-red-600 px-3 py-2 rounded-md text-sm flex items-start gap-2">
+              <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-500 mt-0.5" />
+              <span>{error}</span>
             </div>
           )}
           <div className="space-y-2">
