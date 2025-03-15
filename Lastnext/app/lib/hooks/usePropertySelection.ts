@@ -34,12 +34,13 @@ export function usePropertySelection() {
     if (typeof window !== 'undefined') {
       if (propertyId === null) {
         localStorage.removeItem("selectedPropertyId");
+        // Use empty string instead of null to satisfy the string type constraint
+        setSelectedProperty("");
       } else {
         localStorage.setItem("selectedPropertyId", propertyId);
+        setSelectedProperty(propertyId);
       }
     }
-    
-    setSelectedProperty(propertyId);
   }, [setSelectedProperty]);
 
   // Auto-select property from localStorage or first available on mount

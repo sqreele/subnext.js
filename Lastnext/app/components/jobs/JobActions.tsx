@@ -156,7 +156,7 @@ export default function JobActions({
           <DropdownMenuContent align="end" className={dropdownContentClass}>
             <DropdownMenuLabel className={menuLabelClass}>Properties</DropdownMenuLabel>
             <DropdownMenuItem
-              onClick={() => setSelectedProperty(null)}
+              onClick={() => setSelectedProperty("")}
               className={menuItemClass}
             >
               <Building className="h-4 w-4" />
@@ -290,7 +290,7 @@ export default function JobActions({
             {/* Properties */}
             <DropdownMenuLabel className={menuLabelClass}>Properties</DropdownMenuLabel>
             <DropdownMenuItem
-              onClick={() => setSelectedProperty(null)}
+              onClick={() => setSelectedProperty("")}
               className={menuItemClass}
             >
               <Building className="h-4 w-4" /> All Properties
