@@ -20,4 +20,7 @@ npx prisma generate --schema=./prisma/auth.prisma
 echo "Creating NextAuth tables in database..."
 npx prisma db push --schema=./prisma/auth.prisma --accept-data-loss
 
-echo "Setup complete! You can now start the application with 'npm start'"
+echo "Setup complete! Starting Next.js application..."
+
+# Start the Next.js application
+exec npm start
