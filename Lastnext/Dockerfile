@@ -1,5 +1,5 @@
-# Specify exact node version for better reproducibility
-FROM node:20.11.1-alpine AS base
+# Use a Node.js version compatible with npm@11.2.0
+FROM node:20.17.0-alpine AS base
 RUN npm install -g npm@11.2.0  # Update npm globally
 
 # Dependencies stage
@@ -32,8 +32,6 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     JWT_SECRET=${JWT_SECRET} \
     GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID} \
     GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-
-# Simplify Prisma commands
 COPY prisma ./prisma
 RUN npx prisma validate && npx prisma generate
 RUN npx prisma validate --schema=./prisma/auth.prisma && npx prisma generate --schema=./prisma/auth.prisma
