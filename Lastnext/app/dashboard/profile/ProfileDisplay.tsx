@@ -3,7 +3,7 @@
 import React from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { User2, Mail, Calendar, Shield, Pencil, Building2, Users } from 'lucide-react';
+import { User2, Mail, Calendar, Shield, Pencil, Building2, Users, Plus, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/app/components/ui/button';
 import {
@@ -12,6 +12,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  CardFooter,
 } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
 import { Alert, AlertDescription } from '@/app/components/ui/alert';
@@ -76,7 +77,7 @@ function PropertyCard({ property }: PropertyCardProps) {
   };
   
   return (
-    <div className="rounded-lg border p-4 space-y-3">
+    <div className="rounded-lg border p-4 space-y-3 hover:border-blue-200 hover:bg-blue-50 transition-colors duration-150">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Building2 className="h-5 w-5 text-muted-foreground" />
@@ -88,7 +89,7 @@ function PropertyCard({ property }: PropertyCardProps) {
             variant="ghost" 
             size="sm" 
             onClick={handleSelectProperty} 
-            className="text-xs"
+            className="text-xs hover:bg-blue-100 hover:text-blue-700"
           >
             Select
           </Button>
@@ -115,9 +116,56 @@ function PropertyCard({ property }: PropertyCardProps) {
   );
 }
 
+function NoPropertiesCard() {
+  return (
+    <Card className="border-blue-200 bg-blue-50">
+      <CardHeader>
+        <CardTitle className="text-xl font-bold text-blue-800">Property Access</CardTitle>
+        <CardDescription className="text-blue-700">
+          You don't have any properties assigned to your account yet.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col items-center justify-center text-center p-6 space-y-4">
+          <Building2 className="h-16 w-16 text-blue-300" />
+          <div className="space-y-2">
+            <p className="text-blue-800 font-medium">
+              Properties are required to fully use the maintenance dashboard
+            </p>
+            <p className="text-blue-700 text-sm">
+              Properties are typically assigned by administrators. You can request access or contact your system administrator for assistance.
+            </p>
+          </div>
+        </div>
+      </CardContent>
+      <CardFooter className="flex flex-col sm:flex-row gap-3 justify-center border-t border-blue-200 px-6 py-4 bg-blue-100/50">
+        <Button 
+          asChild
+          variant="outline" 
+          className="border-blue-300 hover:border-blue-400 hover:bg-blue-100 text-blue-700"
+        >
+          <Link href="/dashboard/properties/request">
+            <Building2 className="mr-2 h-4 w-4" />
+            Request Property Access
+          </Link>
+        </Button>
+        <Button 
+          asChild
+          className="bg-blue-600 hover:bg-blue-700"
+        >
+          <Link href="/dashboard/createJob">
+            <Plus className="mr-2 h-4 w-4" />
+            Create Job Anyway
+          </Link>
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
+
 function LoadingSkeleton() {
   return (
-    <div className="max-w-2xl mx-auto p-4 md:p-8">
+    <div className="max-w-4xl mx-auto p-4 md:p-8">
       <Card>
         <CardContent className="flex justify-center py-20">
           <div className="animate-pulse space-y-8 w-full max-w-md">
@@ -159,13 +207,15 @@ export default function ProfileDisplay() {
     properties: session.user.properties || [],
   } as UserProfile;
 
+  const hasProperties = userProfile.properties && userProfile.properties.length > 0;
+
   // Debug logging - Use format that properly stringifies objects
   console.log('Session User:', JSON.stringify(session.user, null, 2));
   console.log('User Profile:', JSON.stringify(userProfile, null, 2));
   console.log('Properties:', JSON.stringify(userProfile.properties, null, 2));
 
   // Check if properties have the expected format
-  if (userProfile.properties.length > 0) {
+  if (hasProperties) {
     console.log('First property ID type:', typeof userProfile.properties[0].property_id);
     console.log('First property ID:', userProfile.properties[0].property_id);
   }
@@ -173,7 +223,7 @@ export default function ProfileDisplay() {
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-8 space-y-6">
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <CardTitle className="text-2xl font-bold">Profile</CardTitle>
             <CardDescription>Manage your personal information and preferences</CardDescription>
@@ -219,7 +269,7 @@ export default function ProfileDisplay() {
         </CardContent>
       </Card>
 
-      {userProfile.properties && userProfile.properties.length > 0 ? (
+      {hasProperties ? (
         <Card>
           <CardHeader>
             <CardTitle className="text-xl font-bold">Managed Properties</CardTitle>
@@ -230,11 +280,20 @@ export default function ProfileDisplay() {
               <PropertyCard key={property.property_id} property={property} />
             ))}
           </CardContent>
+          <CardFooter className="border-t pt-4 flex justify-between items-center">
+            <div className="text-sm text-muted-foreground">
+              {userProfile.properties.length} {userProfile.properties.length === 1 ? 'property' : 'properties'} assigned
+            </div>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/dashboard">
+                <Building2 className="mr-2 h-4 w-4" />
+                View Dashboard
+              </Link>
+            </Button>
+          </CardFooter>
         </Card>
       ) : (
-        <Alert>
-          <AlertDescription>No properties found for this user.</AlertDescription>
-        </Alert>
+        <NoPropertiesCard />
       )}
     </div>
   );
