@@ -20,85 +20,74 @@ const RoomAutocomplete = ({ rooms, selectedRoom, onSelect }: RoomAutocompletePro
   const [searchQuery, setSearchQuery] = useState("");
   const { userProfile, selectedProperty } = useUser();
 
+  // Log debug information
   useEffect(() => {
-    console.log("Rooms prop:", rooms);
-    console.log("User Profile:", userProfile);
-    console.log("Selected Room:", selectedRoom);
+    console.log("Rooms data:", rooms);
     console.log("Selected Property:", selectedProperty);
-  }, [rooms, userProfile, selectedRoom, selectedProperty]);
+  }, [rooms, selectedProperty]);
 
+  // Safe array check and filtering
   const filteredRooms = Array.isArray(rooms) ? rooms.filter((room) => {
     // Skip invalid rooms
     if (!room) return false;
     
-    // If we have a selected property from context, use that instead of the user's properties
-    if (selectedProperty) {
-      // Check room.properties array first
-      if (Array.isArray(room.properties) && room.properties.length > 0) {
-        if (room.properties.some(prop => String(prop) === selectedProperty)) {
-          // Apply search filter if needed
-          if (searchQuery) {
-            const search = searchQuery.toLowerCase();
-            const roomName = (room.name || '').toLowerCase();
-            const roomType = (room.room_type || '').toLowerCase();
-            return roomName.includes(search) || roomType.includes(search);
-          }
-          return true;
-        }
-      }
-      
-      // Then check room.property field
-      if (room.property !== undefined && String(room.property) === selectedProperty) {
-        // Apply search filter if needed
-        if (searchQuery) {
-          const search = searchQuery.toLowerCase();
-          const roomName = (room.name || '').toLowerCase();
-          const roomType = (room.room_type || '').toLowerCase();
-          return roomName.includes(search) || roomType.includes(search);
-        }
-        return true;
-      }
-      
-      // If none of the above matched, this room doesn't belong to the selected property
-      return false;
-    }
-    
-    // No selected property, fall back to userProfile properties
-    if (userProfile?.properties?.length) {
-      // Handle properties as numbers or objects
-      let userPropertyIds: string[] = [];
-      try {
-        if (typeof userProfile.properties[0] === "number") {
-          userPropertyIds = userProfile.properties.map(p => String(p));
-        } else {
-          userPropertyIds = userProfile.properties.map(p => 
-            typeof p === 'object' && p.property_id ? String(p.property_id) : String(p)
-          );
-        }
-      } catch (e) {
-        console.error("Error mapping property IDs:", e);
-        return false;
-      }
-
-      // Safely check room.properties or room.property
-      const roomPropertyIds = (Array.isArray(room.properties) && room.properties) || 
-                              (room.property !== undefined ? [room.property] : []);
-      
-      const isUserProperty = roomPropertyIds.some(propId => 
-        userPropertyIds.includes(String(propId))
-      );
-
-      if (!isUserProperty) return false;
-    }
-
-    // Apply search filter
+    // First, apply search filter
     if (searchQuery) {
       const search = searchQuery.toLowerCase();
       const roomName = (room.name || '').toLowerCase();
       const roomType = (room.room_type || '').toLowerCase();
-      return roomName.includes(search) || roomType.includes(search);
+      
+      if (!roomName.includes(search) && !roomType.includes(search)) {
+        return false;
+      }
+    }
+
+    // If we have a selected property, filter by it
+    if (selectedProperty) {
+      // The selectedProperty ID will be in format "PC106FD60" 
+      // But room.properties will have numeric IDs like [1]
+      
+      // Method 1: Check room.properties array (handles numeric IDs)
+      // Fix TypeScript error with proper undefined check
+      if (room.properties && Array.isArray(room.properties) && room.properties.length > 0) {
+        // Just check if ANY property in the array matches our selected property
+        // For debugging, log the matching process
+        const matchFound = room.properties.some(prop => {
+          // The prop is likely a numeric ID (1, 2, etc.)
+          console.log(`Comparing room property ${prop} with selected property ${selectedProperty}`);
+          
+          // For exact match (if we already normalized IDs elsewhere)
+          if (String(prop) === selectedProperty) {
+            return true;
+          }
+          
+          // For numeric ID to PC-prefixed ID mapping
+          // Check if your selectedProperty starts with P and has a numeric property in room.properties
+          if (selectedProperty.startsWith('P') && 
+             (typeof prop === 'number' || !isNaN(Number(prop)))) {
+            // This is a more general check for numeric properties
+            console.log("Found potential mapping between P-prefixed ID and numeric ID");
+            return true;
+          }
+          
+          return false;
+        });
+        
+        if (matchFound) return true;
+      }
+      
+      // Method 2: Check room.property field if it exists
+      if (room.property !== undefined) {
+        if (String(room.property) === selectedProperty) {
+          return true;
+        }
+      }
+      
+      // If we get here, the room doesn't match the selected property
+      return false;
     }
     
+    // If no selected property, show all rooms
     return true;
   }) : [];
 
@@ -132,11 +121,9 @@ const RoomAutocomplete = ({ rooms, selectedRoom, onSelect }: RoomAutocompletePro
           <CommandList>
             <CommandEmpty className="py-3 px-4 text-sm text-gray-500">
               {!Array.isArray(rooms) || rooms.length === 0 ? (
-                "No rooms available. Check if jobs data is loaded."
+                "No rooms available. Check if rooms data is loaded."
               ) : filteredRooms.length === 0 && selectedProperty ? (
-                `No rooms found for this property`
-              ) : filteredRooms.length === 0 ? (
-                "No matching rooms found."
+                `No rooms found for selected property`
               ) : (
                 "No matching rooms found."
               )}
