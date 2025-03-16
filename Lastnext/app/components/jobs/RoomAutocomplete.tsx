@@ -7,7 +7,7 @@ import { Button } from "@/app/components/ui/button";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 import { useUser } from "@/app/lib/user-context";
-import { Room } from "@/app/lib/types";
+import { Room, Property } from "@/app/lib/types";
 
 interface RoomAutocompleteProps {
   rooms: Room[];
@@ -31,26 +31,32 @@ const RoomAutocomplete = ({ rooms, selectedRoom, onSelect }: RoomAutocompletePro
     // First, apply search filter
     if (searchQuery) {
       const search = searchQuery.toLowerCase();
-      if (!room.name?.toLowerCase().includes(search) && 
-          !room.room_type?.toLowerCase().includes(search)) {
+      const roomName = room.name || '';
+      const roomType = room.room_type || '';
+      
+      if (!roomName.toLowerCase().includes(search) && 
+          !roomType.toLowerCase().includes(search)) {
         return false;
       }
     }
 
     // If we have a selected property, filter by it
     if (selectedProperty) {
-      // Check if room belongs to selected property
-      const roomPropertyIds: any[] = room.properties || [];
-      const roomMainProperty = room.property ? String(room.property) : null;
-      
-      // Check if room is associated with selected property
-      return roomPropertyIds.some(prop => {
-        if (prop === null || prop === undefined) return false;
-        if (typeof prop === 'object') {
-          return prop.property_id === selectedProperty || String(prop.id) === selectedProperty;
+      // Check room.properties array if it exists
+      if (Array.isArray(room.properties) && room.properties.length > 0) {
+        // Check if any property ID matches selectedProperty
+        if (room.properties.some(prop => String(prop) === selectedProperty)) {
+          return true;
         }
-        return String(prop) === selectedProperty;
-      }) || roomMainProperty === selectedProperty;
+      }
+      
+      // Check room.property field if it exists
+      if (room.property !== undefined && String(room.property) === selectedProperty) {
+        return true;
+      }
+      
+      // If we get here, the room doesn't match the selected property
+      return false;
     }
     
     // If no selected property or user hasn't set it up yet, show all rooms
@@ -95,7 +101,11 @@ const RoomAutocomplete = ({ rooms, selectedRoom, onSelect }: RoomAutocompletePro
               )}
             </CommandEmpty>
             <CommandGroup className="max-h-60 overflow-y-auto">
-              {filteredRooms.map((room) => (
+              {filteredRooms.map((room) => {
+                // Skip rooms with empty names
+                if (!room.name) return null;
+                
+                return (
                 <CommandItem
                   key={room.room_id}
                   value={room.name}
@@ -118,11 +128,11 @@ const RoomAutocomplete = ({ rooms, selectedRoom, onSelect }: RoomAutocompletePro
                         selectedRoom?.room_id === room.room_id ? "opacity-100 text-blue-600" : "opacity-0"
                       )}
                     />
-                    <span className="font-medium">{room.name || "Unnamed Room"}</span>
+                    <span className="font-medium">{room.name}</span>
                     <span className="text-gray-500">- {room.room_type || "No type"}</span>
                   </div>
                 </CommandItem>
-              ))}
+              )})}
             </CommandGroup>
           </CommandList>
         </Command>

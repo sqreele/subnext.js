@@ -11,9 +11,13 @@ import { Button } from '@/app/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { Job, Property, JobStatus, STATUS_VARIANTS, Room } from '@/app/lib/types';
 import { useRouter } from 'next/navigation';
-import { useUser } from '@/app/lib/user-context'; // Use UserContext instead of PropertyContext
-import { useSession } from 'next-auth/react'; // Import useSession to get the token
-import { fetchJobs, fetchProperties, fetchWithToken } from '@/app/lib/data.server'; // Import API functions
+import { useUser } from '@/app/lib/user-context';
+import { useSession } from 'next-auth/react';
+import { 
+  fetchJobs, 
+  fetchProperties, 
+  fetchWithToken 
+} from '@/app/lib/data.server';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://pmcs.site';
 
@@ -27,38 +31,70 @@ export default function SearchContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Use the UserContext
-  const { userProfile, selectedProperty, refetch } = useUser();
-  // We need to get the token differently since it's not in UserProfile
-  // Based on your code, we should use a different approach
-  // Let's use the useSession hook to get the token
+  const { userProfile, selectedProperty } = useUser();
   const { data: session } = useSession();
   const accessToken = session?.user?.accessToken;
 
+  // Add error boundary
+  useEffect(() => {
+    const errorHandler = (event: ErrorEvent) => {
+      console.error('Caught runtime error:', event.error);
+      setError('An unexpected error occurred. Please try again later.');
+    };
+    
+    window.addEventListener('error', errorHandler);
+    return () => window.removeEventListener('error', errorHandler);
+  }, []);
+
   useEffect(() => {
     const fetchSearchResults = async () => {
-      if (!query || !accessToken) return;
+      if (!query) return;
       
       setIsLoading(true);
       setError(null);
       
       try {
-        // Use the API functions with authentication
-        const jobsData = await fetchJobs(accessToken);
-        const propertiesData = await fetchProperties(accessToken);
+        // Use API helper functions with proper error handling
+        const results = await Promise.allSettled([
+          fetchJobs(accessToken)
+            .catch(err => {
+              console.error('Error fetching jobs:', err);
+              return [] as Job[];
+            }),
+          fetchProperties(accessToken)
+            .catch(err => {
+              console.error('Error fetching properties:', err);
+              return [] as Property[];
+            }),
+          fetchWithToken<Room[]>(`${API_BASE_URL}/api/rooms/`, accessToken)
+            .catch(err => {
+              console.error('Error fetching rooms:', err);
+              return [] as Room[];
+            })
+        ]);
         
-        // Fetch rooms with auth token
-        const roomsData = await fetchWithToken<Room[]>(
-          `${API_BASE_URL}/api/rooms/`, 
-          accessToken
+        // Process results safely
+        setJobs(
+          results[0].status === 'fulfilled' 
+            ? (Array.isArray(results[0].value) ? results[0].value : []) 
+            : []
         );
         
-        setJobs(jobsData || []);
-        setProperties(propertiesData || []);
-        setRooms(roomsData || []);
+        setProperties(
+          results[1].status === 'fulfilled' 
+            ? (Array.isArray(results[1].value) ? results[1].value : []) 
+            : []
+        );
+        
+        setRooms(
+          results[2].status === 'fulfilled' 
+            ? (Array.isArray(results[2].value) ? results[2].value : []) 
+            : []
+        );
+        
       } catch (error) {
-        console.error('Error fetching search results:', error);
-        setError(error instanceof Error ? error.message : 'Failed to fetch search results');
+        console.error('Error in search component:', error);
+        setError(error instanceof Error ? error.message : 'An unexpected error occurred');
       } finally {
         setIsLoading(false);
       }
@@ -67,36 +103,61 @@ export default function SearchContent() {
     fetchSearchResults();
   }, [query, accessToken]);
 
-  const filteredJobs = jobs.filter(job => 
-    (job.description?.toLowerCase() || '').includes(query.toLowerCase()) ||
-    (job.status?.toLowerCase() || '').includes(query.toLowerCase()) ||
-    (job.priority?.toLowerCase() || '').includes(query.toLowerCase()) ||
-    (job.remarks?.toLowerCase() || '').includes(query.toLowerCase())
-  );
+  // Safe filtering functions
+  const filteredJobs = React.useMemo(() => {
+    if (!Array.isArray(jobs)) return [];
+    
+    return jobs.filter(job => 
+      job && (
+        (String(job.description || '').toLowerCase().includes(query.toLowerCase()) ||
+        String(job.status || '').toLowerCase().includes(query.toLowerCase()) ||
+        String(job.priority || '').toLowerCase().includes(query.toLowerCase()) ||
+        String(job.remarks || '').toLowerCase().includes(query.toLowerCase()))
+      )
+    );
+  }, [jobs, query]);
 
-  const filteredProperties = properties.filter(property => 
-    (property.name?.toLowerCase() || '').includes(query.toLowerCase()) || 
-    (property.description?.toLowerCase() || '').includes(query.toLowerCase()) ||
-    (property.property_id?.toString().toLowerCase() || '').includes(query.toLowerCase())
-  );
+  const filteredProperties = React.useMemo(() => {
+    if (!Array.isArray(properties)) return [];
+    
+    return properties.filter(property => 
+      property && (
+        String(property.name || '').toLowerCase().includes(query.toLowerCase()) || 
+        String(property.description || '').toLowerCase().includes(query.toLowerCase()) ||
+        String(property.property_id || '').toLowerCase().includes(query.toLowerCase())
+      )
+    );
+  }, [properties, query]);
 
-  const filteredRooms = rooms.filter(room => 
-    (room.name?.toLowerCase() || '').includes(query.toLowerCase()) ||
-    (room.room_type?.toLowerCase() || '').includes(query.toLowerCase()) ||
-    (typeof room.room_id === 'string' ? room.room_id.toLowerCase() : String(room.room_id)).includes(query.toLowerCase()) ||
-    (room.property ? String(room.property).toLowerCase() : '').includes(query.toLowerCase()) ||
-    (room.properties?.some(prop => String(prop).toLowerCase().includes(query.toLowerCase())) || false)
-  );
+  const filteredRooms = React.useMemo(() => {
+    if (!Array.isArray(rooms)) return [];
+    
+    return rooms.filter(room => 
+      room && (
+        String(room.name || '').toLowerCase().includes(query.toLowerCase()) ||
+        String(room.room_type || '').toLowerCase().includes(query.toLowerCase()) ||
+        String(room.room_id || '').toLowerCase().includes(query.toLowerCase()) ||
+        (room.property ? String(room.property).toLowerCase().includes(query.toLowerCase()) : false) ||
+        (Array.isArray(room.properties) && 
+          room.properties.some(prop => String(prop || '').toLowerCase().includes(query.toLowerCase())))
+      )
+    );
+  }, [rooms, query]);
 
   const totalResults = filteredJobs.length + filteredProperties.length + filteredRooms.length;
   
   const highlightMatch = (text: string | undefined | null, query: string) => {
     if (!query || !text) return text || '';
-    const parts = text.split(new RegExp(`(${query})`, 'gi'));
-    return parts.map((part, i) => 
-      part.toLowerCase() === query.toLowerCase() ? 
-        <span key={i} className="bg-yellow-200 text-gray-900">{part}</span> : part
-    );
+    try {
+      const parts = text.split(new RegExp(`(${query})`, 'gi'));
+      return parts.map((part, i) => 
+        part.toLowerCase() === query.toLowerCase() ? 
+          <span key={i} className="bg-yellow-200 text-gray-900">{part}</span> : part
+      );
+    } catch (e) {
+      // In case of regex errors
+      return text;
+    }
   };
 
   if (isLoading) {
@@ -225,9 +286,9 @@ export default function SearchContent() {
                     job.rooms?.some(r => String(r.room_id) === String(room.room_id))
                   );
                   return relatedJob ? (
-                    <RoomOnlyJobCard key={room.room_id} job={relatedJob} properties={properties} />
+                    <RoomOnlyJobCard key={String(room.room_id)} job={relatedJob} properties={properties} />
                   ) : (
-                    <RoomCard key={room.room_id} room={room} query={query} highlightMatch={highlightMatch} />
+                    <RoomCard key={String(room.room_id)} room={room} query={query} highlightMatch={highlightMatch} />
                   );
                 })}
               </div>
@@ -263,9 +324,9 @@ export default function SearchContent() {
                 job.rooms?.some(r => String(r.room_id) === String(room.room_id))
               );
               return relatedJob ? (
-                <RoomOnlyJobCard key={room.room_id} job={relatedJob} properties={properties} />
+                <RoomOnlyJobCard key={String(room.room_id)} job={relatedJob} properties={properties} />
               ) : (
-                <RoomCard key={room.room_id} room={room} query={query} highlightMatch={highlightMatch} />
+                <RoomCard key={String(room.room_id)} room={room} query={query} highlightMatch={highlightMatch} />
               );
             })}
           </div>
@@ -285,30 +346,58 @@ interface JobCardProps {
 
 function JobCard({ job, query, highlightMatch, properties }: JobCardProps) {
   const router = useRouter();
-  const { selectedProperty } = useUser(); // Use UserContext
-  const statusVariant = STATUS_VARIANTS[job.status as JobStatus] || STATUS_VARIANTS.default;
-  const displayId = typeof job.job_id === 'number' ? `#${job.job_id}` : job.job_id;
+  const { selectedProperty } = useUser();
+  const statusVariant = (job?.status && STATUS_VARIANTS[job.status as JobStatus]) || STATUS_VARIANTS.default;
+  const displayId = typeof job?.job_id === 'number' ? `#${job.job_id}` : job?.job_id;
 
   const getPropertyName = () => {
-    const jobProperties = [
-      ...(job.profile_image?.properties || []),
-      ...(job.properties || []),
-      ...(job.rooms?.flatMap(room => room.properties || []) || [])
-    ];
-    if (selectedProperty) {
-      const matchingProperty = jobProperties.find(
-        prop => typeof prop === 'object' ? prop.property_id === selectedProperty : String(prop) === selectedProperty
-      );
-      if (matchingProperty) {
-        if (typeof matchingProperty === 'object') return matchingProperty.name;
-        const fullProperty = properties?.find(p => String(p.property_id) === selectedProperty);
-        return fullProperty?.name;
+    if (!job) return 'N/A';
+    
+    try {
+      const jobProperties = [
+        ...(job.profile_image?.properties || []),
+        ...(job.properties || []),
+        ...(job.rooms?.flatMap(room => room?.properties || []) || [])
+      ];
+      
+      if (selectedProperty && jobProperties.length > 0) {
+        const matchingProperty = jobProperties.find(
+          prop => {
+            if (!prop) return false;
+            if (typeof prop === 'object') {
+              return String(prop.property_id) === selectedProperty;
+            }
+            return String(prop) === selectedProperty;
+          }
+        );
+        
+        if (matchingProperty) {
+          if (typeof matchingProperty === 'object' && matchingProperty?.name) {
+            return matchingProperty.name;
+          }
+          
+          const fullProperty = properties?.find(p => String(p?.property_id) === selectedProperty);
+          return fullProperty?.name || 'N/A';
+        }
       }
+      
+      const firstMatchingProperty = jobProperties.find(
+        prop => typeof prop === 'object' && prop?.name
+      );
+      
+      if (typeof firstMatchingProperty === 'object' && firstMatchingProperty?.name) {
+        return firstMatchingProperty.name;
+      }
+      
+      const propertyFromList = properties?.find(p => 
+        jobProperties.some(jobProp => String(jobProp) === String(p?.property_id))
+      );
+      
+      return propertyFromList?.name || 'N/A';
+    } catch (error) {
+      console.error('Error in getPropertyName:', error);
+      return 'N/A';
     }
-    const firstMatchingProperty = jobProperties.find(prop => typeof prop === 'object' && prop.name);
-    if (typeof firstMatchingProperty === 'object') return firstMatchingProperty.name;
-    const propertyFromList = properties?.find(p => jobProperties.some(jobProp => String(jobProp) === String(p.property_id)));
-    return propertyFromList?.name || 'N/A';
   };
 
   return (
@@ -318,21 +407,21 @@ function JobCard({ job, query, highlightMatch, properties }: JobCardProps) {
           <CardTitle className="text-lg font-semibold line-clamp-1">
             Job {highlightMatch(displayId, query)}
           </CardTitle>
-          <Badge variant={statusVariant}>{highlightMatch(job.status, query) || 'Unknown Status'}</Badge>
+          <Badge variant={statusVariant}>{highlightMatch(job?.status, query) || 'Unknown Status'}</Badge>
         </div>
         <CardDescription className="line-clamp-1">
-          Priority: {highlightMatch(job.priority, query)}
+          Priority: {highlightMatch(job?.priority, query)}
         </CardDescription>
       </CardHeader>
       <CardContent className="pb-4">
-        <p className="text-sm text-gray-600 line-clamp-2">{highlightMatch(job.description, query)}</p>
+        <p className="text-sm text-gray-600 line-clamp-2">{highlightMatch(job?.description, query)}</p>
         <div className="flex items-center gap-2 mt-3 text-xs text-gray-500">
           <CalendarClock className="h-3.5 w-3.5" />
-          <span>{new Date(job.created_at).toLocaleDateString()}</span>
+          <span>{job?.created_at ? new Date(job.created_at).toLocaleDateString() : 'N/A'}</span>
         </div>
       </CardContent>
       <CardFooter className="pt-0 border-t bg-gray-50 p-3">
-        <Link href={`/dashboard/jobs/${job.job_id}`} className="w-full">
+        <Link href={`/dashboard/jobs/${job?.job_id}`} className="w-full">
           <Button variant="ghost" className="w-full text-sm">View Details</Button>
         </Link>
       </CardFooter>
@@ -340,7 +429,7 @@ function JobCard({ job, query, highlightMatch, properties }: JobCardProps) {
   );
 }
 
-// Room-Only JobCard
+// Room-Only JobCard - simplified
 interface RoomOnlyJobCardProps {
   job: Job;
   properties?: Property[];
@@ -348,30 +437,61 @@ interface RoomOnlyJobCardProps {
 
 function RoomOnlyJobCard({ job, properties }: RoomOnlyJobCardProps) {
   const router = useRouter();
-  const { selectedProperty } = useUser(); // Use UserContext
-  const room = job.rooms?.[0] as Room | undefined;
+  const { selectedProperty } = useUser();
+  const room = job?.rooms?.[0] as Room | undefined;
 
   const getPropertyName = () => {
-    const jobProperties = [
-      ...(job.profile_image?.properties || []),
-      ...(job.properties || []),
-      ...(job.rooms?.flatMap(room => room.properties || []) || [])
-    ];
-    if (selectedProperty) {
-      const matchingProperty = jobProperties.find(
-        prop => typeof prop === 'object' ? prop.property_id === selectedProperty : String(prop) === selectedProperty
-      );
-      if (matchingProperty) {
-        if (typeof matchingProperty === 'object') return matchingProperty.name;
-        const fullProperty = properties?.find(p => String(p.property_id) === selectedProperty);
-        return fullProperty?.name;
+    if (!job) return 'N/A';
+    
+    try {
+      // Same logic as in JobCard but with try/catch protection
+      const jobProperties = [
+        ...(job.profile_image?.properties || []),
+        ...(job.properties || []),
+        ...(job.rooms?.flatMap(room => room?.properties || []) || [])
+      ];
+      
+      if (selectedProperty && jobProperties.length > 0) {
+        const matchingProperty = jobProperties.find(
+          prop => {
+            if (!prop) return false;
+            if (typeof prop === 'object') {
+              return String(prop.property_id) === selectedProperty;
+            }
+            return String(prop) === selectedProperty;
+          }
+        );
+        
+        if (matchingProperty) {
+          if (typeof matchingProperty === 'object' && matchingProperty?.name) {
+            return matchingProperty.name;
+          }
+          
+          const fullProperty = properties?.find(p => String(p?.property_id) === selectedProperty);
+          return fullProperty?.name || 'N/A';
+        }
       }
+      
+      const firstMatchingProperty = jobProperties.find(
+        prop => typeof prop === 'object' && prop?.name
+      );
+      
+      if (typeof firstMatchingProperty === 'object' && firstMatchingProperty?.name) {
+        return firstMatchingProperty.name;
+      }
+      
+      const propertyFromList = properties?.find(p => 
+        jobProperties.some(jobProp => String(jobProp) === String(p?.property_id))
+      );
+      
+      return propertyFromList?.name || 'N/A';
+    } catch (error) {
+      console.error('Error in getPropertyName:', error);
+      return 'N/A';
     }
-    const firstMatchingProperty = jobProperties.find(prop => typeof prop === 'object' && prop.name);
-    if (typeof firstMatchingProperty === 'object') return firstMatchingProperty.name;
-    const propertyFromList = properties?.find(p => jobProperties.some(jobProp => String(jobProp) === String(p.property_id)));
-    return propertyFromList?.name || 'N/A';
   };
+
+  if (!room) return null;
 
   return (
     <Card className="flex flex-col h-full transition-all duration-200 bg-white shadow-sm hover:shadow-md">
@@ -396,7 +516,7 @@ function RoomOnlyJobCard({ job, properties }: RoomOnlyJobCardProps) {
               e.stopPropagation();
               if (room) router.push(`/dashboard/rooms/${room.room_id}`);
             }}
-            disabled={!room}
+            disabled={!room?.room_id}
           >
             View Room Details
           </Button>
@@ -406,7 +526,7 @@ function RoomOnlyJobCard({ job, properties }: RoomOnlyJobCardProps) {
   );
 }
 
-// PropertyCard
+// PropertyCard component
 interface PropertyCardProps {
   property: Property;
   query: string;
@@ -414,6 +534,8 @@ interface PropertyCardProps {
 }
 
 function PropertyCard({ property, query, highlightMatch }: PropertyCardProps) {
+  if (!property) return null;
+  
   return (
     <Card className="overflow-hidden hover:shadow-md transition-shadow">
       <CardHeader className="pb-3">
@@ -440,7 +562,7 @@ function PropertyCard({ property, query, highlightMatch }: PropertyCardProps) {
   );
 }
 
-// RoomCard
+// RoomCard component
 interface RoomCardProps {
   room: Room;
   query: string;
@@ -448,6 +570,8 @@ interface RoomCardProps {
 }
 
 function RoomCard({ room, query, highlightMatch }: RoomCardProps) {
+  if (!room) return null;
+  
   const displayId = typeof room.room_id === 'number' ? `#${room.room_id}` : room.room_id;
 
   return (
@@ -462,16 +586,16 @@ function RoomCard({ room, query, highlightMatch }: RoomCardProps) {
       <CardContent className="pb-4">
         <div className="flex items-center gap-2 mt-3 text-sm text-gray-600">
           <Home className="h-4 w-4" />
-          <span>Property: {room.property || (room.properties?.join(', ') || 'N/A')}</span>
+          <span>Property: {room.property || (Array.isArray(room.properties) ? room.properties.join(', ') : 'N/A')}</span>
         </div>
         <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
           <CalendarClock className="h-3.5 w-3.5" />
-          <span>{new Date(room.created_at).toLocaleDateString()}</span>
+          <span>{room.created_at ? new Date(room.created_at).toLocaleDateString() : 'N/A'}</span>
         </div>
       </CardContent>
       <CardFooter className="pt-0 border-t bg-gray-50 p-3">
         <Link href={`/dashboard/rooms/${room.room_id}`} className="w-full">
-          <Button variant="ghost" className="w-full text-sm">View Room</Button>
+          <Button variant="ghost" className="w-full text-sm">View Details</Button>
         </Link>
       </CardFooter>
     </Card>
