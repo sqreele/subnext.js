@@ -7,7 +7,7 @@ import { Button } from "@/app/components/ui/button";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 import { useUser } from "@/app/lib/user-context";
-import { Room, Property } from "@/app/lib/types";
+import { Room } from "@/app/lib/types";
 
 interface RoomAutocompleteProps {
   rooms: Room[];
@@ -27,41 +27,80 @@ const RoomAutocomplete = ({ rooms, selectedRoom, onSelect }: RoomAutocompletePro
     console.log("Selected Property:", selectedProperty);
   }, [rooms, userProfile, selectedRoom, selectedProperty]);
 
-  const filteredRooms = rooms.filter((room) => {
-    // First, apply search filter
-    if (searchQuery) {
-      const search = searchQuery.toLowerCase();
-      const roomName = room.name || '';
-      const roomType = room.room_type || '';
-      
-      if (!roomName.toLowerCase().includes(search) && 
-          !roomType.toLowerCase().includes(search)) {
-        return false;
-      }
-    }
-
-    // If we have a selected property, filter by it
+  const filteredRooms = Array.isArray(rooms) ? rooms.filter((room) => {
+    // Skip invalid rooms
+    if (!room) return false;
+    
+    // If we have a selected property from context, use that instead of the user's properties
     if (selectedProperty) {
-      // Check room.properties array if it exists
+      // Check room.properties array first
       if (Array.isArray(room.properties) && room.properties.length > 0) {
-        // Check if any property ID matches selectedProperty
         if (room.properties.some(prop => String(prop) === selectedProperty)) {
+          // Apply search filter if needed
+          if (searchQuery) {
+            const search = searchQuery.toLowerCase();
+            const roomName = (room.name || '').toLowerCase();
+            const roomType = (room.room_type || '').toLowerCase();
+            return roomName.includes(search) || roomType.includes(search);
+          }
           return true;
         }
       }
       
-      // Check room.property field if it exists
+      // Then check room.property field
       if (room.property !== undefined && String(room.property) === selectedProperty) {
+        // Apply search filter if needed
+        if (searchQuery) {
+          const search = searchQuery.toLowerCase();
+          const roomName = (room.name || '').toLowerCase();
+          const roomType = (room.room_type || '').toLowerCase();
+          return roomName.includes(search) || roomType.includes(search);
+        }
         return true;
       }
       
-      // If we get here, the room doesn't match the selected property
+      // If none of the above matched, this room doesn't belong to the selected property
       return false;
     }
     
-    // If no selected property or user hasn't set it up yet, show all rooms
+    // No selected property, fall back to userProfile properties
+    if (userProfile?.properties?.length) {
+      // Handle properties as numbers or objects
+      let userPropertyIds: string[] = [];
+      try {
+        if (typeof userProfile.properties[0] === "number") {
+          userPropertyIds = userProfile.properties.map(p => String(p));
+        } else {
+          userPropertyIds = userProfile.properties.map(p => 
+            typeof p === 'object' && p.property_id ? String(p.property_id) : String(p)
+          );
+        }
+      } catch (e) {
+        console.error("Error mapping property IDs:", e);
+        return false;
+      }
+
+      // Safely check room.properties or room.property
+      const roomPropertyIds = (Array.isArray(room.properties) && room.properties) || 
+                              (room.property !== undefined ? [room.property] : []);
+      
+      const isUserProperty = roomPropertyIds.some(propId => 
+        userPropertyIds.includes(String(propId))
+      );
+
+      if (!isUserProperty) return false;
+    }
+
+    // Apply search filter
+    if (searchQuery) {
+      const search = searchQuery.toLowerCase();
+      const roomName = (room.name || '').toLowerCase();
+      const roomType = (room.room_type || '').toLowerCase();
+      return roomName.includes(search) || roomType.includes(search);
+    }
+    
     return true;
-  });
+  }) : [];
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -76,7 +115,7 @@ const RoomAutocomplete = ({ rooms, selectedRoom, onSelect }: RoomAutocompletePro
           )}
         >
           {selectedRoom?.name ? 
-            `${selectedRoom.name} - ${selectedRoom.room_type}` : 
+            `${selectedRoom.name} - ${selectedRoom.room_type || 'No type'}` : 
             "Select room..."
           }
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-gray-400" />
@@ -92,10 +131,12 @@ const RoomAutocomplete = ({ rooms, selectedRoom, onSelect }: RoomAutocompletePro
           />
           <CommandList>
             <CommandEmpty className="py-3 px-4 text-sm text-gray-500">
-              {rooms.length === 0 ? (
-                "No rooms available. Check if rooms data is loaded."
+              {!Array.isArray(rooms) || rooms.length === 0 ? (
+                "No rooms available. Check if jobs data is loaded."
+              ) : filteredRooms.length === 0 && selectedProperty ? (
+                `No rooms found for this property`
               ) : filteredRooms.length === 0 ? (
-                `No rooms found matching "${searchQuery}"`
+                "No matching rooms found."
               ) : (
                 "No matching rooms found."
               )}
@@ -103,7 +144,7 @@ const RoomAutocomplete = ({ rooms, selectedRoom, onSelect }: RoomAutocompletePro
             <CommandGroup className="max-h-60 overflow-y-auto">
               {filteredRooms.map((room) => {
                 // Skip rooms with empty names
-                if (!room.name) return null;
+                if (!room || !room.name) return null;
                 
                 return (
                 <CommandItem

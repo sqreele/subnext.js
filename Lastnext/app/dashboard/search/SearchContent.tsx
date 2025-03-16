@@ -11,15 +11,8 @@ import { Button } from '@/app/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { Job, Property, JobStatus, STATUS_VARIANTS, Room } from '@/app/lib/types';
 import { useRouter } from 'next/navigation';
-import { useUser } from '@/app/lib/user-context';
+import { useProperty } from '@/app/lib/PropertyContext';
 import { useSession } from 'next-auth/react';
-import { 
-  fetchJobs, 
-  fetchProperties, 
-  fetchWithToken 
-} from '@/app/lib/data.server';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://pmcs.site';
 
 export default function SearchContent() {
   const searchParams = useSearchParams();
@@ -31,20 +24,9 @@ export default function SearchContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  const { userProfile, selectedProperty } = useUser();
+  // Get auth token from session
   const { data: session } = useSession();
   const accessToken = session?.user?.accessToken;
-
-  // Add error boundary
-  useEffect(() => {
-    const errorHandler = (event: ErrorEvent) => {
-      console.error('Caught runtime error:', event.error);
-      setError('An unexpected error occurred. Please try again later.');
-    };
-    
-    window.addEventListener('error', errorHandler);
-    return () => window.removeEventListener('error', errorHandler);
-  }, []);
 
   useEffect(() => {
     const fetchSearchResults = async () => {
@@ -54,47 +36,73 @@ export default function SearchContent() {
       setError(null);
       
       try {
-        // Use API helper functions with proper error handling
-        const results = await Promise.allSettled([
-          fetchJobs(accessToken)
-            .catch(err => {
-              console.error('Error fetching jobs:', err);
-              return [] as Job[];
-            }),
-          fetchProperties(accessToken)
-            .catch(err => {
-              console.error('Error fetching properties:', err);
-              return [] as Property[];
-            }),
-          fetchWithToken<Room[]>(`${API_BASE_URL}/api/rooms/`, accessToken)
-            .catch(err => {
-              console.error('Error fetching rooms:', err);
-              return [] as Room[];
-            })
-        ]);
+        // Add auth headers to requests
+        const headers = {
+          'Content-Type': 'application/json',
+          'Authorization': accessToken ? `Bearer ${accessToken}` : ''
+        };
         
-        // Process results safely
-        setJobs(
-          results[0].status === 'fulfilled' 
-            ? (Array.isArray(results[0].value) ? results[0].value : []) 
-            : []
-        );
+        // Fetch jobs with proper error handling
+        let jobsData: Job[] = [];
+        try {
+          const jobsRes = await fetch('/api/jobs', { headers });
+          if (jobsRes.ok) {
+            jobsData = await jobsRes.json();
+            // Ensure we have an array
+            if (!Array.isArray(jobsData)) {
+              console.warn('Jobs data is not an array:', jobsData);
+              jobsData = [];
+            }
+          } else {
+            console.warn('Failed to fetch jobs:', jobsRes.status);
+          }
+        } catch (jobError) {
+          console.error('Error fetching jobs:', jobError);
+        }
         
-        setProperties(
-          results[1].status === 'fulfilled' 
-            ? (Array.isArray(results[1].value) ? results[1].value : []) 
-            : []
-        );
+        // Fetch properties with proper error handling
+        let propertiesData: Property[] = [];
+        try {
+          const propertiesRes = await fetch('/api/properties', { headers });
+          if (propertiesRes.ok) {
+            propertiesData = await propertiesRes.json();
+            // Ensure we have an array
+            if (!Array.isArray(propertiesData)) {
+              console.warn('Properties data is not an array:', propertiesData);
+              propertiesData = [];
+            }
+          } else {
+            console.warn('Failed to fetch properties:', propertiesRes.status);
+          }
+        } catch (propError) {
+          console.error('Error fetching properties:', propError);
+        }
         
-        setRooms(
-          results[2].status === 'fulfilled' 
-            ? (Array.isArray(results[2].value) ? results[2].value : []) 
-            : []
-        );
+        // Fetch rooms with proper error handling
+        let roomsData: Room[] = [];
+        try {
+          const roomsRes = await fetch('/api/rooms', { headers });
+          if (roomsRes.ok) {
+            roomsData = await roomsRes.json();
+            // Ensure we have an array
+            if (!Array.isArray(roomsData)) {
+              console.warn('Rooms data is not an array:', roomsData);
+              roomsData = [];
+            }
+          } else {
+            console.warn('Failed to fetch rooms:', roomsRes.status);
+          }
+        } catch (roomError) {
+          console.error('Error fetching rooms:', roomError);
+        }
         
+        // Set state with our safely fetched data
+        setJobs(jobsData);
+        setProperties(propertiesData);
+        setRooms(roomsData);
       } catch (error) {
-        console.error('Error in search component:', error);
-        setError(error instanceof Error ? error.message : 'An unexpected error occurred');
+        console.error('Error fetching search results:', error);
+        setError('An error occurred while fetching search results. Please try again.');
       } finally {
         setIsLoading(false);
       }
@@ -103,49 +111,37 @@ export default function SearchContent() {
     fetchSearchResults();
   }, [query, accessToken]);
 
-  // Safe filtering functions
-  const filteredJobs = React.useMemo(() => {
-    if (!Array.isArray(jobs)) return [];
-    
-    return jobs.filter(job => 
-      job && (
-        (String(job.description || '').toLowerCase().includes(query.toLowerCase()) ||
-        String(job.status || '').toLowerCase().includes(query.toLowerCase()) ||
-        String(job.priority || '').toLowerCase().includes(query.toLowerCase()) ||
-        String(job.remarks || '').toLowerCase().includes(query.toLowerCase()))
-      )
-    );
-  }, [jobs, query]);
+  // Create filtered lists with proper null checks
+  const filteredJobs = Array.isArray(jobs) ? jobs.filter(job => 
+    job && (
+      (job.description?.toLowerCase() || '').includes(query.toLowerCase()) ||
+      (job.status?.toLowerCase() || '').includes(query.toLowerCase()) ||
+      (job.priority?.toLowerCase() || '').includes(query.toLowerCase()) ||
+      (job.remarks?.toLowerCase() || '').includes(query.toLowerCase())
+    )
+  ) : [];
 
-  const filteredProperties = React.useMemo(() => {
-    if (!Array.isArray(properties)) return [];
-    
-    return properties.filter(property => 
-      property && (
-        String(property.name || '').toLowerCase().includes(query.toLowerCase()) || 
-        String(property.description || '').toLowerCase().includes(query.toLowerCase()) ||
-        String(property.property_id || '').toLowerCase().includes(query.toLowerCase())
-      )
-    );
-  }, [properties, query]);
+  const filteredProperties = Array.isArray(properties) ? properties.filter(property => 
+    property && (
+      (property.name?.toLowerCase() || '').includes(query.toLowerCase()) || 
+      (property.description?.toLowerCase() || '').includes(query.toLowerCase()) ||
+      (String(property.property_id || '').toLowerCase()).includes(query.toLowerCase())
+    )
+  ) : [];
 
-  const filteredRooms = React.useMemo(() => {
-    if (!Array.isArray(rooms)) return [];
-    
-    return rooms.filter(room => 
-      room && (
-        String(room.name || '').toLowerCase().includes(query.toLowerCase()) ||
-        String(room.room_type || '').toLowerCase().includes(query.toLowerCase()) ||
-        String(room.room_id || '').toLowerCase().includes(query.toLowerCase()) ||
-        (room.property ? String(room.property).toLowerCase().includes(query.toLowerCase()) : false) ||
-        (Array.isArray(room.properties) && 
-          room.properties.some(prop => String(prop || '').toLowerCase().includes(query.toLowerCase())))
-      )
-    );
-  }, [rooms, query]);
+  const filteredRooms = Array.isArray(rooms) ? rooms.filter(room => 
+    room && (
+      (room.name?.toLowerCase() || '').includes(query.toLowerCase()) ||
+      (room.room_type?.toLowerCase() || '').includes(query.toLowerCase()) ||
+      (typeof room.room_id === 'string' ? room.room_id.toLowerCase() : String(room.room_id || '')).includes(query.toLowerCase()) ||
+      (room.property ? String(room.property).toLowerCase() : '').includes(query.toLowerCase()) ||
+      (Array.isArray(room.properties) && room.properties.some(prop => String(prop || '').toLowerCase().includes(query.toLowerCase())))
+    )
+  ) : [];
 
   const totalResults = filteredJobs.length + filteredProperties.length + filteredRooms.length;
   
+  // Safe highlight match function
   const highlightMatch = (text: string | undefined | null, query: string) => {
     if (!query || !text) return text || '';
     try {
@@ -283,7 +279,7 @@ export default function SearchContent() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredRooms.slice(0, 3).map(room => {
                   const relatedJob = jobs.find(job => 
-                    job.rooms?.some(r => String(r.room_id) === String(room.room_id))
+                    job?.rooms?.some(r => String(r?.room_id || '') === String(room?.room_id || ''))
                   );
                   return relatedJob ? (
                     <RoomOnlyJobCard key={String(room.room_id)} job={relatedJob} properties={properties} />
@@ -321,7 +317,7 @@ export default function SearchContent() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredRooms.map(room => {
               const relatedJob = jobs.find(job => 
-                job.rooms?.some(r => String(r.room_id) === String(room.room_id))
+                job?.rooms?.some(r => String(r?.room_id || '') === String(room?.room_id || ''))
               );
               return relatedJob ? (
                 <RoomOnlyJobCard key={String(room.room_id)} job={relatedJob} properties={properties} />
@@ -336,23 +332,14 @@ export default function SearchContent() {
   );
 }
 
-// Updated JobCard to use UserContext
-interface JobCardProps {
-  job: Job;
-  query: string;
-  highlightMatch: (text: string | undefined | null, query: string) => React.ReactNode;
-  properties?: Property[];
-}
-
+// Updated JobCard with safer property access
 function JobCard({ job, query, highlightMatch, properties }: JobCardProps) {
   const router = useRouter();
-  const { selectedProperty } = useUser();
+  const { selectedProperty } = useProperty();
   const statusVariant = (job?.status && STATUS_VARIANTS[job.status as JobStatus]) || STATUS_VARIANTS.default;
   const displayId = typeof job?.job_id === 'number' ? `#${job.job_id}` : job?.job_id;
 
   const getPropertyName = () => {
-    if (!job) return 'N/A';
-    
     try {
       const jobProperties = [
         ...(job.profile_image?.properties || []),
@@ -360,7 +347,7 @@ function JobCard({ job, query, highlightMatch, properties }: JobCardProps) {
         ...(job.rooms?.flatMap(room => room?.properties || []) || [])
       ];
       
-      if (selectedProperty && jobProperties.length > 0) {
+      if (selectedProperty) {
         const matchingProperty = jobProperties.find(
           prop => {
             if (!prop) return false;
@@ -429,29 +416,22 @@ function JobCard({ job, query, highlightMatch, properties }: JobCardProps) {
   );
 }
 
-// Room-Only JobCard - simplified
-interface RoomOnlyJobCardProps {
-  job: Job;
-  properties?: Property[];
-}
-
+// Room-Only JobCard with safer property access
 function RoomOnlyJobCard({ job, properties }: RoomOnlyJobCardProps) {
   const router = useRouter();
-  const { selectedProperty } = useUser();
+  const { selectedProperty } = useProperty();
   const room = job?.rooms?.[0] as Room | undefined;
 
+  // Same getPropertyName logic as JobCard with try/catch
   const getPropertyName = () => {
-    if (!job) return 'N/A';
-    
     try {
-      // Same logic as in JobCard but with try/catch protection
       const jobProperties = [
         ...(job.profile_image?.properties || []),
         ...(job.properties || []),
         ...(job.rooms?.flatMap(room => room?.properties || []) || [])
       ];
       
-      if (selectedProperty && jobProperties.length > 0) {
+      if (selectedProperty) {
         const matchingProperty = jobProperties.find(
           prop => {
             if (!prop) return false;
@@ -526,13 +506,7 @@ function RoomOnlyJobCard({ job, properties }: RoomOnlyJobCardProps) {
   );
 }
 
-// PropertyCard component
-interface PropertyCardProps {
-  property: Property;
-  query: string;
-  highlightMatch: (text: string | undefined | null, query: string) => React.ReactNode;
-}
-
+// PropertyCard with safer property access
 function PropertyCard({ property, query, highlightMatch }: PropertyCardProps) {
   if (!property) return null;
   
@@ -562,13 +536,7 @@ function PropertyCard({ property, query, highlightMatch }: PropertyCardProps) {
   );
 }
 
-// RoomCard component
-interface RoomCardProps {
-  room: Room;
-  query: string;
-  highlightMatch: (text: string | undefined | null, query: string) => React.ReactNode;
-}
-
+// RoomCard with safer property access
 function RoomCard({ room, query, highlightMatch }: RoomCardProps) {
   if (!room) return null;
   
@@ -600,4 +568,29 @@ function RoomCard({ room, query, highlightMatch }: RoomCardProps) {
       </CardFooter>
     </Card>
   );
+}
+
+// Types for props
+interface JobCardProps {
+  job: Job;
+  query: string;
+  highlightMatch: (text: string | undefined | null, query: string) => React.ReactNode;
+  properties?: Property[];
+}
+
+interface RoomOnlyJobCardProps {
+  job: Job;
+  properties?: Property[];
+}
+
+interface PropertyCardProps {
+  property: Property;
+  query: string;
+  highlightMatch: (text: string | undefined | null, query: string) => React.ReactNode;
+}
+
+interface RoomCardProps {
+  room: Room;
+  query: string;
+  highlightMatch: (text: string | undefined | null, query: string) => React.ReactNode;
 }
