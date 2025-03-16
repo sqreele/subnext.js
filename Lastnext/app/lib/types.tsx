@@ -95,7 +95,7 @@ export interface Property {
   name: string;
   description: string;
   property_id: string;
-  users: string[];
+  users: number[] | string[];
   created_at: string;
   rooms?: Room[];
   properties?: Property[];
@@ -109,7 +109,7 @@ export interface UserProfile {
   profile_image: string | null;
   positions: string;
   properties: Property[];
-  created_at: string;
+  created_at: string; //
 }
 
 export interface UserContextType {

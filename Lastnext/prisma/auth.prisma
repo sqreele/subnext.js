@@ -4,39 +4,41 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")  // Ensure this points to your PostgreSQL database in .env
+  url      = env("DATABASE_URL")
 }
 
 model User {
-  id         String     @id @default(uuid())  // Unique identifier
-  username   String     @unique
-  email      String?    @unique
+  id            String     @id @default(uuid())
+  username      String     @unique
+  email         String?    @unique
   profile_image String?
-  positions  String     @default("User")
-  created_at DateTime   @default(now())
+  positions     String     @default("User")
+  created_at    DateTime   @default(now())
   accessToken   String?
   refreshToken  String?
   sessionToken  String?
-  accounts   Account[]
-  sessions   Session[]
-  properties UserProperty[] // New relation table for many-to-many properties
+  accounts      Account[]
+  sessions      Session[]
+  properties    Property[] @relation("UserProperties") // Direct relation to Property
+  userProperties UserProperty[] // Keep join table for explicit control
 }
 
 model Property {
-  id          String     @id @default(uuid())  
-  name        String
-  description String?
-  created_at  DateTime   @default(now())
-  users       UserProperty[]
+  id            String     @id @default(uuid())
+  name          String
+  description   String?
+  created_at    DateTime   @default(now())
+  users         User[]     @relation("UserProperties") // Direct relation to User
+  userProperties UserProperty[]
 }
 
-model UserProperty {  // Join table for User <-> Property many-to-many relation
+model UserProperty {
   userId     String
   propertyId String
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   property   Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
-  @@id([userId, propertyId])  // Composite primary key
+  @@id([userId, propertyId])
 }
 
 model Account {

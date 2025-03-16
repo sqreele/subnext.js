@@ -37,6 +37,8 @@ export const authOptions: NextAuthOptions = {
           }
 
           const tokenData = await tokenResponse.json();
+          console.log("Token data:", tokenData);
+
           if (!tokenData.access || !tokenData.refresh) {
             console.error("Token response missing required fields:", tokenData);
             throw new Error("Token response missing required fields.");
@@ -49,35 +51,29 @@ export const authOptions: NextAuthOptions = {
             throw new Error("Failed to decode access token.");
           }
           const userId = String(decoded.user_id);
+          console.log("Decoded user ID:", userId);
 
-          // Step 3: Fetch user from Prisma database
+          // Step 3: Fetch user from Prisma database with properties
           let user = await prisma.user.findUnique({
             where: { id: userId },
             include: { properties: true },
           });
+          console.log("Prisma user with properties:", user);
 
-          // Step 4: If user not in database, fetch profile and properties from API
+          // Step 4: Fetch profile data from API (includes properties)
+          const profileResponse = await fetch(`${API_BASE_URL}/api/user-profiles/${userId}/`, {
+            headers: { Authorization: `Bearer ${tokenData.access}`, "Content-Type": "application/json" },
+          });
           let profileData: { email?: string | null; profile_image?: string | null; positions?: string; created_at?: string; properties?: any[] } = {};
-          let propertiesData: any[] = [];
+          if (profileResponse.ok) {
+            profileData = await profileResponse.json();
+            console.log(`Fetched profile data for user ${userId}:`, profileData);
+          } else {
+            console.error(`Profile fetch failed: ${profileResponse.status}`);
+          }
+
+          // If user not in database, create it
           if (!user) {
-            console.log(`User ${userId} not found in database, fetching from API...`);
-            const profileResponse = await fetch(`${API_BASE_URL}/api/user-profiles/${userId}/`, {
-              headers: { Authorization: `Bearer ${tokenData.access}`, "Content-Type": "application/json" },
-            });
-            if (profileResponse.ok) {
-              profileData = await profileResponse.json();
-              console.log(`Fetched profile data for user ${userId}:`, profileData);
-            }
-
-            const propertiesResponse = await fetch(`${API_BASE_URL}/api/properties/`, {
-              headers: { Authorization: `Bearer ${tokenData.access}`, "Content-Type": "application/json" },
-            });
-            if (propertiesResponse.ok) {
-              propertiesData = await propertiesResponse.json();
-              console.log(`Fetched ${propertiesData.length} properties from API`);
-            }
-
-            // Create or update user in database
             user = await prisma.user.upsert({
               where: { id: userId },
               update: {
@@ -85,7 +81,7 @@ export const authOptions: NextAuthOptions = {
                 email: profileData.email || null,
                 profile_image: profileData.profile_image || null,
                 positions: profileData.positions || "User",
-                created_at: new Date(profileData.created_at || Date.now()),
+                created_at: profileData.created_at ? new Date(profileData.created_at) : new Date(),
               },
               create: {
                 id: userId,
@@ -93,50 +89,55 @@ export const authOptions: NextAuthOptions = {
                 email: profileData.email || null,
                 profile_image: profileData.profile_image || null,
                 positions: profileData.positions || "User",
-                created_at: new Date(profileData.created_at || Date.now()),
+                created_at: profileData.created_at ? new Date(profileData.created_at) : new Date(),
               },
               include: { properties: true },
             });
+            console.log("Created/updated Prisma user:", user);
           }
 
-          // Step 5: Normalize properties
-          const normalizedProperties: Property[] = propertiesData.length > 0
-            ? propertiesData.map((prop: any) => ({
-                property_id: String(prop.property_id || prop.id),
-                id: String(prop.property_id || prop.id),
-                name: prop.name || `Property ${prop.property_id || prop.id}`,
-                description: prop.description || "",
-                created_at: prop.created_at || new Date().toISOString(),
-                users: prop.users || [],
-              }))
-            : (user.properties || []).map((prop: any) => ({
-                property_id: String(prop.propertyId),
-                id: String(prop.propertyId),
-                name: prop.name || `Property ${prop.propertyId}`,
-                description: prop.description || "",
-                created_at: prop.created_at || new Date().toISOString(),
-                users: [],
-              }));
-
+          // Step 5: Normalize properties (prefer API data, fallback to Prisma)
+          let normalizedProperties: Property[] = [];
+          if (profileData.properties && profileData.properties.length > 0) {
+            normalizedProperties = profileData.properties.map((prop: any) => ({
+              id: String(prop.property_id || prop.id),
+              property_id: String(prop.property_id || prop.id),
+              name: prop.name || `Property ${prop.property_id || prop.id}`,
+              description: prop.description || "",
+              created_at: prop.created_at || new Date().toISOString(),
+              users: prop.users || [],
+            }));
+          } else if (user.properties && user.properties.length > 0) {
+            normalizedProperties = user.properties.map((prop: any) => ({
+              id: String(prop.id),
+              property_id: String(prop.id),
+              name: prop.name || `Property ${prop.id}`,
+              description: prop.description || "",
+              created_at: prop.created_at.toISOString(), // Always convert Date to string
+              users: [],
+            }));
+          }
           console.log(`Normalized ${normalizedProperties.length} properties for user ${userId}:`, normalizedProperties);
 
-          // Step 6: Construct user profile
+          // Step 6: Construct user profile with explicit string conversion
           const userProfile: UserProfile = {
             id: userId,
             username: credentials.username,
-            email: user.email,
-            profile_image: user.profile_image,
-            positions: user.positions,
+            email: user.email || profileData.email || null,
+            profile_image: user.profile_image || profileData.profile_image || null,
+            positions: user.positions || profileData.positions || "User",
             properties: normalizedProperties,
-            created_at: user.created_at.toISOString(),
+            created_at: user.created_at.toISOString() || profileData.created_at || new Date().toISOString(), // Ensure string
           };
 
           // Step 7: Return user with required refreshToken
-          return {
+          const authResult = {
             ...userProfile,
             accessToken: tokenData.access,
-            refreshToken: tokenData.refresh, // Always present and required
+            refreshToken: tokenData.refresh,
           };
+          console.log("Authorize result:", authResult);
+          return authResult;
         } catch (error) {
           console.error("Authorization Error:", error);
           throw new Error("Unable to log in. Please check your credentials.");
@@ -152,28 +153,29 @@ export const authOptions: NextAuthOptions = {
         token.email = user.email;
         token.profile_image = user.profile_image;
         token.positions = user.positions;
-        token.properties = user.properties || [];
-        token.created_at = user.created_at;
+        token.properties = user.properties;
+        token.created_at = user.created_at; // Already a string from userProfile
         token.accessToken = user.accessToken;
-        token.refreshToken = user.refreshToken; // Required string
+        token.refreshToken = user.refreshToken;
+        console.log("JWT token after user assignment:", token);
       }
       return token;
     },
     async session({ session, token }) {
       session.user = {
-        id: token.id as string,
-        username: token.username as string,
-        email: token.email as string | null,
-        profile_image: token.profile_image as string | null,
-        positions: token.positions as string,
-        properties: token.properties as Property[],
-        created_at: token.created_at as string,
-        accessToken: token.accessToken as string,
-        refreshToken: token.refreshToken as string, // Required string
-        sessionToken: undefined, // Optional, only if you add it later
+        id: token.id,
+        username: token.username,
+        email: token.email,
+        profile_image: token.profile_image,
+        positions: token.positions,
+        properties: token.properties,
+        created_at: token.created_at as string, // Already a string from token
+        accessToken: token.accessToken,
+        refreshToken: token.refreshToken,
+        sessionToken: undefined,
         error: token.error,
       };
-      console.log("Session updated with properties:", session.user.properties);
+      console.log("Session data before return:", session.user);
       return session;
     },
   },

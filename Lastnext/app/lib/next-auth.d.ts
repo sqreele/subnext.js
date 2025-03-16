@@ -1,4 +1,4 @@
-import { Property } from "@/app/lib/types";
+import { Property } from "@/app/lib/types"; // Ensure this points to types.tsx
 import type { DefaultUser } from "next-auth";
 
 declare module "next-auth" {
@@ -8,9 +8,9 @@ declare module "next-auth" {
     email: string | null;
     profile_image: string | null;
     positions: string;
-    properties: Property[];
+    properties: Property[]; // Use imported Property type
     accessToken: string;
-    refreshToken: string; // Required, no longer optional
+    refreshToken: string;
     created_at: string;
   }
 
@@ -21,10 +21,10 @@ declare module "next-auth" {
       email: string | null;
       profile_image: string | null;
       positions: string;
-      properties: Property[];
+      properties: Property[]; // Use imported Property type
       accessToken: string;
-      refreshToken: string; // Required
-      sessionToken?: string; // Optional, for Django Session model
+      refreshToken: string;
+      sessionToken?: string;
       created_at: string;
       error?: string;
     };
@@ -39,7 +39,8 @@ declare module "next-auth/jwt" {
     profile_image: string | null;
     positions: string;
     accessToken: string;
-    refreshToken: string; // Required
+    refreshToken: string;
+    properties: Property[]; // Use imported Property type
     error?: string;
   }
 }
