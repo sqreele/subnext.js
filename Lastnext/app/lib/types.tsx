@@ -95,7 +95,7 @@ export interface Property {
   name: string;
   description: string;
   property_id: string;
-  users: (string | number)[];
+  users: string[];
   created_at: string;
   rooms?: Room[];
   properties?: Property[];

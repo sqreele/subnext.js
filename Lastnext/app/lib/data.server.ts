@@ -1,4 +1,3 @@
-// app/lib/data.server.ts
 import { Job, Property, JobStatus, Room } from "./types";
 
 const API_BASE_URL =
@@ -8,103 +7,90 @@ const API_BASE_URL =
 async function fetchWithToken<T>(
   url: string,
   token?: string,
-  method: string = 'GET',
+  method: string = "GET",
   body?: any
 ): Promise<T> {
   const headers: HeadersInit = {
     "Content-Type": "application/json",
   };
-  
+
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
-  
+
   const options: RequestInit = {
     method,
     headers,
   };
-  
-  if (method !== 'GET' && body) {
+
+  if (method !== "GET" && body) {
     options.body = JSON.stringify(body);
   }
 
   console.log(`${method} ${url}`, options);
-  
+
   try {
     const response = await fetch(url, options);
     const responseText = await response.text();
-    
+
     console.log(
       "Response Status:",
       response.status,
       "Preview:",
-      responseText.length > 200 ? responseText.substring(0, 200) + '...' : responseText
+      responseText.length > 200 ? responseText.substring(0, 200) + "..." : responseText
     );
-    
+
     if (!response.ok) {
       const contentType = response.headers.get("content-type");
+      let errorMessage = `Request failed with status ${response.status}: ${responseText}`;
       if (contentType?.includes("application/json") && responseText) {
         try {
           const errorData = JSON.parse(responseText);
-          throw new Error(errorData.detail || `Request failed with status ${response.status}`);
+          errorMessage = errorData.detail || errorMessage;
         } catch (parseError) {
-          // If parsing fails, use the raw response text
+          console.error("Failed to parse error JSON:", parseError);
         }
       }
-      throw new Error(`Request failed with status ${response.status}: ${responseText}`);
+      throw new Error(errorMessage);
     }
-    
+
     if (!responseText.trim()) {
-      return ([] as unknown) as T;
+      // Handle empty response based on expected type
+      if (method === "GET" && url.includes("/api/jobs") && !url.includes("/my-jobs/")) {
+        return [] as unknown as T; // Reasonable for job lists
+      }
+      throw new Error("Received empty response from server");
     }
-    
+
     try {
       return JSON.parse(responseText) as T;
     } catch (parseError) {
       console.error("Error parsing JSON response:", parseError);
       throw new Error(`Failed to parse response as JSON: ${responseText.substring(0, 200)}...`);
     }
-  } catch (networkError) {
-    console.error(`Error during ${method} request to ${url}:`, networkError);
-    throw networkError;
+  } catch (error) {
+    console.error(`Error during ${method} request to ${url}:`, error);
+    throw error; // Let the caller decide how to handle it
   }
 }
 
-// Existing functions (unchanged for brevity)
+// API Functions
 export async function fetchProperties(accessToken?: string): Promise<Property[]> {
-  try {
-    return await fetchWithToken<Property[]>(`${API_BASE_URL}/api/properties/`, accessToken);
-  } catch (error) {
-    console.error("Error fetching properties:", error);
-    return [];
-  }
+  return fetchWithToken<Property[]>(`${API_BASE_URL}/api/properties/`, accessToken);
 }
 
 export async function fetchJobsForProperty(
   propertyId: string,
   accessToken?: string
 ): Promise<Job[]> {
-  try {
-    return await fetchWithToken<Job[]>(`${API_BASE_URL}/api/jobs/?property=${propertyId}`, accessToken);
-  } catch (error) {
-    console.error(`Error fetching jobs for property ${propertyId}:`, error);
-    return [];
-  }
+  return fetchWithToken<Job[]>(`${API_BASE_URL}/api/jobs/?property=${propertyId}`, accessToken);
 }
 
 export async function fetchJobs(accessToken?: string): Promise<Job[]> {
-  try {
-    return await fetchWithToken<Job[]>(`${API_BASE_URL}/api/jobs/`, accessToken);
-  } catch (error) {
-    console.error("Error fetching all jobs:", error);
-    return [];
-  }
+  return fetchWithToken<Job[]>(`${API_BASE_URL}/api/jobs/`, accessToken);
 }
 
-export async function fetchJob(
-  jobId: string,
-  accessToken?: string
-): Promise<Job | null> {
+export async function fetchJob(jobId: string, accessToken?: string): Promise<Job | null> {
   try {
     return await fetchWithToken<Job>(`${API_BASE_URL}/api/jobs/${jobId}/`, accessToken);
   } catch (error) {
@@ -118,24 +104,11 @@ export async function updateJob(
   jobData: Partial<Job>,
   accessToken?: string
 ): Promise<Job> {
-  try {
-    return await fetchWithToken<Job>(`${API_BASE_URL}/api/jobs/${jobId}/`, accessToken, 'PATCH', jobData);
-  } catch (error) {
-    console.error(`Error updating job ${jobId}:`, error);
-    throw error;
-  }
+  return fetchWithToken<Job>(`${API_BASE_URL}/api/jobs/${jobId}/`, accessToken, "PATCH", jobData);
 }
 
-export async function deleteJob(
-  jobId: string,
-  accessToken?: string
-): Promise<void> {
-  try {
-    await fetchWithToken<void>(`${API_BASE_URL}/api/jobs/${jobId}/`, accessToken, 'DELETE');
-  } catch (error) {
-    console.error(`Error deleting job ${jobId}:`, error);
-    throw error;
-  }
+export async function deleteJob(jobId: string, accessToken?: string): Promise<void> {
+  await fetchWithToken<void>(`${API_BASE_URL}/api/jobs/${jobId}/`, accessToken, "DELETE");
 }
 
 export async function updateJobStatus(
@@ -143,27 +116,14 @@ export async function updateJobStatus(
   status: JobStatus,
   accessToken?: string
 ): Promise<Job> {
-  try {
-    return await fetchWithToken<Job>(`${API_BASE_URL}/api/jobs/${jobId}/`, accessToken, 'PATCH', { status });
-  } catch (error) {
-    console.error(`Error updating status for job ${jobId}:`, error);
-    throw error;
-  }
+  return fetchWithToken<Job>(`${API_BASE_URL}/api/jobs/${jobId}/`, accessToken, "PATCH", { status });
 }
 
 export async function fetchMyJobs(accessToken?: string): Promise<Job[]> {
-  try {
-    return await fetchWithToken<Job[]>(`${API_BASE_URL}/api/jobs/my-jobs/`, accessToken);
-  } catch (error) {
-    console.error("Error fetching my jobs:", error);
-    return [];
-  }
+  return fetchWithToken<Job[]>(`${API_BASE_URL}/api/jobs/my-jobs/`, accessToken);
 }
 
-export async function fetchRoom(
-  roomId: string,
-  accessToken?: string
-): Promise<Room | null> {
+export async function fetchRoom(roomId: string, accessToken?: string): Promise<Room | null> {
   try {
     return await fetchWithToken<Room>(`${API_BASE_URL}/api/rooms/${roomId}/`, accessToken);
   } catch (error) {
@@ -172,15 +132,6 @@ export async function fetchRoom(
   }
 }
 
-// New function to fetch jobs for a room
-export async function fetchJobsForRoom(
-  roomId: string,
-  accessToken?: string
-): Promise<Job[]> {
-  try {
-    return await fetchWithToken<Job[]>(`${API_BASE_URL}/api/jobs/?room=${roomId}`, accessToken);
-  } catch (error) {
-    console.error(`Error fetching jobs for room ${roomId}:`, error);
-    return [];
-  }
+export async function fetchJobsForRoom(roomId: string, accessToken?: string): Promise<Job[]> {
+  return fetchWithToken<Job[]>(`${API_BASE_URL}/api/jobs/?room=${roomId}`, accessToken);
 }

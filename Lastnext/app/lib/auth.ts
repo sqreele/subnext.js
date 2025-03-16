@@ -36,20 +36,32 @@ export const authOptions: NextAuthOptions = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(credentials),
           });
-          
-          const tokenData = await tokenResponse.json();
-          if (!tokenResponse.ok || !tokenData.access || !tokenData.refresh) {
+
+          if (!tokenResponse.ok) {
+            const text = await tokenResponse.text();
+            console.error(`Token fetch failed: ${tokenResponse.status} - ${text}`);
             throw new Error('Invalid credentials or token response.');
           }
-          
+
+          const tokenData = await tokenResponse.json().catch((err) => {
+            console.error('Failed to parse token response JSON:', err);
+            throw new Error('Invalid token response format.');
+          });
+
+          if (!tokenData.access || !tokenData.refresh) {
+            console.error('Token response missing required fields:', tokenData);
+            throw new Error('Token response missing required fields.');
+          }
+
           // Step 2: Decode the token to get user ID
           const decoded = jwt.decode(tokenData.access) as JwtPayload;
           if (!decoded || typeof decoded !== 'object') {
+            console.error('Failed to decode access token:', tokenData.access);
             throw new Error('Failed to decode access token.');
           }
-          
+
           const userId = String(decoded.user_id);
-          
+
           // Step 3: Fetch user from database or API
           let user = await prisma.user.findUnique({
             where: { id: userId },
@@ -66,12 +78,15 @@ export const authOptions: NextAuthOptions = {
                 'Content-Type': 'application/json' 
               },
             });
-            
+
             if (!profileResponse.ok) {
-              console.error(`Failed to fetch profile for user ${userId}: ${profileResponse.status}`);
-              profileData = {};
+              const text = await profileResponse.text();
+              console.error(`Failed to fetch profile for user ${userId}: ${profileResponse.status} - ${text}`);
             } else {
-              profileData = await profileResponse.json();
+              profileData = await profileResponse.json().catch((err) => {
+                console.error(`Failed to parse profile JSON for user ${userId}:`, err);
+                return {};
+              });
               console.log(`Fetched profile data for user ${userId}:`, profileData);
             }
 
@@ -96,7 +111,7 @@ export const authOptions: NextAuthOptions = {
               include: { properties: true },
             });
           }
-          
+
           // Step 5: Fetch properties from API
           console.log(`Fetching properties for user ${userId}...`);
           let propertiesData = [];
@@ -107,28 +122,30 @@ export const authOptions: NextAuthOptions = {
                 'Content-Type': 'application/json' 
               },
             });
-            
+
             if (!propertiesResponse.ok) {
-              console.error(`Failed to fetch properties: ${propertiesResponse.status}`);
+              const text = await propertiesResponse.text();
+              console.error(`Failed to fetch properties: ${propertiesResponse.status} - ${text}`);
             } else {
-              propertiesData = await propertiesResponse.json();
+              propertiesData = await propertiesResponse.json().catch((err) => {
+                console.error('Failed to parse properties JSON:', err);
+                return [];
+              });
               console.log(`Fetched ${propertiesData.length} properties from API`);
             }
           } catch (error) {
             console.error('Error fetching properties:', error);
           }
-          
+
           // Step 6: Create normalized properties array
           let normalizedProperties: Property[] = [];
-          
-          // Check if user has property associations
+
           if (user.properties && user.properties.length > 0) {
             console.log(`User has ${user.properties.length} properties in database`);
-            
             normalizedProperties = user.properties.map((userProp: { propertyId: any }) => {
               const propId = String(userProp.propertyId);
               const apiProperty = propertiesData.find((p: any) => String(p.id) === propId);
-              
+
               return {
                 property_id: propId,
                 id: propId,
@@ -139,12 +156,9 @@ export const authOptions: NextAuthOptions = {
               };
             });
           } else {
-            // If no properties in database, check API data for this user's properties
             console.log(`User has no properties in database, checking API data...`);
-            
             if (profileData.properties && profileData.properties.length > 0) {
               console.log(`Found ${profileData.properties.length} properties in profile data`);
-              
               normalizedProperties = profileData.properties.map((prop: any) => {
                 const propId = String(prop.id || prop.property_id);
                 return {
@@ -160,7 +174,7 @@ export const authOptions: NextAuthOptions = {
               console.log(`No properties found for user ${userId} in API data either`);
             }
           }
-          
+
           console.log(`Normalized ${normalizedProperties.length} properties for user ${userId}`);
 
           // Step 7: Create user profile with normalized properties
@@ -189,28 +203,28 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        // Make sure properties is at least an empty array
-        const safeUser = {
+        token = {
+          ...token,
           ...user,
-          properties: user.properties || []
+          properties: user.properties || [], // Ensure properties is always an array
         };
-        Object.assign(token, safeUser);
       }
-
       return token;
     },
     async session({ session, token }) {
-      // Ensure properties is at least an empty array in the session
       session.user = {
         ...token,
-        properties: token.properties || []
+        properties: token.properties || [], // Fallback to empty array
       } as any;
-      
       return session;
     },
   },
   pages: { signIn: '/auth/signin' },
-  session: { strategy: 'jwt', maxAge: 30 * 24 * 60 * 60, updateAge: 24 * 60 * 60 },
+  session: { 
+    strategy: 'jwt', 
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+    updateAge: 24 * 60 * 60 // 24 hours
+  },
   secret: process.env.NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV !== 'production',
 };
