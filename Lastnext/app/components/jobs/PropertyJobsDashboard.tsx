@@ -56,42 +56,27 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
 
     try {
       const jobsData = await fetchJobs();
-      console.log("Fetched all jobs:", jobsData.length);
+      console.log("Fetched all jobs:", JSON.stringify(jobsData, null, 2));
+      console.log("Session User:", JSON.stringify(session.user, null, 2));
+
       if (!Array.isArray(jobsData)) {
         throw new Error("Invalid jobs data format");
       }
-      
-      // Filter to only include current user's jobs
+
       const currentUserId = session.user.id;
-      const currentUserEmail = session.user.email;
-      
+
       const userJobs = jobsData.filter((job) => {
-        // Match by user field (which could be an id or email)
-        if (job.user !== undefined) {
-          // Convert currentUserId to number if job.user is a number
-          if (typeof job.user === 'number' && job.user === Number(currentUserId)) {
-            return true;
-          }
-          
-          // Compare string representations
-          if (typeof job.user === 'string' && job.user === String(currentUserId)) {
-            return true;
-          }
-          
-          // Email comparison remains the same
-          if (currentUserEmail && job.user === currentUserEmail) {
-            return true;
-          }
-        }
-      
-        return false;
+        // @ts-ignore: Assume profile_image.id exists even if types.ts isn't updated
+        const jobUserId = job.profile_image?.id;
+        const matches = jobUserId !== undefined && String(jobUserId) === String(currentUserId);
+        console.log(`Job ID: ${job.job_id}, User ID: ${jobUserId}, Current User ID: ${currentUserId}, Matches: ${matches}`);
+        return matches;
       });
-      
-      console.log(`Filtered to ${userJobs.length} jobs for current user`);
+
+      console.log(`Filtered to ${userJobs.length} jobs for current user:`, userJobs);
       setAllJobs(userJobs);
     } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to fetch jobs";
+      const errorMessage = err instanceof Error ? err.message : "Failed to fetch jobs";
       console.error("Error loading jobs:", errorMessage);
       setError(errorMessage);
       setAllJobs([]);
@@ -100,12 +85,10 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
     }
   };
 
-  // Fetch jobs when session, property, or job creation count changes
   useEffect(() => {
     loadJobs();
   }, [status, selectedProperty, jobCreationCount]);
 
-  // Filter jobs based on selected property
   useEffect(() => {
     const user = session?.user;
     if (!user?.properties?.length) {
@@ -134,19 +117,15 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
     console.log("Filtering jobs for property:", effectiveProperty);
 
     const filtered = allJobs.filter((job) => {
-      // Direct property_id match
       if (job.property_id && String(job.property_id) === effectiveProperty) {
         return true;
       }
 
-      // Check rooms
       if (job.rooms && job.rooms.length > 0) {
         return job.rooms.some((room) => {
-          // Check if room's property matches
           if (room.property && String(room.property) === effectiveProperty) {
             return true;
           }
-          // Check if room's properties include the property
           if (room.properties) {
             return room.properties.some((prop) => 
               String(prop) === effectiveProperty
@@ -156,7 +135,6 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
         });
       }
 
-      // Check properties array
       if (job.properties) {
         return job.properties.some((prop) => 
           String(prop) === effectiveProperty
@@ -189,23 +167,20 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
       }));
   }, [filteredJobs]);
 
-  // Change jobsByUser to jobsByMonth to show monthly trends for current user
   const jobsByMonth = useMemo(() => {
     if (!filteredJobs.length) return [];
-    
-    // Group jobs by creation month
+
     const grouped = _.groupBy(filteredJobs, (job) => {
       const date = job.created_at ? new Date(job.created_at) : new Date();
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     });
-    
+
     return Object.entries(grouped)
       .map(([month, monthJobs]) => {
-        // Format the month for display (e.g. "2023-01" -> "Jan 2023")
         const [year, monthNum] = month.split('-');
         const date = new Date(parseInt(year), parseInt(monthNum) - 1);
         const formattedMonth = date.toLocaleDateString('en-US', { month: 'short' });
-        
+
         return {
           month: `${formattedMonth} ${year}`,
           total: monthJobs.length,
@@ -217,11 +192,10 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
         };
       })
       .sort((a, b) => {
-        // Sort by month chronologically
         const [aMonth, aYear] = a.month.split(' ');
         const [bMonth, bYear] = b.month.split(' ');
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        
+
         if (aYear !== bYear) return parseInt(aYear) - parseInt(bYear);
         return months.indexOf(aMonth) - months.indexOf(bMonth);
       });
@@ -403,6 +377,6 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
       </div>
     </div>
   );
-};
+}
 
 export default PropertyJobsDashboard;
