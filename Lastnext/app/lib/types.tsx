@@ -54,6 +54,7 @@ export interface User {
 
 // Profile-related types
 export interface ProfileImage {
+  id: string | number;
   profile_image: string;
   positions: string;
   username: string;

@@ -9,7 +9,7 @@ declare module "next-auth" {
     email: string | null;
     profile_image: string | null;
     positions: string;
-    properties: Property[]; // Use imported Property type
+    properties: Property[]| string[]; // Use imported Property type
     accessToken: string;
     refreshToken: string;
     accessTokenExpires?: number; // Add this property
@@ -23,7 +23,7 @@ declare module "next-auth" {
       email: string | null;
       profile_image: string | null;
       positions: string;
-      properties: Property[]; // Use imported Property type
+      properties?: Property[] | string[]; // Use imported Property type
       accessToken: string;
       refreshToken: string;
       accessTokenExpires?: number; // Add this property
@@ -42,7 +42,7 @@ declare module "next-auth/jwt" {
     email: string | null;
     profile_image: string | null;
     positions: string;
-    properties: Property[]; // Use imported Property type
+    properties: Property[]| string[]; // Use imported Property type
     created_at?: string; // Optional
     accessToken: string;
     refreshToken: string;

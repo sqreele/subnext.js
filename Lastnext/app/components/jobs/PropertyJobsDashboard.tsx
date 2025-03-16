@@ -21,15 +21,10 @@ import {
   CartesianGrid,
 } from "recharts";
 import _ from "lodash";
-import { 
-  Job, 
-  Property, 
-  Room, 
-  JobStatus,
-  STATUS_COLORS
-} from "@/app/lib/types";
+import { Job, JobStatus, STATUS_COLORS } from "@/app/lib/types";
 import { useProperty } from "@/app/lib/PropertyContext";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
+import { Session } from "next-auth";
 import { fetchJobs } from "@/app/lib/data";
 import { Button } from "@/app/components/ui/button";
 import Link from "next/link";
@@ -41,12 +36,29 @@ interface PropertyJobsDashboardProps {
 
 const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps) => {
   const { selectedProperty } = useProperty();
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession() as {
+    data: Session | null;
+    status: "authenticated" | "unauthenticated" | "loading";
+    update: () => Promise<Session | null>;
+  };
   const { jobCreationCount } = useJob();
   const [allJobs, setAllJobs] = useState<Job[]>(initialJobs);
   const [filteredJobs, setFilteredJobs] = useState<Job[]>(initialJobs);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const refreshSession = async () => {
+    try {
+      await update();
+      console.log("Session refreshed successfully");
+      return true;
+    } catch (err) {
+      console.error("Session refresh failed:", err);
+      setError("Session expired. Please log in again.");
+      signOut();
+      return false;
+    }
+  };
 
   const loadJobs = async () => {
     if (status !== "authenticated" || !session?.user) return;
@@ -63,17 +75,17 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
         throw new Error("Invalid jobs data format");
       }
 
-      const currentUserId = session.user.id; // "1"
-      const currentUsername = session.user.username; // "admin"
+      const currentUserId = session.user.id; // e.g., "1"
+      const currentUsername = session.user.username; // e.g., "admin"
 
       const userJobs = jobsData.filter((job) => {
-        // @ts-ignore: Assume profile_image.id exists
-        const jobUserId = job.profile_image?.id;
-        const jobUsername = job.user;
-        const matchesId = jobUserId !== undefined && String(jobUserId) === String(currentUserId);
-        const matchesUsername = jobUsername !== undefined && jobUsername === currentUsername;
-        console.log(`Job ID: ${job.job_id}, Profile ID: ${jobUserId}, User: ${jobUsername}, Current ID: ${currentUserId}, Current Username: ${currentUsername}, Matches ID: ${matchesId}, Matches Username: ${matchesUsername}`);
-        return matchesId || matchesUsername; // Match either ID or username
+        const jobUser = String(job.user); // Convert to string for comparison
+        const matchesId = jobUser === String(currentUserId);
+        const matchesUsername = currentUsername && jobUser === currentUsername;
+        console.log(
+          `Job ID: ${job.job_id}, Job User: ${jobUser}, Current ID: ${currentUserId}, Current Username: ${currentUsername}, Matches ID: ${matchesId}, Matches Username: ${matchesUsername}`
+        );
+        return matchesId || matchesUsername;
       });
 
       console.log(`Filtered to ${userJobs.length} jobs for current user:`, JSON.stringify(userJobs, null, 2));
@@ -83,6 +95,14 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
       console.error("Error loading jobs:", errorMessage);
       setError(errorMessage);
       setAllJobs([]);
+
+      if (errorMessage.includes("401") || errorMessage.includes("Unauthorized")) {
+        console.log("Detected auth error, attempting session refresh...");
+        const refreshed = await refreshSession();
+        if (refreshed) {
+          await loadJobs();
+        }
+      }
     } finally {
       setIsLoading(false);
     }
@@ -108,7 +128,13 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
     const effectiveProperty =
       selectedProperty ||
       (user.properties.length > 0
-        ? String(user.properties[0].property_id) // "PBDA570D9"
+        ? String(
+            typeof user.properties[0] === "object" &&
+            user.properties[0] !== null &&
+            "property_id" in user.properties[0]
+              ? (user.properties[0] as { property_id: string | number }).property_id
+              : user.properties[0]
+          )
         : null);
 
     if (!effectiveProperty) {
@@ -121,16 +147,42 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
 
     const filtered = allJobs.filter((job) => {
       const propertyMatch = job.property_id && String(job.property_id) === effectiveProperty;
-      const roomMatch = job.rooms && job.rooms.length > 0 && job.rooms.some((room) => {
-        return (room.property && String(room.property) === effectiveProperty) ||
-               (room.properties && room.properties.some((prop) => String(prop) === effectiveProperty));
-      });
-      const propertiesMatch = job.properties && job.properties.some((prop) => String(prop) === effectiveProperty);
-      console.log(`Job ID: ${job.job_id}, Property ID: ${job.property_id}, Rooms: ${JSON.stringify(job.rooms)}, Properties: ${JSON.stringify(job.properties)}, Matches Property: ${propertyMatch || roomMatch || propertiesMatch}`);
+      const roomMatch =
+        job.rooms &&
+        job.rooms.length > 0 &&
+        job.rooms.some((room) => {
+          if (!room) return false;
+          return (
+            (room.property && String(room.property) === effectiveProperty) ||
+            (room.properties &&
+              room.properties.some((prop) =>
+                typeof prop === "object" && prop !== null && "property_id" in prop
+                  ? String((prop as { property_id: string | number }).property_id) === effectiveProperty
+                  : String(prop) === effectiveProperty
+              ))
+          );
+        });
+      const propertiesMatch =
+        job.properties &&
+        job.properties.some((prop) =>
+          typeof prop === "object" && prop !== null && "property_id" in prop
+            ? String((prop as { property_id: string | number }).property_id) === effectiveProperty
+            : String(prop) === effectiveProperty
+        );
+      console.log(
+        `Job ID: ${job.job_id}, Property ID: ${job.property_id}, Rooms: ${JSON.stringify(
+          job.rooms
+        )}, Properties: ${JSON.stringify(job.properties)}, Matches Property: ${
+          propertyMatch || roomMatch || propertiesMatch
+        }`
+      );
       return propertyMatch || roomMatch || propertiesMatch;
     });
 
-    console.log(`Filtered to ${filtered.length} jobs for property ${effectiveProperty}:`, JSON.stringify(filtered, null, 2));
+    console.log(
+      `Filtered to ${filtered.length} jobs for property ${effectiveProperty}:`,
+      JSON.stringify(filtered, null, 2)
+    );
     setFilteredJobs(filtered);
   }, [allJobs, selectedProperty, session?.user?.properties]);
 
@@ -144,13 +196,14 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
     const getPercentage = (value: number): string =>
       total > 0 ? ((value / total) * 100).toFixed(1) : "0";
 
-    return (['pending', 'in_progress', 'completed', 'waiting_sparepart', 'cancelled'] as JobStatus[])
-      .map(status => ({
-        name: status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' '),
+    return (["pending", "in_progress", "completed", "waiting_sparepart", "cancelled"] as JobStatus[]).map(
+      (status) => ({
+        name: status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " "),
         value: statusCounts[status] || 0,
         color: STATUS_COLORS[status],
-        percentage: getPercentage(statusCounts[status] || 0)
-      }));
+        percentage: getPercentage(statusCounts[status] || 0),
+      })
+    );
   }, [filteredJobs]);
 
   const jobsByMonth = useMemo(() => {
@@ -158,29 +211,29 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
 
     const grouped = _.groupBy(filteredJobs, (job) => {
       const date = job.created_at ? new Date(job.created_at) : new Date();
-      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
     });
 
     return Object.entries(grouped)
       .map(([month, monthJobs]) => {
-        const [year, monthNum] = month.split('-');
+        const [year, monthNum] = month.split("-");
         const date = new Date(parseInt(year), parseInt(monthNum) - 1);
-        const formattedMonth = date.toLocaleDateString('en-US', { month: 'short' });
+        const formattedMonth = date.toLocaleDateString("en-US", { month: "short" });
 
         return {
           month: `${formattedMonth} ${year}`,
           total: monthJobs.length,
-          completed: monthJobs.filter(job => job.status === "completed").length,
-          pending: monthJobs.filter(job => job.status === "pending").length,
-          waiting: monthJobs.filter(job => job.status === "waiting_sparepart").length,
-          in_progress: monthJobs.filter(job => job.status === "in_progress").length,
-          cancelled: monthJobs.filter(job => job.status === "cancelled").length,
+          completed: monthJobs.filter((job) => job.status === "completed").length,
+          pending: monthJobs.filter((job) => job.status === "pending").length,
+          waiting: monthJobs.filter((job) => job.status === "waiting_sparepart").length,
+          in_progress: monthJobs.filter((job) => job.status === "in_progress").length,
+          cancelled: monthJobs.filter((job) => job.status === "cancelled").length,
         };
       })
       .sort((a, b) => {
-        const [aMonth, aYear] = a.month.split(' ');
-        const [bMonth, bYear] = b.month.split(' ');
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const [aMonth, aYear] = a.month.split(" ");
+        const [bMonth, bYear] = b.month.split(" ");
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
         if (aYear !== bYear) return parseInt(aYear) - parseInt(bYear);
         return months.indexOf(aMonth) - months.indexOf(bMonth);
@@ -201,9 +254,7 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
     return (
       <Card className="w-full p-4 bg-yellow-50 border border-yellow-200 rounded-md">
         <CardContent className="text-center space-y-4">
-          <p className="text-yellow-600 text-base">
-            Please log in to view job statistics.
-          </p>
+          <p className="text-yellow-600 text-base">Please log in to view job statistics.</p>
           <Button asChild variant="outline" className="w-full h-12 text-base">
             <Link href="/auth/signin">Log In</Link>
           </Button>
@@ -230,9 +281,7 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
       <Card className="w-full p-4 bg-yellow-50 border border-yellow-200 rounded-md">
         <CardContent className="text-center space-y-4">
           <p className="text-yellow-600 text-base">
-            {allJobs.length
-              ? "No jobs found for the selected property."
-              : "No jobs available yet."}
+            {allJobs.length ? "No jobs found for the selected property." : "No jobs available yet."}
           </p>
           <Button asChild variant="outline" className="w-full h-12 text-base">
             <Link href={allJobs.length ? "/dashboard/myJobs" : "/dashboard/createJob"}>
@@ -272,12 +321,7 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
                       name,
                     ]}
                   />
-                  <Legend
-                    layout="horizontal"
-                    align="center"
-                    verticalAlign="bottom"
-                    iconSize={12}
-                  />
+                  <Legend layout="horizontal" align="center" verticalAlign="bottom" iconSize={12} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -296,20 +340,11 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
                   <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} />
                   <Tooltip />
-                  <Legend
-                    layout="horizontal"
-                    align="center"
-                    verticalAlign="bottom"
-                    iconSize={12}
-                  />
+                  <Legend layout="horizontal" align="center" verticalAlign="bottom" iconSize={12} />
                   <Bar dataKey="total" fill="#8884d8" name="Total Jobs" />
                   <Bar dataKey="completed" stackId="a" fill={STATUS_COLORS.completed} />
                   <Bar dataKey="pending" stackId="a" fill={STATUS_COLORS.pending} />
-                  <Bar
-                    dataKey="waiting"
-                    stackId="a"
-                    fill={STATUS_COLORS.waiting_sparepart}
-                  />
+                  <Bar dataKey="waiting" stackId="a" fill={STATUS_COLORS.waiting_sparepart} />
                   <Bar dataKey="in_progress" stackId="a" fill={STATUS_COLORS.in_progress} />
                   <Bar dataKey="cancelled" stackId="a" fill={STATUS_COLORS.cancelled} />
                 </BarChart>
@@ -325,34 +360,30 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
               {[
-                { name: 'Total Jobs', status: null },
-                ...(['pending', 'in_progress', 'completed', 'waiting_sparepart', 'cancelled'] as JobStatus[])
-                  .map(status => ({ name: status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' '), status }))
+                { name: "Total Jobs", status: null },
+                ...(["pending", "in_progress", "completed", "waiting_sparepart", "cancelled"] as JobStatus[]).map(
+                  (status) => ({
+                    name: status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " "),
+                    status,
+                  })
+                ),
               ].map((item, index) => {
-                const statValue = item.status 
-                  ? filteredJobs.filter(job => job.status === item.status).length 
+                const statValue = item.status
+                  ? filteredJobs.filter((job) => job.status === item.status).length
                   : filteredJobs.length;
-                const color = item.status ? STATUS_COLORS[item.status] : '#8884d8';
-                const percentage = item.status 
+                const color = item.status ? STATUS_COLORS[item.status] : "#8884d8";
+                const percentage = item.status
                   ? ((statValue / filteredJobs.length) * 100).toFixed(1)
-                  : '100.0';
+                  : "100.0";
 
                 return (
-                  <div
-                    key={index}
-                    className="p-4 rounded-lg bg-gray-50 w-full flex flex-col"
-                  >
+                  <div key={index} className="p-4 rounded-lg bg-gray-50 w-full flex flex-col">
                     <p className="text-sm text-gray-500 mb-1">{item.name}</p>
                     <div className="flex items-baseline">
-                      <p
-                        className="text-2xl font-semibold"
-                        style={{ color }}
-                      >
+                      <p className="text-2xl font-semibold" style={{ color }}>
                         {statValue}
                       </p>
-                      <p className="text-sm ml-2 text-gray-500">
-                        {item.status && `(${percentage}%)`}
-                      </p>
+                      <p className="text-sm ml-2 text-gray-500">{item.status && `(${percentage}%)`}</p>
                     </div>
                   </div>
                 );
