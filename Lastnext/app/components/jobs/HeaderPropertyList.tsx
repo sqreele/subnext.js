@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useMemo, useEffect } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,24 +10,16 @@ import {
 import { Button } from "@/app/components/ui/button";
 import { ChevronDown, Building2 } from "lucide-react";
 import { cn } from "@/app/lib/utils";
-import { useSession } from "next-auth/react";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useUser } from '@/app/lib/user-context'; // Import the UserContext
 
 const HeaderPropertyList = () => {
-  const { data: session, status } = useSession();
   const router = useRouter();
   
-  // State for selected property (previously from PropertyContext)
-  const [selectedProperty, setSelectedProperty] = React.useState<string | null>(null);
-
-  // Redirect to login if session error
-  useEffect(() => {
-    if (status === "unauthenticated") {
-      router.push("/auth/signin");
-    }
-  }, [status, router]);
-
+  // Use the UserContext instead of useSession and local state
+  const { userProfile, selectedProperty, setSelectedProperty, loading } = useUser();
+  
   // Helper function to safely get the string ID from any property object format
   const getPropertyId = useCallback((property: any): string => {
     if (!property) return "";
@@ -48,12 +40,10 @@ const HeaderPropertyList = () => {
     return property.name || `Property ${getPropertyId(property)}`;
   }, [getPropertyId]);
 
-  // Get properties directly from session
+  // Get properties from userProfile
   const properties = useMemo(() => {
-    const sessionProps = session?.user?.properties || [];
-    console.log("Session properties:", sessionProps);
-    return sessionProps;
-  }, [session?.user?.properties]);
+    return userProfile?.properties || [];
+  }, [userProfile]);
 
   // Find current property by selectedProperty ID
   const currentProperty = useMemo(() => {
@@ -85,29 +75,11 @@ const HeaderPropertyList = () => {
       setSelectedProperty(propId);
       localStorage.setItem("selectedPropertyId", propId); // Persist selection
     },
-    [getPropertyId]
+    [getPropertyId, setSelectedProperty]
   );
 
-  // Initialize selected property from localStorage or first property
-  useEffect(() => {
-    if (properties.length > 0 && !selectedProperty) {
-      const storedPropertyId = localStorage.getItem("selectedPropertyId");
-      
-      let defaultProperty = null;
-      if (storedPropertyId) {
-        defaultProperty = properties.find(p => getPropertyId(p) === storedPropertyId);
-      }
-      
-      const propertyToSelect = defaultProperty || properties[0];
-      console.log("Setting default property:", propertyToSelect);
-      if (propertyToSelect) {
-        handlePropertySelect(propertyToSelect);
-      }
-    }
-  }, [properties, selectedProperty, handlePropertySelect, getPropertyId]);
-
-  // Loading state if session is not yet available
-  if (status === "loading") {
+  // Loading state if user data is not yet available
+  if (loading) {
     return (
       <Button
         variant="outline"

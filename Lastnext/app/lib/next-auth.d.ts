@@ -1,4 +1,4 @@
-import { Property } from "@/app/lib/types"; // Ensure this points to types.tsx
+import type { Property } from "@/app/lib/types"; // Ensure this is correctly imported
 import "next-auth";
 import "next-auth/jwt";
 
@@ -12,7 +12,7 @@ declare module "next-auth" {
     properties: Property[]; // Use imported Property type
     accessToken: string;
     refreshToken: string;
-    created_at: string;
+    created_at?: string; // Make optional to avoid strict TypeScript issues
   }
 
   interface Session {
@@ -26,7 +26,7 @@ declare module "next-auth" {
       accessToken: string;
       refreshToken: string;
       sessionToken?: string;
-      created_at: string;
+      created_at?: string; // Optional
       error?: string;
     };
   }
@@ -40,7 +40,7 @@ declare module "next-auth/jwt" {
     profile_image: string | null;
     positions: string;
     properties: Property[]; // Use imported Property type
-    created_at: string;
+    created_at?: string; // Optional
     accessToken: string;
     refreshToken: string;
     error?: string;

@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from "react";
-import { useSession } from "next-auth/react";
+import React, { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { User2, Mail, Calendar, Shield, Pencil, Building2, Users, Plus, AlertCircle } from "lucide-react";
 import Link from "next/link";
@@ -16,22 +15,28 @@ import {
 } from "@/app/components/ui/card";
 import { Badge } from "@/app/components/ui/badge";
 import { ProfileImage } from "@/app/components/profile/ProfileImage";
-import { UserProfile, Property } from "@/app/lib/types";
+import { useUser } from "@/app/lib/user-context";
+import { Property, UserProfile } from "@/app/lib/types"; // Import Property and UserProfile types
+import { cn } from "@/app/lib/utils"; // Assuming you have a utility for classnames
 
+// Define PropertyCardProps
+interface PropertyCardProps {
+  property: Property;
+}
+
+// Profile field props
 interface ProfileFieldProps {
   icon: React.ElementType;
   label: string;
   value: string | null | undefined;
 }
 
-interface PropertyCardProps {
-  property: Property;
-}
+type ProfileFieldKey = 'username' | 'email' | 'positions' | 'created_at' | 'id' | 'profile_image';
 
 type ProfileFieldDefinition = {
   icon: React.ElementType;
   label: string;
-  key: keyof UserProfile;
+  key: ProfileFieldKey;
   format?: (value: string) => string;
 };
 
@@ -67,16 +72,24 @@ function ProfileField({ icon: Icon, label, value }: ProfileFieldProps) {
 }
 
 function PropertyCard({ property }: PropertyCardProps) {
-  const [selectedProperty, setSelectedProperty] = useState<string | null>(null);
+  const { selectedProperty, setSelectedProperty } = useUser();
+
+  const isSelected = selectedProperty === String(property.property_id);
 
   const handleSelectProperty = useCallback(() => {
-    const propId = String(property.property_id); // Ensure ID is a string
+    const propId = String(property.property_id);
     setSelectedProperty(propId);
-    localStorage.setItem("selectedPropertyId", propId); // Persist selection
-  }, [property.property_id]);
+  }, [property.property_id, setSelectedProperty]);
 
   return (
-    <div className="rounded-lg border p-4 space-y-3 hover:border-blue-200 hover:bg-blue-50 transition-colors duration-150">
+    <div
+      className={cn(
+        "rounded-lg border p-4 space-y-3 transition-colors duration-150",
+        isSelected
+          ? "border-blue-400 bg-blue-50"
+          : "hover:border-blue-200 hover:bg-blue-50"
+      )}
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Building2 className="h-5 w-5 text-muted-foreground" />
@@ -85,12 +98,17 @@ function PropertyCard({ property }: PropertyCardProps) {
         <div className="flex items-center gap-2">
           <Badge variant="outline">{property.property_id}</Badge>
           <Button
-            variant="ghost"
+            variant={isSelected ? "default" : "ghost"}
             size="sm"
             onClick={handleSelectProperty}
-            className="text-xs hover:bg-blue-100 hover:text-blue-700"
+            className={cn(
+              "text-xs",
+              isSelected
+                ? "bg-blue-600 text-white hover:bg-blue-700"
+                : "hover:bg-blue-100 hover:text-blue-700"
+            )}
           >
-            Select
+            {isSelected ? "Selected" : "Select"}
           </Button>
         </div>
       </div>
@@ -123,7 +141,7 @@ function NoPropertiesCard() {
       <CardHeader>
         <CardTitle className="text-xl font-bold text-blue-800">Property Access</CardTitle>
         <CardDescription className="text-blue-700">
-          You don&apos;t have any properties assigned to your account yet.
+          You don't have any properties assigned to your account yet.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -182,32 +200,21 @@ function LoadingSkeleton() {
 }
 
 export default function ProfileDisplay() {
-  const { data: session, status } = useSession();
   const router = useRouter();
+  const { userProfile, loading } = useUser(); // Removed error since it's not in UserContextType
 
-  if (status === "loading") {
+  if (loading) {
     return <LoadingSkeleton />;
   }
 
-  if (status === "unauthenticated") {
+  if (!userProfile) {
     router.push("/auth/signin");
     return null;
   }
 
-  if (!session?.user) {
-    return null;
-  }
-
-  // Create a properly typed user profile from session data
-  const userProfile = {
-    ...session.user,
-    properties: session.user.properties || [],
-  } as UserProfile;
-
   const hasProperties = userProfile.properties && userProfile.properties.length > 0;
 
   // Debug logging
-  console.log("Session User:", JSON.stringify(session.user, null, 2));
   console.log("User Profile:", JSON.stringify(userProfile, null, 2));
   console.log("Properties:", JSON.stringify(userProfile.properties, null, 2));
 
@@ -253,10 +260,10 @@ export default function ProfileDisplay() {
                 icon={icon}
                 label={label}
                 value={
-                  key in userProfile && userProfile[key]
+                  userProfile[key] != null
                     ? format
-                      ? format(userProfile[key] as string)
-                      : (userProfile[key] as string)
+                      ? format(String(userProfile[key]))
+                      : String(userProfile[key])
                     : null
                 }
               />

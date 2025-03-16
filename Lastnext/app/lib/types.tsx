@@ -110,6 +110,7 @@ export interface UserProfile {
   positions: string;
   properties: Property[];
   created_at: string; //
+  
 }
 
 export interface UserContextType {
