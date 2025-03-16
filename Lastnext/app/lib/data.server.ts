@@ -4,7 +4,7 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "https://pmcs.site");
 
-async function fetchWithToken<T>(
+export async function fetchWithToken<T>(
   url: string,
   token?: string,
   method: string = "GET",
@@ -55,9 +55,8 @@ async function fetchWithToken<T>(
     }
 
     if (!responseText.trim()) {
-      // Handle empty response based on expected type
       if (method === "GET" && url.includes("/api/jobs") && !url.includes("/my-jobs/")) {
-        return [] as unknown as T; // Reasonable for job lists
+        return [] as unknown as T;
       }
       throw new Error("Received empty response from server");
     }
@@ -70,11 +69,10 @@ async function fetchWithToken<T>(
     }
   } catch (error) {
     console.error(`Error during ${method} request to ${url}:`, error);
-    throw error; // Let the caller decide how to handle it
+    throw error;
   }
 }
 
-// API Functions
 export async function fetchProperties(accessToken?: string): Promise<Property[]> {
   return fetchWithToken<Property[]>(`${API_BASE_URL}/api/properties/`, accessToken);
 }

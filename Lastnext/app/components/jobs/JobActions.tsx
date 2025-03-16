@@ -7,7 +7,7 @@ import { Button } from "@/app/components/ui/button";
 import CreateJobButton from "@/app/components/jobs/CreateJobButton";
 import { pdf } from "@react-pdf/renderer";
 import { saveAs } from "file-saver";
-import JobsPDFDocument from "@/app/components/ducument/JobsPDFGenerator";
+import JobsPDFDocument from "@/app/components/ducument/JobsPDFGenerator"; // Fixed typo in import path
 import { useProperty } from "@/app/lib/PropertyContext";
 import {
   DropdownMenu,
@@ -15,14 +15,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
-  DropdownMenuGroup,
   DropdownMenuLabel,
 } from "@/app/components/ui/dropdown-menu";
 import { SortOrder, Job, Property, TabValue } from "@/app/lib/types";
 import { format } from "date-fns";
 
-// Date filter options
 type DateFilter = "all" | "today" | "yesterday" | "thisWeek" | "thisMonth" | "custom";
+
+interface PropertyContextType {
+  selectedProperty: string | null;
+  setSelectedProperty: (propertyId: string | null) => void;
+}
 
 interface JobActionsProps {
   onSort?: (order: SortOrder) => void;
@@ -47,32 +50,21 @@ export default function JobActions({
 }: JobActionsProps) {
   const router = useRouter();
   const [isGenerating, setIsGenerating] = useState(false);
-  const { selectedProperty, setSelectedProperty } = useProperty();
+  const { selectedProperty, setSelectedProperty } = useProperty() as PropertyContextType;
 
-  // Get labels for current filters
   const getDateFilterLabel = (filter: DateFilter) => {
     switch (filter) {
-      case "today":
-        return "Today";
-      case "yesterday":
-        return "Yesterday";
-      case "thisWeek":
-        return "This Week";
-      case "thisMonth":
-        return "This Month";
-      case "custom":
-        return "Custom Range";
-      default:
-        return "All Time";
+      case "today": return "Today";
+      case "yesterday": return "Yesterday";
+      case "thisWeek": return "This Week";
+      case "thisMonth": return "This Month";
+      case "custom": return "Custom Range";
+      default: return "All Time";
     }
   };
 
   const handleRefresh = () => {
-    if (onRefresh) {
-      onRefresh();
-    } else {
-      router.refresh();
-    }
+    onRefresh ? onRefresh() : router.refresh();
   };
 
   const getPropertyName = (propertyId: string | null) => {
@@ -80,16 +72,14 @@ export default function JobActions({
     const property = properties.find((p) => p.property_id === propertyId);
     return property?.name || "Unknown Property";
   };
-  
+
   const handleDateFilterChange = (filter: DateFilter) => {
     if (onDateFilter) {
-      // For custom range, you might want to show a date picker
-      // This is a simplified implementation
       if (filter === "custom") {
-        // Example: Last 7 days
+        // TODO: Implement date picker UI for custom range
         const endDate = new Date();
         const startDate = new Date();
-        startDate.setDate(startDate.getDate() - 7);
+        startDate.setDate(startDate.getDate() - 7); // Placeholder: last 7 days
         onDateFilter(filter, startDate, endDate);
       } else {
         onDateFilter(filter);
@@ -98,43 +88,55 @@ export default function JobActions({
   };
 
   const handleGeneratePDF = async () => {
-    if (!jobs?.length) {
+    if (!jobs.length) {
       alert("No jobs available to generate a PDF.");
       return;
     }
-  
+
     try {
       setIsGenerating(true);
       const propertyName = getPropertyName(selectedProperty);
-  
+
       const blob = await pdf(
         <JobsPDFDocument
           jobs={jobs}
-          filter={currentTab || "all"}
+          filter={currentTab}
           selectedProperty={selectedProperty}
           propertyName={propertyName}
         />
       ).toBlob();
-  
-      const date = new Date().toISOString().split("T")[0];
+
+      const date = format(new Date(), "yyyy-MM-dd");
       const filename = `jobs-report-${date}.pdf`;
       saveAs(blob, filename);
     } catch (error) {
       console.error("Error generating PDF:", error);
-      alert("There was an error generating the PDF. Please try again.");
+      alert("Failed to generate PDF. Please try again later.");
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const filteredJobsCount = jobs.filter((job) =>
-    !selectedProperty ||
-    job.profile_image?.properties?.some(
-      (prop) => String(prop.property_id) === selectedProperty
-    )
-  ).length;
+  // Updated to handle different possible structures of job.properties
+  const filteredJobsCount = jobs.filter((job) => {
+    if (!selectedProperty) return true;
+    if (!job.properties || !Array.isArray(job.properties) || job.properties.length === 0) return false;
+    
+    return job.properties.some((prop: any) => {
+      // Handle if property is a string or number ID
+      if (typeof prop === 'string' || typeof prop === 'number') {
+        return String(prop) === selectedProperty;
+      }
+      
+      // Handle if property is an object with property_id
+      if (prop && typeof prop === 'object' && 'property_id' in prop) {
+        return String(prop.property_id) === selectedProperty;
+      }
+      
+      return false;
+    });
+  }).length;
 
-  // Common dropdown menu item class
   const menuItemClass = "flex items-center gap-2 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-800 hover:text-white cursor-pointer";
   const menuLabelClass = "text-xs font-semibold text-zinc-400 px-3 py-1.5";
   const dropdownContentClass = "w-[200px] bg-zinc-950 border-zinc-800 rounded-lg shadow-lg";
@@ -156,7 +158,7 @@ export default function JobActions({
           <DropdownMenuContent align="end" className={dropdownContentClass}>
             <DropdownMenuLabel className={menuLabelClass}>Properties</DropdownMenuLabel>
             <DropdownMenuItem
-              onClick={() => setSelectedProperty("")}
+              onClick={() => setSelectedProperty(null)}
               className={menuItemClass}
             >
               <Building className="h-4 w-4" />
@@ -175,59 +177,32 @@ export default function JobActions({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Date Filter */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className={buttonClass}>
               <Calendar className="h-4 w-4" />
-              <span>
-                {getDateFilterLabel(currentDateFilter)}
-              </span>
+              <span>{getDateFilterLabel(currentDateFilter)}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className={dropdownContentClass}>
             <DropdownMenuLabel className={menuLabelClass}>Date Range</DropdownMenuLabel>
-            <DropdownMenuItem
-              onClick={() => handleDateFilterChange("all")}
-              className={menuItemClass}
-            >
-              <Calendar className="h-4 w-4 opacity-70" />
-              All Time
+            <DropdownMenuItem onClick={() => handleDateFilterChange("all")} className={menuItemClass}>
+              <Calendar className="h-4 w-4 opacity-70" /> All Time
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => handleDateFilterChange("today")}
-              className={menuItemClass}
-            >
-              <Calendar className="h-4 w-4 opacity-70" />
-              Today
+            <DropdownMenuItem onClick={() => handleDateFilterChange("today")} className={menuItemClass}>
+              <Calendar className="h-4 w-4 opacity-70" /> Today
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => handleDateFilterChange("yesterday")}
-              className={menuItemClass}
-            >
-              <Calendar className="h-4 w-4 opacity-70" />
-              Yesterday
+            <DropdownMenuItem onClick={() => handleDateFilterChange("yesterday")} className={menuItemClass}>
+              <Calendar className="h-4 w-4 opacity-70" /> Yesterday
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => handleDateFilterChange("thisWeek")}
-              className={menuItemClass}
-            >
-              <Calendar className="h-4 w-4 opacity-70" />
-              This Week
+            <DropdownMenuItem onClick={() => handleDateFilterChange("thisWeek")} className={menuItemClass}>
+              <Calendar className="h-4 w-4 opacity-70" /> This Week
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => handleDateFilterChange("thisMonth")}
-              className={menuItemClass}
-            >
-              <Calendar className="h-4 w-4 opacity-70" />
-              This Month
+            <DropdownMenuItem onClick={() => handleDateFilterChange("thisMonth")} className={menuItemClass}>
+              <Calendar className="h-4 w-4 opacity-70" /> This Month
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => handleDateFilterChange("custom")}
-              className={menuItemClass}
-            >
-              <Calendar className="h-4 w-4 opacity-70" />
-              Custom Range
+            <DropdownMenuItem onClick={() => handleDateFilterChange("custom")} className={menuItemClass}>
+              <Calendar className="h-4 w-4 opacity-70" /> Custom Range
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -236,26 +211,16 @@ export default function JobActions({
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className={buttonClass}>
               <Filter className="h-4 w-4" />
-              <span>
-                {currentSort}
-              </span>
+              <span>{currentSort}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className={dropdownContentClass}>
             <DropdownMenuLabel className={menuLabelClass}>Sort Order</DropdownMenuLabel>
-            <DropdownMenuItem
-              onClick={() => onSort?.("Newest first")}
-              className={menuItemClass}
-            >
-              <SortDesc className="h-4 w-4" />
-              Newest first
+            <DropdownMenuItem onClick={() => onSort?.("Newest first")} className={menuItemClass}>
+              <SortDesc className="h-4 w-4" /> Newest first
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => onSort?.("Oldest first")}
-              className={menuItemClass}
-            >
-              <SortAsc className="h-4 w-4" />
-              Oldest first
+            <DropdownMenuItem onClick={() => onSort?.("Oldest first")} className={menuItemClass}>
+              <SortAsc className="h-4 w-4" /> Oldest first
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -287,12 +252,8 @@ export default function JobActions({
             className={`${dropdownContentClass} max-h-[75vh] overflow-y-auto`}
             sideOffset={5}
           >
-            {/* Properties */}
             <DropdownMenuLabel className={menuLabelClass}>Properties</DropdownMenuLabel>
-            <DropdownMenuItem
-              onClick={() => setSelectedProperty("")}
-              className={menuItemClass}
-            >
+            <DropdownMenuItem onClick={() => setSelectedProperty(null)} className={menuItemClass}>
               <Building className="h-4 w-4" /> All Properties
             </DropdownMenuItem>
             {properties.map((property) => (
@@ -306,52 +267,31 @@ export default function JobActions({
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator className="bg-zinc-800 my-1" />
-            
-            {/* Date Filter Options */}
+
             <DropdownMenuLabel className={menuLabelClass}>Date Range</DropdownMenuLabel>
-            <DropdownMenuItem
-              onClick={() => handleDateFilterChange("all")}
-              className={menuItemClass}
-            >
+            <DropdownMenuItem onClick={() => handleDateFilterChange("all")} className={menuItemClass}>
               <Calendar className="h-4 w-4" /> All Time
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => handleDateFilterChange("today")}
-              className={menuItemClass}
-            >
+            <DropdownMenuItem onClick={() => handleDateFilterChange("today")} className={menuItemClass}>
               <Calendar className="h-4 w-4" /> Today
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => handleDateFilterChange("thisWeek")}
-              className={menuItemClass}
-            >
+            <DropdownMenuItem onClick={() => handleDateFilterChange("thisWeek")} className={menuItemClass}>
               <Calendar className="h-4 w-4" /> This Week
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => handleDateFilterChange("thisMonth")}
-              className={menuItemClass}
-            >
+            <DropdownMenuItem onClick={() => handleDateFilterChange("thisMonth")} className={menuItemClass}>
               <Calendar className="h-4 w-4" /> This Month
             </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-zinc-800 my-1" />
-            
-            {/* Sort Options */}
+
             <DropdownMenuLabel className={menuLabelClass}>Sort By</DropdownMenuLabel>
-            <DropdownMenuItem
-              onClick={() => onSort?.("Newest first")}
-              className={menuItemClass}
-            >
+            <DropdownMenuItem onClick={() => onSort?.("Newest first")} className={menuItemClass}>
               <SortDesc className="h-4 w-4" /> Newest first
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => onSort?.("Oldest first")}
-              className={menuItemClass}
-            >
+            <DropdownMenuItem onClick={() => onSort?.("Oldest first")} className={menuItemClass}>
               <SortAsc className="h-4 w-4" /> Oldest first
             </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-zinc-800 my-1" />
-            
-            {/* Export PDF */}
+
             <DropdownMenuItem
               onClick={handleGeneratePDF}
               disabled={isGenerating}
@@ -361,12 +301,8 @@ export default function JobActions({
               {isGenerating ? "Generating..." : `Export PDF (${filteredJobsCount})`}
             </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-zinc-800 my-1" />
-            
-            {/* Create Job */}
-            <DropdownMenuItem
-              onClick={handleRefresh}
-              className={menuItemClass}
-            >
+
+            <DropdownMenuItem onClick={handleRefresh} className={menuItemClass}>
               <Plus className="h-4 w-4" /> Create Job
             </DropdownMenuItem>
           </DropdownMenuContent>

@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, ReactNode, MouseEvent } from 'react';
+import { useSession } from 'next-auth/react';
 import { Job, JobStatus } from '@/app/lib/types';
-import axios from 'axios';
+import { fetchWithToken } from '@/app/lib/data.server'; // Correct: named import
 import {
   Dialog,
   DialogContent,
@@ -15,14 +16,8 @@ import { Button } from "@/app/components/ui/button";
 import { Label } from "@/app/components/ui/label";
 import { Circle, Loader2 } from 'lucide-react';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
-const axiosInstance = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  }
-});
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 
+  (process.env.NODE_ENV === 'development' ? 'http://localhost:8000' : 'https://pmcs.site');
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -33,6 +28,7 @@ interface UpdateStatusModalProps {
 }
 
 export function UpdateStatusModal({ job, onComplete, children }: UpdateStatusModalProps) {
+  const { data: session } = useSession();
   const [selectedStatus, setSelectedStatus] = useState<JobStatus>(job.status);
   const [isUpdating, setIsUpdating] = useState(false);
   const [open, setOpen] = useState(false);
@@ -43,7 +39,7 @@ export function UpdateStatusModal({ job, onComplete, children }: UpdateStatusMod
     { value: 'in_progress' as JobStatus, label: 'In Progress' },
     { value: 'completed' as JobStatus, label: 'Completed' },
     { value: 'cancelled' as JobStatus, label: 'Cancelled' },
-    { value: 'waiting_sparepart' as JobStatus, label: 'Waiting for Sparepart' }
+    { value: 'waiting_sparepart' as JobStatus, label: 'Waiting for Sparepart' },
   ].filter(status => status.value !== job.status);
 
   const handleUpdate = async () => {
@@ -53,21 +49,28 @@ export function UpdateStatusModal({ job, onComplete, children }: UpdateStatusMod
     setError(null);
 
     try {
-      await delay(1000); // Reduced delay for better mobile experience
-      await axiosInstance.patch(`/api/jobs/${job.job_id}/`, {
-        status: selectedStatus
-      });
+      const accessToken = session?.user?.accessToken;
+      if (!accessToken) {
+        throw new Error('No access token available. Please log in.');
+      }
 
-      await delay(300); // Reduced delay
+      await delay(1000);
+      await fetchWithToken<Job>(
+        `${API_BASE_URL}/api/jobs/${job.job_id}/`,
+        accessToken,
+        'PATCH',
+        { status: selectedStatus }
+      );
+
+      await delay(300);
       setOpen(false);
-      
-      // Call onComplete handler if provided
+
       if (onComplete) {
         onComplete();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to update status:', error);
-      setError(axios.isAxiosError(error) ? error.response?.data?.detail || error.message : 'Failed to update status');
+      setError(error.message || 'Failed to update status');
     } finally {
       setIsUpdating(false);
     }
@@ -78,9 +81,7 @@ export function UpdateStatusModal({ job, onComplete, children }: UpdateStatusMod
     setError(null);
   };
 
-  // Stop click event propagation to prevent navigation
   const handleButtonClick = (e: MouseEvent) => {
-    // This prevents the click from bubbling up to parent elements
     e.stopPropagation();
   };
 
