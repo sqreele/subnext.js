@@ -4,6 +4,7 @@ import jwt, { JwtPayload } from "jsonwebtoken";
 import { NextAuthOptions } from "next-auth";
 import { prisma } from "@/app/lib/prisma";
 import { UserProfile, Property } from "@/app/lib/types";
+import { getUserProperties } from "./prisma-user-property";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
@@ -56,7 +57,9 @@ export const authOptions: NextAuthOptions = {
           // Step 3: Fetch user from Prisma database with properties
           let user = await prisma.user.findUnique({
             where: { id: userId },
-            include: { properties: true },
+            include: { 
+              properties: true
+            },
           });
           console.log("Prisma user with properties:", user);
 
@@ -64,6 +67,7 @@ export const authOptions: NextAuthOptions = {
           const profileResponse = await fetch(`${API_BASE_URL}/api/user-profiles/${userId}/`, {
             headers: { Authorization: `Bearer ${tokenData.access}`, "Content-Type": "application/json" },
           });
+          
           let profileData: { email?: string | null; profile_image?: string | null; positions?: string; created_at?: string; properties?: any[] } = {};
           if (profileResponse.ok) {
             profileData = await profileResponse.json();
@@ -91,13 +95,17 @@ export const authOptions: NextAuthOptions = {
                 positions: profileData.positions || "User",
                 created_at: profileData.created_at ? new Date(profileData.created_at) : new Date(),
               },
-              include: { properties: true },
+              include: { 
+                properties: true
+              },
             });
             console.log("Created/updated Prisma user:", user);
           }
 
           // Step 5: Normalize properties (prefer API data, fallback to Prisma)
           let normalizedProperties: Property[] = [];
+          
+          // First try to get properties from API
           if (profileData.properties && profileData.properties.length > 0) {
             normalizedProperties = profileData.properties.map((prop: any) => ({
               id: String(prop.property_id || prop.id),
@@ -107,16 +115,29 @@ export const authOptions: NextAuthOptions = {
               created_at: prop.created_at || new Date().toISOString(),
               users: prop.users || [],
             }));
-          } else if (user.properties && user.properties.length > 0) {
+          } 
+          // Then try to get properties from the Prisma relation
+          else if (user && user.properties && user.properties.length > 0) {
             normalizedProperties = user.properties.map((prop: any) => ({
               id: String(prop.id),
               property_id: String(prop.id),
               name: prop.name || `Property ${prop.id}`,
               description: prop.description || "",
-              created_at: prop.created_at.toISOString(), // Always convert Date to string
+              created_at: prop.created_at.toISOString(),
               users: [],
             }));
           }
+          // If still no properties, try the helper function which handles the m2m relation
+          else {
+            try {
+              normalizedProperties = await getUserProperties(userId);
+            } catch (error) {
+              console.error("Failed to get properties via helper:", error);
+              // Default to empty array if all else fails
+              normalizedProperties = [];
+            }
+          }
+          
           console.log(`Normalized ${normalizedProperties.length} properties for user ${userId}:`, normalizedProperties);
 
           // Step 6: Construct user profile with explicit string conversion
@@ -127,7 +148,7 @@ export const authOptions: NextAuthOptions = {
             profile_image: user.profile_image || profileData.profile_image || null,
             positions: user.positions || profileData.positions || "User",
             properties: normalizedProperties,
-            created_at: user.created_at.toISOString() || profileData.created_at || new Date().toISOString(), // Ensure string
+            created_at: user.created_at.toISOString() || profileData.created_at || new Date().toISOString(),
           };
 
           // Step 7: Return user with required refreshToken
@@ -148,13 +169,16 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
+        // Ensure properties is always an array
+        const properties = Array.isArray(user.properties) ? user.properties : [];
+        
         token.id = user.id;
         token.username = user.username;
         token.email = user.email;
         token.profile_image = user.profile_image;
         token.positions = user.positions;
-        token.properties = user.properties;
-        token.created_at = user.created_at; // Already a string from userProfile
+        token.properties = properties;
+        token.created_at = user.created_at;
         token.accessToken = user.accessToken;
         token.refreshToken = user.refreshToken;
         console.log("JWT token after user assignment:", token);
@@ -162,14 +186,17 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
+      // Ensure properties is always an array
+      const properties = Array.isArray(token.properties) ? token.properties : [];
+      
       session.user = {
         id: token.id,
         username: token.username,
         email: token.email,
         profile_image: token.profile_image,
         positions: token.positions,
-        properties: token.properties,
-        created_at: token.created_at as string, // Already a string from token
+        properties: properties,
+        created_at: token.created_at as string,
         accessToken: token.accessToken,
         refreshToken: token.refreshToken,
         sessionToken: undefined,

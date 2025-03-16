@@ -1,5 +1,6 @@
 import { Property } from "@/app/lib/types"; // Ensure this points to types.tsx
-import type { DefaultUser } from "next-auth";
+import "next-auth";
+import "next-auth/jwt";
 
 declare module "next-auth" {
   interface User {
@@ -38,9 +39,10 @@ declare module "next-auth/jwt" {
     email: string | null;
     profile_image: string | null;
     positions: string;
+    properties: Property[]; // Use imported Property type
+    created_at: string;
     accessToken: string;
     refreshToken: string;
-    properties: Property[]; // Use imported Property type
     error?: string;
   }
 }
