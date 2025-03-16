@@ -1,8 +1,6 @@
 "use client";
 
 import React, { useCallback, useMemo, useEffect } from "react";
-import { useUser } from "@/app/lib/user-context";
-import { useProperty } from "@/app/lib/PropertyContext";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,13 +13,13 @@ import { cn } from "@/app/lib/utils";
 import { useSession } from "next-auth/react";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { Property } from "@/app/lib/types";
 
 const HeaderPropertyList = () => {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const { userProfile } = useUser();
-  const { selectedProperty, setSelectedProperty } = useProperty();
+  
+  // State for selected property (previously from PropertyContext)
+  const [selectedProperty, setSelectedProperty] = React.useState<string | null>(null);
 
   // Redirect to login if session error
   useEffect(() => {
@@ -50,17 +48,12 @@ const HeaderPropertyList = () => {
     return property.name || `Property ${getPropertyId(property)}`;
   }, [getPropertyId]);
 
-  // Determine properties from either source, preferring user context
+  // Get properties directly from session
   const properties = useMemo(() => {
-    const userProps = userProfile?.properties || [];
     const sessionProps = session?.user?.properties || [];
-    
-    console.log("User properties:", userProps);
     console.log("Session properties:", sessionProps);
-    
-    // Use userProfile.properties if available and not empty, otherwise fall back to session
-    return userProps.length > 0 ? userProps : sessionProps;
-  }, [userProfile?.properties, session?.user?.properties]);
+    return sessionProps;
+  }, [session?.user?.properties]);
 
   // Find current property by selectedProperty ID
   const currentProperty = useMemo(() => {
@@ -70,7 +63,6 @@ const HeaderPropertyList = () => {
     console.log("Available properties:", properties);
     
     if (selectedProperty) {
-      // Try to find the property with matching ID
       for (const prop of properties) {
         const propId = getPropertyId(prop);
         if (propId === selectedProperty) {
@@ -80,7 +72,6 @@ const HeaderPropertyList = () => {
       }
     }
     
-    // Fallback to first property if selected not found
     console.log("No matching property found, using first property:", properties[0]);
     return properties[0];
   }, [properties, selectedProperty, getPropertyId]);
@@ -92,8 +83,9 @@ const HeaderPropertyList = () => {
       console.log("Selected property:", property);
       console.log("Property ID:", propId);
       setSelectedProperty(propId);
+      localStorage.setItem("selectedPropertyId", propId); // Persist selection
     },
-    [setSelectedProperty, getPropertyId]
+    [getPropertyId]
   );
 
   // Initialize selected property from localStorage or first property
@@ -101,13 +93,11 @@ const HeaderPropertyList = () => {
     if (properties.length > 0 && !selectedProperty) {
       const storedPropertyId = localStorage.getItem("selectedPropertyId");
       
-      // Find property with matching stored ID
       let defaultProperty = null;
       if (storedPropertyId) {
         defaultProperty = properties.find(p => getPropertyId(p) === storedPropertyId);
       }
       
-      // Use found property or first property
       const propertyToSelect = defaultProperty || properties[0];
       console.log("Setting default property:", propertyToSelect);
       if (propertyToSelect) {
@@ -116,8 +106,8 @@ const HeaderPropertyList = () => {
     }
   }, [properties, selectedProperty, handlePropertySelect, getPropertyId]);
 
-  // Loading state if session or user data is not yet available
-  if (status === "loading" || !userProfile) {
+  // Loading state if session is not yet available
+  if (status === "loading") {
     return (
       <Button
         variant="outline"
