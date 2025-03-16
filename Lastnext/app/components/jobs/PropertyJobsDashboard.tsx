@@ -63,17 +63,20 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
         throw new Error("Invalid jobs data format");
       }
 
-      const currentUserId = session.user.id;
+      const currentUserId = session.user.id; // "1"
+      const currentUsername = session.user.username; // "admin"
 
       const userJobs = jobsData.filter((job) => {
-        // @ts-ignore: Assume profile_image.id exists even if types.ts isn't updated
+        // @ts-ignore: Assume profile_image.id exists
         const jobUserId = job.profile_image?.id;
-        const matches = jobUserId !== undefined && String(jobUserId) === String(currentUserId);
-        console.log(`Job ID: ${job.job_id}, User ID: ${jobUserId}, Current User ID: ${currentUserId}, Matches: ${matches}`);
-        return matches;
+        const jobUsername = job.user;
+        const matchesId = jobUserId !== undefined && String(jobUserId) === String(currentUserId);
+        const matchesUsername = jobUsername !== undefined && jobUsername === currentUsername;
+        console.log(`Job ID: ${job.job_id}, Profile ID: ${jobUserId}, User: ${jobUsername}, Current ID: ${currentUserId}, Current Username: ${currentUsername}, Matches ID: ${matchesId}, Matches Username: ${matchesUsername}`);
+        return matchesId || matchesUsername; // Match either ID or username
       });
 
-      console.log(`Filtered to ${userJobs.length} jobs for current user:`, userJobs);
+      console.log(`Filtered to ${userJobs.length} jobs for current user:`, JSON.stringify(userJobs, null, 2));
       setAllJobs(userJobs);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch jobs";
@@ -105,7 +108,7 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
     const effectiveProperty =
       selectedProperty ||
       (user.properties.length > 0
-        ? String(user.properties[0].property_id)
+        ? String(user.properties[0].property_id) // "PBDA570D9"
         : null);
 
     if (!effectiveProperty) {
@@ -117,34 +120,17 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
     console.log("Filtering jobs for property:", effectiveProperty);
 
     const filtered = allJobs.filter((job) => {
-      if (job.property_id && String(job.property_id) === effectiveProperty) {
-        return true;
-      }
-
-      if (job.rooms && job.rooms.length > 0) {
-        return job.rooms.some((room) => {
-          if (room.property && String(room.property) === effectiveProperty) {
-            return true;
-          }
-          if (room.properties) {
-            return room.properties.some((prop) => 
-              String(prop) === effectiveProperty
-            );
-          }
-          return false;
-        });
-      }
-
-      if (job.properties) {
-        return job.properties.some((prop) => 
-          String(prop) === effectiveProperty
-        );
-      }
-
-      return false;
+      const propertyMatch = job.property_id && String(job.property_id) === effectiveProperty;
+      const roomMatch = job.rooms && job.rooms.length > 0 && job.rooms.some((room) => {
+        return (room.property && String(room.property) === effectiveProperty) ||
+               (room.properties && room.properties.some((prop) => String(prop) === effectiveProperty));
+      });
+      const propertiesMatch = job.properties && job.properties.some((prop) => String(prop) === effectiveProperty);
+      console.log(`Job ID: ${job.job_id}, Property ID: ${job.property_id}, Rooms: ${JSON.stringify(job.rooms)}, Properties: ${JSON.stringify(job.properties)}, Matches Property: ${propertyMatch || roomMatch || propertiesMatch}`);
+      return propertyMatch || roomMatch || propertiesMatch;
     });
 
-    console.log(`Filtered to ${filtered.length} jobs for property ${effectiveProperty}`);
+    console.log(`Filtered to ${filtered.length} jobs for property ${effectiveProperty}:`, JSON.stringify(filtered, null, 2));
     setFilteredJobs(filtered);
   }, [allJobs, selectedProperty, session?.user?.properties]);
 
@@ -377,6 +363,6 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
       </div>
     </div>
   );
-}
+};
 
 export default PropertyJobsDashboard;
