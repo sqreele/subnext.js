@@ -12,6 +12,7 @@ declare module "next-auth" {
     properties: Property[]; // Use imported Property type
     accessToken: string;
     refreshToken: string;
+    accessTokenExpires?: number; // Add this property
     created_at?: string; // Make optional to avoid strict TypeScript issues
   }
 
@@ -25,10 +26,12 @@ declare module "next-auth" {
       properties: Property[]; // Use imported Property type
       accessToken: string;
       refreshToken: string;
+      accessTokenExpires?: number; // Add this property
       sessionToken?: string;
       created_at?: string; // Optional
       error?: string;
     };
+    error?: string; // Add this line to define the error property
   }
 }
 
@@ -43,6 +46,7 @@ declare module "next-auth/jwt" {
     created_at?: string; // Optional
     accessToken: string;
     refreshToken: string;
+    accessTokenExpires?: number; // Add this property
     error?: string;
   }
 }

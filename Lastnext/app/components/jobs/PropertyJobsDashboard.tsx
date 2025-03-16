@@ -6,6 +6,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  CardFooter,
 } from "@/app/components/ui/card";
 import {
   PieChart,
@@ -29,7 +30,7 @@ import {
   STATUS_COLORS
 } from "@/app/lib/types";
 import { useProperty } from "@/app/lib/PropertyContext";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { fetchJobs } from "@/app/lib/data";
 import { Button } from "@/app/components/ui/button";
 import Link from "next/link";
@@ -41,20 +42,67 @@ interface PropertyJobsDashboardProps {
 
 const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps) => {
   const { selectedProperty } = useProperty();
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession();
   const { jobCreationCount } = useJob();
   const [allJobs, setAllJobs] = useState<Job[]>(initialJobs);
   const [filteredJobs, setFilteredJobs] = useState<Job[]>(initialJobs);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
+  const [sessionDebugInfo, setSessionDebugInfo] = useState<string>("");
+
+  // Function to refresh session
+  const refreshSession = async () => {
+    try {
+      setSessionDebugInfo("Refreshing session...");
+      const updatedSession = await update();
+      setSessionDebugInfo(`Session refreshed: ${new Date().toISOString()}`);
+      return updatedSession;
+    } catch (error) {
+      setSessionDebugInfo(`Session refresh error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return null;
+    }
+  };
+
+  // Check session and extract debug information
+  useEffect(() => {
+    if (session) {
+      const tokenInfo = session.user?.accessToken ? 
+        `Token: ${session.user.accessToken.substring(0, 15)}...` : 
+        "No access token";
+      
+      const expiry = session.user?.accessTokenExpires ? 
+        new Date(session.user.accessTokenExpires * 1000).toLocaleString() : 
+        "No expiry info";
+      
+      const propertyCount = session.user?.properties?.length || 0;
+      
+      // Create a debug summary
+      const debugInfo = `
+Status: ${status}
+User: ${session.user?.username || 'No username'}
+Properties: ${propertyCount}
+${tokenInfo}
+Expires: ${expiry}
+Session error: ${session.error || 'None'}
+`;
+      setSessionDebugInfo(debugInfo);
+    } else {
+      setSessionDebugInfo(`Session status: ${status}, No session data available`);
+    }
+  }, [session, status]);
 
   const loadJobs = async () => {
-    if (status !== "authenticated" || !session?.user) return;
+    if (status !== "authenticated" || !session?.user) {
+      setSessionDebugInfo(`Cannot load jobs: status=${status}, session ${session ? 'exists' : 'missing'}`);
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
 
     try {
+      setSessionDebugInfo(prev => `${prev}\nFetching jobs...`);
       const jobsData = await fetchJobs();
       console.log("Fetched all jobs:", jobsData.length);
       if (!Array.isArray(jobsData)) {
@@ -88,6 +136,7 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
       });
       
       console.log(`Filtered to ${userJobs.length} jobs for current user`);
+      setSessionDebugInfo(prev => `${prev}\nJobs loaded: ${userJobs.length}`);
       setAllJobs(userJobs);
     } catch (err) {
       const errorMessage =
@@ -95,6 +144,13 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
       console.error("Error loading jobs:", errorMessage);
       setError(errorMessage);
       setAllJobs([]);
+      setSessionDebugInfo(prev => `${prev}\nError loading jobs: ${errorMessage}`);
+      
+      // If it's an authentication error, try to refresh the session
+      if (errorMessage.includes('auth') || errorMessage.includes('token') || errorMessage.includes('unauthorized')) {
+        setSessionDebugInfo(prev => `${prev}\nDetected auth error, attempting refresh...`);
+        await refreshSession();
+      }
     } finally {
       setIsLoading(false);
     }
@@ -227,12 +283,70 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
       });
   }, [filteredJobs]);
 
+  // Session debug panel
+  const renderDebugPanel = () => {
+    if (!showDebug) return null;
+    
+    return (
+      <Card className="mt-4 bg-gray-100 border border-gray-300">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg flex justify-between">
+            <span>Session Debug Info</span>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => {
+                setSessionDebugInfo("");
+                setSessionDebugInfo(`Session refresh initiated: ${new Date().toISOString()}`);
+                refreshSession();
+              }}
+            >
+              Refresh Session
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <pre className="text-xs overflow-auto max-h-60 bg-gray-700 text-gray-100 p-2 rounded">
+            {sessionDebugInfo}
+          </pre>
+        </CardContent>
+        <CardFooter className="flex justify-between">
+          <Button 
+            variant="secondary" 
+            size="sm"
+            onClick={() => navigator.clipboard.writeText(sessionDebugInfo)}
+          >
+            Copy Debug Info
+          </Button>
+          <Button 
+            variant="destructive" 
+            size="sm"
+            onClick={() => signOut()}
+          >
+            Sign Out
+          </Button>
+        </CardFooter>
+      </Card>
+    );
+  };
+
   if (status === "loading" || isLoading) {
     return (
       <Card className="w-full p-4">
         <CardContent className="text-center">
           <p className="text-gray-600 text-base">Loading charts...</p>
         </CardContent>
+        <CardFooter>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setShowDebug(!showDebug)}
+            className="ml-auto"
+          >
+            {showDebug ? 'Hide Debug' : 'Show Debug'}
+          </Button>
+        </CardFooter>
+        {renderDebugPanel()}
       </Card>
     );
   }
@@ -248,6 +362,17 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
             <Link href="/auth/signin">Log In</Link>
           </Button>
         </CardContent>
+        <CardFooter>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setShowDebug(!showDebug)}
+            className="ml-auto"
+          >
+            {showDebug ? 'Hide Debug' : 'Show Debug'}
+          </Button>
+        </CardFooter>
+        {renderDebugPanel()}
       </Card>
     );
   }
@@ -257,10 +382,31 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
       <Card className="w-full p-4 bg-red-50 border border-yellow-200 rounded-md">
         <CardContent className="text-center space-y-4">
           <p className="text-red-600 text-base">{error}</p>
-          <Button asChild variant="outline" className="w-full h-12 text-base">
-            <Link href="/dashboard/myJobs">Go to My Jobs</Link>
-          </Button>
+          <div className="flex space-x-2 justify-center">
+            <Button asChild variant="outline" className="h-12">
+              <Link href="/dashboard/myJobs">Go to My Jobs</Link>
+            </Button>
+            <Button 
+              variant="default" 
+              className="h-12"
+              onClick={loadJobs} 
+              disabled={isLoading}
+            >
+              Try Again
+            </Button>
+          </div>
         </CardContent>
+        <CardFooter>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setShowDebug(!showDebug)}
+            className="ml-auto"
+          >
+            {showDebug ? 'Hide Debug' : 'Show Debug'}
+          </Button>
+        </CardFooter>
+        {renderDebugPanel()}
       </Card>
     );
   }
@@ -280,6 +426,17 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
             </Link>
           </Button>
         </CardContent>
+        <CardFooter>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setShowDebug(!showDebug)}
+            className="ml-auto"
+          >
+            {showDebug ? 'Hide Debug' : 'Show Debug'}
+          </Button>
+        </CardFooter>
+        {renderDebugPanel()}
       </Card>
     );
   }
@@ -287,6 +444,18 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
   return (
     <div className="space-y-4 px-2">
       <div className="space-y-4">
+        <div className="flex justify-end">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setShowDebug(!showDebug)}
+          >
+            {showDebug ? 'Hide Debug' : 'Show Debug'}
+          </Button>
+        </div>
+        
+        {renderDebugPanel()}
+        
         <Card className="w-full">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg">Jobs by Status</CardTitle>

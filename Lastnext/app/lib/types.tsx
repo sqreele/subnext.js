@@ -13,10 +13,28 @@ declare module 'next-auth' {
       properties: Property[];
       accessToken: string;
       refreshToken: string;
+      accessTokenExpires?: number; // Added for token expiration tracking
       sessionToken?: string;  // Added to match DRF Session model
       created_at: string;
       error?: string;
     };
+  }
+}
+
+// Also extend the JWT type
+declare module "next-auth/jwt" {
+  interface JWT {
+    id: string;
+    username: string;
+    email: string | null;
+    profile_image: string | null;
+    positions: string;
+    properties: Property[];
+    accessToken: string;
+    refreshToken: string;
+    accessTokenExpires?: number; // Added for token expiration tracking
+    created_at?: string;
+    error?: string;
   }
 }
 
@@ -29,6 +47,7 @@ export interface User {
   properties: Property[];
   accessToken: string;
   refreshToken: string;
+  accessTokenExpires?: number; // Added for token expiration tracking
   sessionToken?: string;
   created_at: string;
 }
@@ -110,7 +129,6 @@ export interface UserProfile {
   positions: string;
   properties: Property[];
   created_at: string; //
-  
 }
 
 export interface UserContextType {
