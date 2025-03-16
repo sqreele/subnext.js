@@ -1,4 +1,3 @@
-// ./app/components/RoomAutocomplete.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -19,38 +18,43 @@ interface RoomAutocompleteProps {
 const RoomAutocomplete = ({ rooms, selectedRoom, onSelect }: RoomAutocompleteProps) => {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const { userProfile } = useUser();
+  const { userProfile, selectedProperty } = useUser();
 
   useEffect(() => {
     console.log("Rooms prop:", rooms);
     console.log("User Profile:", userProfile);
     console.log("Selected Room:", selectedRoom);
-  }, [rooms, userProfile, selectedRoom]);
+    console.log("Selected Property:", selectedProperty);
+  }, [rooms, userProfile, selectedRoom, selectedProperty]);
 
   const filteredRooms = rooms.filter((room) => {
-    // If no userProfile or properties, show all rooms
-    if (!userProfile?.properties?.length) {
-      return true;
+    // First, apply search filter
+    if (searchQuery) {
+      const search = searchQuery.toLowerCase();
+      if (!room.name?.toLowerCase().includes(search) && 
+          !room.room_type?.toLowerCase().includes(search)) {
+        return false;
+      }
     }
 
-    // Handle properties as numbers or objects
-    let userPropertyIds: string[];
-    if (typeof userProfile.properties[0] === "number") {
-      userPropertyIds = userProfile.properties.map(p => String(p));
-    } else {
-      userPropertyIds = userProfile.properties.map(p => (p as { property_id: string }).property_id);
+    // If we have a selected property, filter by it
+    if (selectedProperty) {
+      // Check if room belongs to selected property
+      const roomPropertyIds: any[] = room.properties || [];
+      const roomMainProperty = room.property ? String(room.property) : null;
+      
+      // Check if room is associated with selected property
+      return roomPropertyIds.some(prop => {
+        if (prop === null || prop === undefined) return false;
+        if (typeof prop === 'object') {
+          return prop.property_id === selectedProperty || String(prop.id) === selectedProperty;
+        }
+        return String(prop) === selectedProperty;
+      }) || roomMainProperty === selectedProperty;
     }
-
-    // Safely check room.properties or room.property
-    const roomPropertyIds = room.properties || (room.property ? [room.property] : []);
-    const isUserProperty = roomPropertyIds.some(propId => userPropertyIds.includes(String(propId)));
-
-    if (!isUserProperty) return false;
-
-    if (!searchQuery) return true;
-    const search = searchQuery.toLowerCase();
-    return room.name.toLowerCase().includes(search) || 
-           room.room_type.toLowerCase().includes(search);
+    
+    // If no selected property or user hasn't set it up yet, show all rooms
+    return true;
   });
 
   return (
@@ -83,9 +87,9 @@ const RoomAutocomplete = ({ rooms, selectedRoom, onSelect }: RoomAutocompletePro
           <CommandList>
             <CommandEmpty className="py-3 px-4 text-sm text-gray-500">
               {rooms.length === 0 ? (
-                "No rooms available. Check if jobs data is loaded."
+                "No rooms available. Check if rooms data is loaded."
               ) : filteredRooms.length === 0 ? (
-                `No rooms found for ${userProfile?.properties[0]?.name || "this property"}`
+                `No rooms found matching "${searchQuery}"`
               ) : (
                 "No matching rooms found."
               )}
@@ -114,8 +118,8 @@ const RoomAutocomplete = ({ rooms, selectedRoom, onSelect }: RoomAutocompletePro
                         selectedRoom?.room_id === room.room_id ? "opacity-100 text-blue-600" : "opacity-0"
                       )}
                     />
-                    <span className="font-medium">{room.name}</span>
-                    <span className="text-gray-500">- {room.room_type}</span>
+                    <span className="font-medium">{room.name || "Unnamed Room"}</span>
+                    <span className="text-gray-500">- {room.room_type || "No type"}</span>
                   </div>
                 </CommandItem>
               ))}

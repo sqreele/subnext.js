@@ -1,20 +1,21 @@
-
-//app/dashboard/seach/SearchContent.tsx
-
 'use client';
 
 import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Package, Users2, Search, CalendarClock, Home, MapPin } from 'lucide-react';
-import {CardFooter, Card, CardContent, CardHeader, CardTitle,CardDescription } from '@/app/components/ui/card';
+import { Package, Users2, Search, CalendarClock, Home, MapPin, AlertCircle } from 'lucide-react';
+import {CardFooter, Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
 import { Button } from '@/app/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { Job, Property, JobStatus, STATUS_VARIANTS, Room } from '@/app/lib/types';
 import { useRouter } from 'next/navigation';
-import { useProperty } from '@/app/lib/PropertyContext';
+import { useUser } from '@/app/lib/user-context'; // Use UserContext instead of PropertyContext
+import { useSession } from 'next-auth/react'; // Import useSession to get the token
+import { fetchJobs, fetchProperties, fetchWithToken } from '@/app/lib/data.server'; // Import API functions
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://pmcs.site';
 
 export default function SearchContent() {
   const searchParams = useSearchParams();
@@ -24,31 +25,47 @@ export default function SearchContent() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Use the UserContext
+  const { userProfile, selectedProperty, refetch } = useUser();
+  // We need to get the token differently since it's not in UserProfile
+  // Based on your code, we should use a different approach
+  // Let's use the useSession hook to get the token
+  const { data: session } = useSession();
+  const accessToken = session?.user?.accessToken;
 
   useEffect(() => {
     const fetchSearchResults = async () => {
-      if (!query) return;
+      if (!query || !accessToken) return;
       
       setIsLoading(true);
+      setError(null);
+      
       try {
-        const jobsRes = await fetch('/api/jobs');
-        const jobsData = await jobsRes.json();
-        const propertiesRes = await fetch('/api/properties');
-        const propertiesData = await propertiesRes.json();
-        const roomsRes = await fetch('/api/rooms');
-        const roomsData = await roomsRes.json();
+        // Use the API functions with authentication
+        const jobsData = await fetchJobs(accessToken);
+        const propertiesData = await fetchProperties(accessToken);
         
-        setJobs(jobsData);
-        setProperties(propertiesData);
-        setRooms(roomsData);
+        // Fetch rooms with auth token
+        const roomsData = await fetchWithToken<Room[]>(
+          `${API_BASE_URL}/api/rooms/`, 
+          accessToken
+        );
+        
+        setJobs(jobsData || []);
+        setProperties(propertiesData || []);
+        setRooms(roomsData || []);
       } catch (error) {
         console.error('Error fetching search results:', error);
+        setError(error instanceof Error ? error.message : 'Failed to fetch search results');
       } finally {
         setIsLoading(false);
       }
     };
+    
     fetchSearchResults();
-  }, [query]);
+  }, [query, accessToken]);
 
   const filteredJobs = jobs.filter(job => 
     (job.description?.toLowerCase() || '').includes(query.toLowerCase()) ||
@@ -60,7 +77,7 @@ export default function SearchContent() {
   const filteredProperties = properties.filter(property => 
     (property.name?.toLowerCase() || '').includes(query.toLowerCase()) || 
     (property.description?.toLowerCase() || '').includes(query.toLowerCase()) ||
-    (property.property_id?.toLowerCase() || '').includes(query.toLowerCase())
+    (property.property_id?.toString().toLowerCase() || '').includes(query.toLowerCase())
   );
 
   const filteredRooms = rooms.filter(room => 
@@ -89,6 +106,27 @@ export default function SearchContent() {
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600"></div>
           <p className="text-gray-500">Searching...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center space-y-4 py-12">
+        <div className="rounded-full bg-red-100 p-4">
+          <AlertCircle className="h-8 w-8 text-red-600" />
+        </div>
+        <h2 className="text-xl font-semibold text-gray-700">Error</h2>
+        <p className="text-center text-gray-500 max-w-md">
+          {error}
+        </p>
+        <Button 
+          variant="outline" 
+          onClick={() => window.history.back()}
+          className="mt-2"
+        >
+          Go Back
+        </Button>
       </div>
     );
   }
@@ -237,7 +275,7 @@ export default function SearchContent() {
   );
 }
 
-// Updated JobCard to match expected props
+// Updated JobCard to use UserContext
 interface JobCardProps {
   job: Job;
   query: string;
@@ -247,7 +285,7 @@ interface JobCardProps {
 
 function JobCard({ job, query, highlightMatch, properties }: JobCardProps) {
   const router = useRouter();
-  const { selectedProperty } = useProperty();
+  const { selectedProperty } = useUser(); // Use UserContext
   const statusVariant = STATUS_VARIANTS[job.status as JobStatus] || STATUS_VARIANTS.default;
   const displayId = typeof job.job_id === 'number' ? `#${job.job_id}` : job.job_id;
 
@@ -310,7 +348,7 @@ interface RoomOnlyJobCardProps {
 
 function RoomOnlyJobCard({ job, properties }: RoomOnlyJobCardProps) {
   const router = useRouter();
-  const { selectedProperty } = useProperty();
+  const { selectedProperty } = useUser(); // Use UserContext
   const room = job.rooms?.[0] as Room | undefined;
 
   const getPropertyName = () => {
