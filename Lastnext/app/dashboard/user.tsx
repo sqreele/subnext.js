@@ -1,4 +1,3 @@
-// ./app/dashboard/User.tsx
 'use client';
 
 import React from 'react';
@@ -7,11 +6,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
 import { Button } from '@/app/components/ui/button';
-import { User2, LogOut } from 'lucide-react';
+import { User2, LogOut, Settings, ChevronDown } from 'lucide-react';
 import { cn } from '@/app/lib/utils';
+import Link from 'next/link';
 
 const User: React.FC = () => {
   const { data: session } = useSession();
@@ -32,27 +33,90 @@ const User: React.FC = () => {
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="icon"
-          className="h-10 w-10 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 text-white flex items-center justify-center hover:from-primary-600 hover:to-primary-800 transition-all duration-200"
+          className="w-full flex items-center justify-between gap-2 px-3 py-2 h-auto hover:bg-gray-100"
         >
-         {session.user.profile_image && session.user.profile_image !== '' ? (
-  <img src={session.user.profile_image} alt={session.user.username} className="h-full w-full object-cover rounded-full" />
-) : (
-  <User2 className="h-5 w-5" />
-)}
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              "h-10 w-10 rounded-full flex items-center justify-center overflow-hidden",
+              !session.user.profile_image && "bg-gradient-to-br from-blue-500 to-blue-700"
+            )}>
+              {session.user.profile_image && session.user.profile_image !== '' ? (
+                <img 
+                  src={session.user.profile_image} 
+                  alt={session.user.username} 
+                  className="h-full w-full object-cover" 
+                />
+              ) : (
+                <span className="text-white font-semibold">{initials}</span>
+              )}
+            </div>
+            <div className="flex flex-col text-left">
+              <span className="font-medium text-sm text-gray-800">
+                {session.user.username}
+              </span>
+              <span className="text-xs text-gray-500">
+                {session.user.positions || 'User'}
+              </span>
+            </div>
+          </div>
+          <ChevronDown className="h-4 w-4 text-gray-500" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 shadow-lg">
-        <DropdownMenuItem className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-          <User2 className="h-4 w-4" />
-          {session.user.username}
+      <DropdownMenuContent 
+        className="w-[240px] p-2 bg-white border-gray-200" 
+        align="start"
+      >
+        <DropdownMenuItem className="flex flex-col items-start rounded-md p-3 hover:bg-gray-100">
+          <div className="flex w-full items-center gap-3">
+            <div className={cn(
+              "h-10 w-10 rounded-full flex items-center justify-center overflow-hidden",
+              !session.user.profile_image && "bg-gradient-to-br from-blue-500 to-blue-700"
+            )}>
+              {session.user.profile_image && session.user.profile_image !== '' ? (
+                <img 
+                  src={session.user.profile_image} 
+                  alt={session.user.username} 
+                  className="h-full w-full object-cover" 
+                />
+              ) : (
+                <span className="text-white font-semibold">{initials}</span>
+              )}
+            </div>
+            <div className="flex flex-col text-left">
+              <span className="font-medium text-sm text-gray-800">
+                {session.user.username}
+              </span>
+              <span className="text-xs text-gray-500">
+                {session.user.email || ''}
+              </span>
+            </div>
+          </div>
         </DropdownMenuItem>
-        <DropdownMenuItem
+
+        <DropdownMenuSeparator className="bg-gray-200" />
+
+        <Link href="/dashboard/profile">
+          <DropdownMenuItem className="rounded-md cursor-pointer hover:bg-gray-100">
+            <User2 className="mr-2 h-4 w-4" />
+            <span>My Profile</span>
+          </DropdownMenuItem>
+        </Link>
+
+        <Link href="/settings">
+          <DropdownMenuItem className="rounded-md cursor-pointer hover:bg-gray-100">
+            <Settings className="mr-2 h-4 w-4" />
+            <span>Settings</span>
+          </DropdownMenuItem>
+        </Link>
+
+        <DropdownMenuSeparator className="bg-gray-200" />
+
+        <DropdownMenuItem 
+          className="rounded-md cursor-pointer text-red-500 hover:bg-red-50"
           onClick={() => signOut({ callbackUrl: '/auth/signin' })}
-          className="flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900 cursor-pointer"
         >
-          <LogOut className="h-4 w-4" />
-          Logout
+          <LogOut className="mr-2 h-4 w-4" />
+          <span>Logout</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

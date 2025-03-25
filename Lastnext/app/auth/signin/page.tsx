@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, FormEvent, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import Link from 'next/link';
 
@@ -11,6 +11,32 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Check for error query parameters
+  useEffect(() => {
+    const errorParam = searchParams.get('error');
+    const registeredParam = searchParams.get('registered');
+    
+    if (errorParam) {
+      switch (errorParam) {
+        case 'session_expired':
+          setError('Your session has expired. Please log in again to continue.');
+          break;
+        case 'CredentialsSignin':
+          setError('Invalid username or password.');
+          break;
+        case 'RefreshAccessTokenError':
+          setError('Your session could not be renewed. Please log in again.');
+          break;
+        default:
+          setError(`Authentication error: ${errorParam}`);
+          break;
+      }
+    } else if (registeredParam === 'success') {
+      setError('Registration successful! Please log in with your new credentials.');
+    }
+  }, [searchParams]);
 
   const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -25,7 +51,21 @@ export default function Login() {
       });
 
       if (res?.error) {
-        setError('Invalid username or password');
+        // Handle specific error types
+        switch (res.error) {
+          case 'session_expired':
+            setError('Your session has expired. Please log in again to continue.');
+            break;
+          case 'CredentialsSignin':
+            setError('Invalid username or password.');
+            break;
+          case 'RefreshAccessTokenError':
+            setError('Your session could not be renewed. Please log in again.');
+            break;
+          default:
+            setError(`Authentication error: ${res.error}`);
+            break;
+        }
         setLoading(false);
         return;
       }
@@ -45,7 +85,7 @@ export default function Login() {
         <div className="text-center">
           <h2 className="text-3xl font-bold text-gray-900">Log In</h2>
           <p className="mt-2 text-sm text-gray-600">
-            Don’t have an account?{' '}
+            Don't have an account?{' '}
             <Link href="/auth/register" className="font-medium text-indigo-600 hover:text-indigo-500">
               Sign up
             </Link>
@@ -54,7 +94,7 @@ export default function Login() {
 
         <form className="mt-8 space-y-6" onSubmit={handleLogin}>
           {error && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm">
+            <div className={`bg-${error.includes('Registration successful') ? 'green' : 'red'}-50 text-${error.includes('Registration successful') ? 'green' : 'red'}-600 p-3 rounded-md text-sm`}>
               {error}
             </div>
           )}
