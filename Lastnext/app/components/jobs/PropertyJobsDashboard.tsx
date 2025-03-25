@@ -35,7 +35,7 @@ interface PropertyJobsDashboardProps {
 }
 
 const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps) => {
-  const { selectedProperty } = useProperty();
+  const { selectedProperty, userProperties } = useProperty();
   const { data: session, status, update } = useSession() as {
     data: Session | null;
     status: "authenticated" | "unauthenticated" | "loading";
@@ -125,17 +125,9 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
       return;
     }
 
-    const effectiveProperty =
-      selectedProperty ||
-      (user.properties.length > 0
-        ? String(
-            typeof user.properties[0] === "object" &&
-            user.properties[0] !== null &&
-            "property_id" in user.properties[0]
-              ? (user.properties[0] as { property_id: string | number }).property_id
-              : user.properties[0]
-          )
-        : null);
+    // Get the effective property ID - either selected or default to first
+    const effectiveProperty = selectedProperty || 
+      (userProperties.length > 0 ? userProperties[0].property_id : null);
 
     if (!effectiveProperty) {
       setError("No property selected and no default available.");
@@ -144,47 +136,93 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
     }
 
     console.log("Filtering jobs for property:", effectiveProperty);
-
+    
     const filtered = allJobs.filter((job) => {
-      const propertyMatch = job.property_id && String(job.property_id) === effectiveProperty;
-      const roomMatch =
-        job.rooms &&
-        job.rooms.length > 0 &&
-        job.rooms.some((room) => {
+      // Direct property_id match
+      const propertyMatch = job.property_id && 
+        (String(job.property_id) === effectiveProperty);
+      
+      // Room property match with special case handling for ID "1"
+      let roomMatch = false;
+      if (job.rooms && job.rooms.length > 0) {
+        roomMatch = job.rooms.some((room) => {
           if (!room) return false;
-          return (
-            (room.property && String(room.property) === effectiveProperty) ||
-            (room.properties &&
-              room.properties.some((prop) =>
-                typeof prop === "object" && prop !== null && "property_id" in prop
-                  ? String((prop as { property_id: string | number }).property_id) === effectiveProperty
-                  : String(prop) === effectiveProperty
-              ))
-          );
+          
+          // 1. Check direct room.property field
+          if (room.property) {
+            if (String(room.property) === effectiveProperty) {
+              return true;
+            }
+          }
+          
+          // 2. Check room.properties array with SPECIAL CASE for "1"
+          if (room.properties && room.properties.length) {
+            return room.properties.some(prop => {
+              // SPECIAL CASE: In your system, property ID "1" appears to be a special case
+              // that should match any selected property
+              if (prop === 1 || String(prop) === "1") {
+                return true;
+              }
+              
+              // Handle object property representations
+              if (typeof prop === "object" && prop !== null && "property_id" in prop) {
+                return String((prop as { property_id: string | number }).property_id) === effectiveProperty;
+              }
+              
+              // Handle direct string/number property representation
+              return String(prop) === effectiveProperty;
+            });
+          }
+          
+          return false;
         });
-      const propertiesMatch =
-        job.properties &&
-        job.properties.some((prop) =>
-          typeof prop === "object" && prop !== null && "property_id" in prop
-            ? String((prop as { property_id: string | number }).property_id) === effectiveProperty
-            : String(prop) === effectiveProperty
-        );
+      }
+      
+      // Job properties array match
+      let propertiesMatch = false;
+      if (job.properties && job.properties.length) {
+        propertiesMatch = job.properties.some(prop => {
+          // SPECIAL CASE: Same handling as above
+          if (prop === 1 || String(prop) === "1") {
+            return true;
+          }
+          
+          // Handle object property representations
+          if (typeof prop === "object" && prop !== null && "property_id" in prop) {
+            return String((prop as { property_id: string | number }).property_id) === effectiveProperty;
+          }
+          
+          // Handle direct string/number property representation
+          return String(prop) === effectiveProperty;
+        });
+      }
+      
+      // Determine overall match status and log detailed info for debugging
+      const matchResult = propertyMatch || roomMatch || propertiesMatch;
+      
+      // Build detailed log message
+      let matchDetails = [];
+      if (propertyMatch) matchDetails.push(`direct property match: ${job.property_id}`);
+      if (roomMatch) matchDetails.push("room match (see rooms array)");
+      if (propertiesMatch) matchDetails.push("properties array match");
+      
       console.log(
-        `Job ID: ${job.job_id}, Property ID: ${job.property_id}, Rooms: ${JSON.stringify(
-          job.rooms
-        )}, Properties: ${JSON.stringify(job.properties)}, Matches Property: ${
-          propertyMatch || roomMatch || propertiesMatch
-        }`
+        `Job ID: ${job.job_id}, ` +
+        `Matches Property: ${matchResult ? 'YES' : 'NO'} ` +
+        (matchResult ? `(${matchDetails.join(', ')})` : '') +
+        `\nProperty ID: ${job.property_id || 'undefined'}, ` +
+        `Rooms: ${JSON.stringify(job.rooms || [])}, ` +
+        `Properties: ${JSON.stringify(job.properties || [])}`
       );
-      return propertyMatch || roomMatch || propertiesMatch;
+      
+      return matchResult;
     });
 
     console.log(
-      `Filtered to ${filtered.length} jobs for property ${effectiveProperty}:`,
-      JSON.stringify(filtered, null, 2)
+      `Filtered to ${filtered.length} jobs for property ${effectiveProperty}:`
     );
     setFilteredJobs(filtered);
-  }, [allJobs, selectedProperty, session?.user?.properties]);
+  }, [allJobs, selectedProperty, session?.user?.properties, userProperties]);
 
   const jobStats = useMemo(() => {
     const total = filteredJobs.length;

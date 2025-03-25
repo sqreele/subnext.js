@@ -481,19 +481,77 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
     setIsSubmitting(true);
     try {
       const formData = new FormData(event.currentTarget);
-      const updatedJobData: Partial<Job> = {
+      
+      // Check if required fields exist on the original job
+      if (!selectedJob.topics || selectedJob.topics.length === 0) {
+        throw new Error("Job must have at least one topic");
+      }
+      
+      if (!selectedJob.rooms || selectedJob.rooms.length === 0) {
+        throw new Error("Job must have at least one room");
+      }
+      
+      // Get the room ID as a proper integer, not an array
+      // Parse as integer to ensure it's the correct type for the API
+      const roomId = parseInt(String(selectedJob.rooms[0].room_id), 10);
+      
+      // The API expects specific field names
+      const updatedJobData: any = {
         description: formData.get("description") as string,
         priority: formData.get("priority") as JobPriority,
         status: selectedJob.status,
         remarks: (formData.get("remarks") as string) || undefined,
         is_defective: formData.get("is_defective") === "on",
-        topics: selectedJob.topics,
-        rooms: selectedJob.rooms,
+        
+        // Add the specific field names the API expects
+        topic_data: selectedJob.topics,  // Use the exact field name the API expects
+        room_id: roomId,                // Must be an integer, not an array
+        
+        // Keep other fields for reference
         property_id: selectedJob.property_id,
       };
 
+      // Validate the data before sending to the server
+      if (!updatedJobData.description || updatedJobData.description.trim() === "") {
+        throw new Error("Description is required");
+      }
+      
+      if (!updatedJobData.priority) {
+        throw new Error("Priority is required");
+      }
+      
+      if (!updatedJobData.topic_data || updatedJobData.topic_data.length === 0) {
+        throw new Error("At least one topic is required");
+      }
+      
+      if (!updatedJobData.room_id) {
+        throw new Error("Room is required");
+      }
+      
+      console.log("Sending update with data:", JSON.stringify(updatedJobData, null, 2));
+      
+      // First update on the server
       const updatedJob = await updateJob(String(selectedJob.job_id), updatedJobData);
-      updateJobInState(updatedJob);
+      console.log("Received updated job:", JSON.stringify(updatedJob, null, 2));
+      
+      // Then update in the local state - make sure to merge with the original job
+      // This ensures we don't lose any fields that aren't returned by the API
+      const mergedJob = {
+        ...selectedJob,
+        ...updatedJob,
+      };
+      
+      // Make sure the required fields are preserved in the merged result
+      // This is in case the API response doesn't include them
+      if (!mergedJob.topics || mergedJob.topics.length === 0) {
+        mergedJob.topics = selectedJob.topics;
+      }
+      
+      if (!mergedJob.rooms || mergedJob.rooms.length === 0) {
+        mergedJob.rooms = selectedJob.rooms;
+      }
+      
+      updateJobInState(mergedJob);
 
       toast({
         title: "Success",
@@ -501,9 +559,10 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
       });
       setIsEditDialogOpen(false);
     } catch (error) {
+      console.error("Error updating job:", error);
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update job",
+        title: "Validation Error",
+        description: error instanceof Error ? error.message : "Failed to update job. Please check required fields.",
         variant: "destructive",
       });
     } finally {
@@ -516,7 +575,10 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
 
     setIsSubmitting(true);
     try {
+      // First delete on the server
       await deleteJob(String(selectedJob.job_id));
+      
+      // Then remove from the local state
       removeJob(selectedJob.job_id);
 
       toast({
@@ -524,7 +586,13 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
         description: "Maintenance job deleted successfully.",
       });
       setIsDeleteDialogOpen(false);
+      
+      // If we're on the last page and it becomes empty after deletion, go to previous page
+      if (currentJobs.length === 1 && currentPage > 1) {
+        setCurrentPage(prev => prev - 1);
+      }
     } catch (error) {
+      console.error("Error deleting job:", error);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to delete job",

@@ -119,7 +119,7 @@ function MobileHeader() {
           <MobileNav />
           <Link href="/dashboard" className="flex items-center gap-2">
             <Package2 className="h-5 w-5 text-blue-600" />
-            <span className="font-semibold text-gray-800">Admin</span>
+            <span className="font-semibold text-gray-800">PMCS</span>
           </Link>
         </div>
         <div className="flex items-center gap-2">

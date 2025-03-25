@@ -117,25 +117,47 @@ export default function JobActions({
     }
   };
 
-  // Updated to handle different possible structures of job.properties
+  // Enhanced filteredJobsCount calculation to handle more property structures
   const filteredJobsCount = jobs.filter((job) => {
+    // No property selected means include all jobs
     if (!selectedProperty) return true;
-    if (!job.properties || !Array.isArray(job.properties) || job.properties.length === 0) return false;
     
+    // If job has no properties field or it's not an array or empty, exclude the job
+    if (!job.properties || !Array.isArray(job.properties) || job.properties.length === 0) {
+      return false;
+    }
+    
+    // Check all possible property structures
     return job.properties.some((prop: any) => {
-      // Handle if property is a string or number ID
+      // Case 1: Property is a string or number ID
       if (typeof prop === 'string' || typeof prop === 'number') {
         return String(prop) === selectedProperty;
       }
       
-      // Handle if property is an object with property_id
+      // Case 2: Property is an object with property_id
       if (prop && typeof prop === 'object' && 'property_id' in prop) {
         return String(prop.property_id) === selectedProperty;
+      }
+      
+      // Case 3: Property is an object with id field
+      if (prop && typeof prop === 'object' && 'id' in prop) {
+        return String(prop.id) === selectedProperty;
+      }
+      
+      // Case 4: Try to match any property value that might contain the ID
+      if (prop && typeof prop === 'object') {
+        return Object.values(prop).some(value => 
+          (typeof value === 'string' || typeof value === 'number') && 
+          String(value) === selectedProperty
+        );
       }
       
       return false;
     });
   }).length;
+
+  // Uncomment for debugging
+  // console.log("Jobs:", jobs.length, "Filtered:", filteredJobsCount, "Selected:", selectedProperty);
 
   const menuItemClass = "flex items-center gap-2 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-800 hover:text-white cursor-pointer";
   const menuLabelClass = "text-xs font-semibold text-zinc-400 px-3 py-1.5";
@@ -233,7 +255,7 @@ export default function JobActions({
           className={buttonClass}
         >
           <FileDown className="h-4 w-4" />
-          {isGenerating ? "Generating..." : `Export (${filteredJobsCount})`}
+          {isGenerating ? "Generating..." : `Export (${filteredJobsCount || 0})`}
         </Button>
 
         <CreateJobButton onJobCreated={handleRefresh} />
@@ -298,7 +320,7 @@ export default function JobActions({
               className={menuItemClass}
             >
               <FileDown className="h-4 w-4" />
-              {isGenerating ? "Generating..." : `Export PDF (${filteredJobsCount})`}
+              {isGenerating ? "Generating..." : `Export PDF (${filteredJobsCount || 0})`}
             </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-zinc-800 my-1" />
 

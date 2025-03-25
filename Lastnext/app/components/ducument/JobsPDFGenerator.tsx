@@ -1,7 +1,15 @@
 // ./app/components/ducument/JobsPDFGenerator.tsx
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Image, Font } from '@react-pdf/renderer';
 import { Job, TabValue, FILTER_TITLES } from '@/app/lib/types';
+
+// Register a Thai font
+// You'll need to make sure this font file is available in your project
+// and adjust the path accordingly
+Font.register({
+  family: 'Noto Sans Thai',
+  src: '/fonts/NotoSansThai-Regular.ttf',
+});
 
 interface JobsPDFDocumentProps {
   jobs: Job[];
@@ -61,6 +69,11 @@ const styles = StyleSheet.create({
   value: {
     fontSize: 10,
     marginBottom: 8
+  },
+  thaiValue: {
+    fontSize: 10,
+    marginBottom: 8,
+    fontFamily: 'Noto Sans Thai', // Use the Thai font for description
   },
   statusBadge: {
     fontSize: 10,
@@ -154,7 +167,7 @@ const JobsPDFDocument: React.FC<JobsPDFDocumentProps> = ({ jobs, filter, selecte
               {job.description && (
                 <>
                   <Text style={styles.label}>Description:</Text>
-                  <Text style={styles.value}>{job.description}</Text>
+                  <Text style={styles.thaiValue}>{job.description}</Text>
                 </>
               )}
               {job.remarks && (

@@ -5,6 +5,7 @@ import { NextAuthOptions } from "next-auth";
 import { prisma } from "@/app/lib/prisma";
 import { UserProfile, Property } from "@/app/lib/types"; // Import your types
 import { getUserProperties } from "./prisma-user-property";
+import { refreshAccessToken } from "./auth-helpers";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
@@ -42,13 +43,15 @@ export const authOptions: NextAuthOptions = {
             throw new Error("Token response missing access or refresh token.");
           }
 
-          /** 🔹 Step 2: Decode JWT token to get user ID */
+          /** 🔹 Step 2: Decode JWT token to get user ID and expiry */
           const decoded = jwt.decode(tokenData.access) as JwtPayload;
           if (!decoded || typeof decoded !== "object" || !decoded.user_id) {
             throw new Error("Failed to decode access token.");
           }
 
           const userId = String(decoded.user_id);
+          // Calculate token expiry time
+          const accessTokenExpires = decoded.exp ? decoded.exp * 1000 : Date.now() + 60 * 60 * 1000;
 
           /** 🔹 Step 3: Fetch user from Prisma database */
           let user = await prisma.user.findUnique({
@@ -93,11 +96,8 @@ export const authOptions: NextAuthOptions = {
 
           /** 🔹 Step 6: Normalize properties */
           let normalizedProperties: Property[] = [];
-
-
           
-          if (profileData.properties && profileData.properties.length > 0) {//+
-
+          if (profileData.properties && profileData.properties.length > 0) {
             normalizedProperties = profileData.properties.map((prop: any) => ({
               id: String(prop.id),
               property_id: String(prop.property_id || prop.id),
@@ -135,11 +135,12 @@ export const authOptions: NextAuthOptions = {
             created_at: user.created_at.toISOString() || profileData.created_at || new Date().toISOString(),
           };
 
-          /** 🔹 Step 8: Return the user object */
+          /** 🔹 Step 8: Return the user object with token expiry time */
           return {
             ...userProfile,
             accessToken: tokenData.access,
             refreshToken: tokenData.refresh,
+            accessTokenExpires: accessTokenExpires,
           };
         } catch (error) {
           console.error("Authorization Error:", error);
@@ -150,7 +151,8 @@ export const authOptions: NextAuthOptions = {
   ],
 
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
+      // Initial sign in
       if (user) {
         token.id = user.id;
         token.username = user.username;
@@ -161,8 +163,35 @@ export const authOptions: NextAuthOptions = {
         token.created_at = user.created_at;
         token.accessToken = user.accessToken;
         token.refreshToken = user.refreshToken;
+        token.accessTokenExpires = user.accessTokenExpires;
       }
-      return token;
+
+      // Return previous token if the access token has not expired yet
+      if (Date.now() < (token.accessTokenExpires as number)) {
+        return token;
+      }
+
+      // Access token has expired, try to update it
+      try {
+        console.log("Access token has expired. Attempting refresh...");
+        const refreshedToken = await refreshAccessToken(token.refreshToken as string);
+        
+        if (refreshedToken.error) {
+          console.error("Error refreshing token:", refreshedToken.error);
+          return { ...token, error: "RefreshAccessTokenError" };
+        }
+        
+        console.log("Token refreshed successfully");
+        return {
+          ...token,
+          accessToken: refreshedToken.accessToken,
+          refreshToken: refreshedToken.refreshToken || token.refreshToken,
+          accessTokenExpires: refreshedToken.accessTokenExpires,
+        };
+      } catch (error) {
+        console.error("Token refresh error:", error);
+        return { ...token, error: "RefreshAccessTokenError" };
+      }
     },
 
     async session({ session, token }) {
@@ -177,7 +206,24 @@ export const authOptions: NextAuthOptions = {
         accessToken: token.accessToken as string,
         refreshToken: token.refreshToken as string,
       };
+      
+      // Pass error to the session if token refresh failed
+      if (token.error) {
+        session.error = token.error as string;
+      }
+      
       return session;
+    },
+  },
+
+  events: {
+    async signIn({ user }) {
+      console.log(`User ${user.id} signed in successfully`);
+    },
+    async session({ session, token }) {
+      if (token.error === "RefreshAccessTokenError") {
+        console.error(`Session error: Failed to refresh access token`);
+      }
     },
   },
 
