@@ -11,13 +11,9 @@ import { Button } from "@/app/components/ui/button";
 import { ChevronDown, Building2 } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 import { Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useUser } from '@/app/lib/user-context'; // Import the UserContext
+import { useUser } from '@/app/lib/user-context';
 
 const HeaderPropertyList = () => {
-  const router = useRouter();
-  
-  // Use the UserContext instead of useSession and local state
   const { userProfile, selectedProperty, setSelectedProperty, loading } = useUser();
   
   // Helper function to safely get the string ID from any property object format
@@ -49,20 +45,15 @@ const HeaderPropertyList = () => {
   const currentProperty = useMemo(() => {
     if (!properties.length) return null;
     
-    console.log("Looking for property with ID:", selectedProperty);
-    console.log("Available properties:", properties);
-    
     if (selectedProperty) {
       for (const prop of properties) {
         const propId = getPropertyId(prop);
         if (propId === selectedProperty) {
-          console.log("Found matching property:", prop);
           return prop;
         }
       }
     }
     
-    console.log("No matching property found, using first property:", properties[0]);
     return properties[0];
   }, [properties, selectedProperty, getPropertyId]);
 
@@ -70,8 +61,6 @@ const HeaderPropertyList = () => {
   const handlePropertySelect = useCallback(
     (property: any) => {
       const propId = getPropertyId(property);
-      console.log("Selected property:", property);
-      console.log("Property ID:", propId);
       setSelectedProperty(propId);
       localStorage.setItem("selectedPropertyId", propId); // Persist selection
     },
@@ -84,7 +73,7 @@ const HeaderPropertyList = () => {
       <Button
         variant="outline"
         disabled
-        className="flex items-center gap-2 w-full sm:w-auto h-10 text-sm sm:text-base px-3 sm:px-4 bg-white border-gray-300 text-gray-500"
+        className="flex items-center gap-2 w-full sm:w-auto h-12 px-4 bg-white border-gray-300 text-gray-500"
       >
         <Loader2 className="h-4 w-4 animate-spin" />
         Loading...
@@ -98,7 +87,7 @@ const HeaderPropertyList = () => {
       <Button
         variant="outline"
         disabled
-        className="flex items-center gap-2 w-full sm:w-auto h-10 text-sm sm:text-base px-3 sm:px-4 bg-white border-gray-300 text-gray-500"
+        className="flex items-center gap-2 w-full sm:w-auto h-12 px-4 bg-white border-gray-300 text-gray-500"
       >
         <Building2 className="h-4 w-4" />
         No Properties
@@ -112,7 +101,7 @@ const HeaderPropertyList = () => {
         <DropdownMenuTrigger asChild>
           <Button
             variant="outline"
-            className="flex items-center justify-between gap-2 w-full sm:w-auto h-10 text-sm sm:text-base px-3 sm:px-4 bg-white border-gray-300 hover:bg-gray-50"
+            className="flex items-center justify-between gap-2 w-full sm:w-auto h-12 px-4 bg-white border-gray-300 hover:bg-gray-50"
           >
             <div className="flex items-center gap-2 truncate">
               <Building2 className="h-4 w-4 flex-shrink-0 text-gray-600" />
@@ -124,7 +113,7 @@ const HeaderPropertyList = () => {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
-          className="w-full sm:w-[200px] bg-white border-gray-200 shadow-md rounded-md mt-1"
+          className="w-full min-w-[200px] max-w-[90vw] bg-white border-gray-200 shadow-md rounded-md mt-1"
           align="start"
         >
           {properties.map((property, index) => (
@@ -132,7 +121,7 @@ const HeaderPropertyList = () => {
               key={getPropertyId(property) || `property-${index}`}
               onClick={() => handlePropertySelect(property)}
               className={cn(
-                "flex items-center gap-2 px-3 py-2.5 text-sm sm:text-base cursor-pointer min-h-[44px]",
+                "flex items-center gap-2 px-3 py-2.5 text-base cursor-pointer min-h-[44px]",
                 selectedProperty === getPropertyId(property)
                   ? "bg-blue-600 text-white"
                   : "hover:bg-gray-100 text-gray-700"
