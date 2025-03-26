@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, FormEvent, useEffect } from 'react';
+import { useState, FormEvent, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import Link from 'next/link';
 
-export default function Login() {
+// Create a client component that safely uses useSearchParams
+function LoginForm() {
   const [username, setUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +95,7 @@ export default function Login() {
 
         <form className="mt-8 space-y-6" onSubmit={handleLogin}>
           {error && (
-            <div className={`bg-${error.includes('Registration successful') ? 'green' : 'red'}-50 text-${error.includes('Registration successful') ? 'green' : 'red'}-600 p-3 rounded-md text-sm`}>
+            <div className={`${error.includes('Registration successful') ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'} p-3 rounded-md text-sm`}>
               {error}
             </div>
           )}
@@ -179,5 +180,20 @@ export default function Login() {
         </form>
       </div>
     </div>
+  );
+}
+
+// Main component with Suspense boundary
+export default function Login() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-pulse text-lg font-medium text-gray-500">
+          Loading...
+        </div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }
