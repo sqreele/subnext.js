@@ -49,6 +49,17 @@ const RoomAutocomplete = ({
     return false;
   };
 
+  // Detect if the rooms are likely to be from a nested property structure
+  const areRoomsNestedInProperty = useMemo(() => {
+    // If rooms don't have property references and they're in a property's rooms array,
+    // they're likely nested and don't need property filtering
+    if (Array.isArray(rooms) && rooms.length > 0) {
+      const sampleRoom = rooms[0];
+      return !sampleRoom.property_id && !sampleRoom.property && !sampleRoom.properties;
+    }
+    return false;
+  }, [rooms]);
+
   // Filter rooms by property and search query
   const filteredRooms = useMemo(() => {
     // Validate input rooms array
@@ -60,8 +71,8 @@ const RoomAutocomplete = ({
       // Skip invalid rooms
       if (!room || !room.name) return false;
       
-      // Property filtering
-      if (selectedProperty && !roomBelongsToProperty(room, selectedProperty)) {
+      // Property filtering - skip this check if rooms are nested in property
+      if (selectedProperty && !areRoomsNestedInProperty && !roomBelongsToProperty(room, selectedProperty)) {
         return false;
       }
       
@@ -76,7 +87,7 @@ const RoomAutocomplete = ({
       
       return true;
     });
-  }, [rooms, searchQuery, selectedProperty, roomBelongsToProperty]);
+  }, [rooms, searchQuery, selectedProperty, roomBelongsToProperty, areRoomsNestedInProperty]);
 
   // Get property name for display
   const getPropertyName = (): string => {
@@ -107,6 +118,11 @@ const RoomAutocomplete = ({
           }
         </span>
       </div>
+      {areRoomsNestedInProperty && (
+        <div className="text-xs text-blue-600">
+          Using rooms from property structure
+        </div>
+      )}
       
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
