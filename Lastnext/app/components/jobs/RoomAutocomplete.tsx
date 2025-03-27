@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/app/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/app/components/ui/popover";
 import { Button } from "@/app/components/ui/button";
@@ -27,23 +27,53 @@ const RoomAutocomplete = ({
   // Find the current property name for display purposes
   const currentPropertyName = userProperties.find(p => p.property_id === selectedProperty)?.name || "All Properties";
 
-  // Filter rooms by search query only
-  const displayRooms = Array.isArray(rooms) ? rooms.filter((room) => {
-    // Skip invalid rooms
-    if (!room || !room.name) return false;
-    
-    // Apply search filter
-    if (searchQuery) {
-      const search = searchQuery.toLowerCase();
-      const roomName = (room.name || '').toLowerCase();
-      const roomType = (room.room_type || '').toLowerCase();
+  // Get the numeric ID of the selected property (important for filtering)
+  const selectedPropertyObj = userProperties.find(p => p.property_id === selectedProperty);
+  
+  // Use a type assertion to access id, since it exists at runtime but TypeScript doesn't recognize it
+  const selectedPropertyNumericId = selectedPropertyObj ? Number((selectedPropertyObj as any).id) : null;
+
+  // Filter rooms by property ID and search query
+  const displayRooms = useMemo(() => {
+    if (!Array.isArray(rooms)) return [];
+
+    return rooms.filter(room => {
+      // Skip invalid rooms
+      if (!room || !room.name) return false;
+
+      // Filter by property if one is selected and we have its numeric ID
+      if (selectedProperty && selectedProperty !== "all" && selectedPropertyNumericId) {
+        // Check if room.properties array contains the numeric ID of the selected property
+        if (!Array.isArray(room.properties) || !room.properties.includes(selectedPropertyNumericId)) {
+          return false;
+        }
+      }
+
+      // Apply search filter
+      if (searchQuery) {
+        const search = searchQuery.toLowerCase();
+        const roomName = (room.name || '').toLowerCase();
+        const roomType = (room.room_type || '').toLowerCase();
+        
+        return roomName.includes(search) || roomType.includes(search);
+      }
       
-      return roomName.includes(search) || roomType.includes(search);
-    }
+      return true;
+    });
+  }, [rooms, selectedProperty, selectedPropertyNumericId, searchQuery]);
+
+  // Debug logging
+  useEffect(() => {
+    console.log("Selected Property ID (string):", selectedProperty);
+    console.log("Selected Property Numeric ID:", selectedPropertyNumericId);
+    console.log("Total Rooms:", rooms?.length || 0);
+    console.log("Filtered Rooms:", displayRooms.length);
     
-    // Show all rooms if no search query
-    return true;
-  }) : [];
+    if (rooms?.length > 0 && displayRooms.length === 0) {
+      console.log("Sample Room (not matched):", rooms[0]);
+      console.log("  - Properties array:", rooms[0].properties);
+    }
+  }, [selectedProperty, selectedPropertyNumericId, rooms, displayRooms]);
 
   return (
     <div className="space-y-2">
@@ -80,9 +110,9 @@ const RoomAutocomplete = ({
             <CommandList>
               <CommandEmpty className="py-3 px-4 text-sm text-gray-500">
                 {!Array.isArray(rooms) || rooms.length === 0 ? (
-                  "No rooms available. Check if rooms data is loaded."
+                  "No rooms available for this property."
                 ) : displayRooms.length === 0 ? (
-                  "No matching rooms found."
+                  "No matching rooms found for this property."
                 ) : (
                   "No rooms found."
                 )}
