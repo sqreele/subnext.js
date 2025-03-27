@@ -83,7 +83,7 @@ export interface Room {
   room_type: string;
   is_active: boolean;
   created_at: string;
-  property_id?: string;
+  property_id?: string | number;
   property?: number| string;
   properties?: number[];
 }

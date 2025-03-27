@@ -14,96 +14,176 @@ interface RoomAutocompleteProps {
   rooms: Room[];
   selectedRoom: Room | null;
   onSelect: (room: Room) => void;
-  propertyIdField?: keyof Room; // Optional prop to specify which field to use for property ID matching
+  propertyIdField?: keyof Room;
+  debug?: boolean;
 }
 
-const RoomAutocomplete = ({ 
-  rooms, 
-  selectedRoom, 
+// Define Room interface based on your data structure
+
+
+const RoomAutocomplete = ({
+  rooms,
+  selectedRoom,
   onSelect,
-  propertyIdField = 'property' // Default to 'property' for backward compatibility
+  propertyIdField = "property",
+  debug = true,
 }: RoomAutocompleteProps) => {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const { selectedProperty } = useProperty();
   const { data: session } = useSession();
 
-  // Safely check if a room belongs to the selected property
+  // Check if room belongs to selected property
   const roomBelongsToProperty = (room: Room, propertyId: string | null): boolean => {
-    if (!propertyId) return true;
-    
-    // Check all possible property reference fields
-    const propertyFields: (keyof Room)[] = ['property_id', 'property'];
-    
+    if (!propertyId) {
+      debugLog('No property ID provided, allowing room', room.name);
+      return true;
+    }
+
+    const propertyFields: (keyof Room)[] = ['property_id', 'property', 'properties'];
+
     for (const field of propertyFields) {
-      if (room[field] !== undefined && String(room[field]) === propertyId) {
-        return true;
+      const fieldValue = room[field];
+      if (fieldValue !== undefined) {
+        // Handle array of properties
+        if (field === 'properties' && Array.isArray(fieldValue)) {
+          const matches = fieldValue.some(prop => {
+            const propStr = String(prop);
+            return propStr === propertyId || propStr === `P${propertyId}`;
+          });
+          if (matches) {
+            debugLog(`Room ${room.name} matches property ${propertyId} via properties array`);
+            return true;
+          }
+        }
+        // Handle single value
+        else if (String(fieldValue) === propertyId || String(fieldValue) === `P${propertyId}`) {
+          debugLog(`Room ${room.name} matches property ${propertyId} via ${field}`);
+          return true;
+        }
       }
     }
-    
-    // Check properties array if it exists
-    if (room.properties && Array.isArray(room.properties)) {
-      return room.properties.some(prop => String(prop) === propertyId);
-    }
-    
+
+    debugLog(`Room ${room.name} does NOT match property ${propertyId}`, {
+      roomPropertyId: room.property_id,
+      roomProperty: room.property,
+      roomProperties: room.properties
+    });
     return false;
   };
 
-  // Detect if the rooms are likely to be from a nested property structure
+  // Debug logger
+  const debugLog = (message: string, data?: any) => {
+    if (debug) {
+      console.log(`[RoomAutocomplete] ${message}`, data !== undefined ? data : '');
+    }
+  };
+
+  // Log initial state
+  useEffect(() => {
+    debugLog('Component Render State:');
+    debugLog('Selected Property:', selectedProperty);
+    debugLog('Total Rooms Received:', rooms?.length || 0);
+    debugLog('Room Structure Sample:', rooms?.[0] || 'No rooms');
+  }, [rooms, selectedProperty]);
+
+  // Detect nested room structure
   const areRoomsNestedInProperty = useMemo(() => {
-    // If rooms don't have property references and they're in a property's rooms array,
-    // they're likely nested and don't need property filtering
     if (Array.isArray(rooms) && rooms.length > 0) {
       const sampleRoom = rooms[0];
-      return !sampleRoom.property_id && !sampleRoom.property && !sampleRoom.properties;
+      const isNested = !sampleRoom.property_id && !sampleRoom.property && !sampleRoom.properties;
+      
+      debugLog('Room Nesting Detection:', {
+        isNested,
+        sampleRoom,
+        hasPropertyId: !!sampleRoom.property_id,
+        hasProperty: !!sampleRoom.property,
+        hasProperties: !!sampleRoom.properties
+      });
+      
+      return isNested;
     }
+    debugLog('Not enough rooms to determine nesting');
     return false;
   }, [rooms]);
 
-  // Filter rooms by property and search query
+  // Filter rooms
   const filteredRooms = useMemo(() => {
-    // Validate input rooms array
     if (!Array.isArray(rooms) || rooms.length === 0) {
+      debugLog('No valid rooms array provided');
       return [];
     }
 
-    return rooms.filter((room) => {
-      // Skip invalid rooms
-      if (!room || !room.name) return false;
-      
-      // Property filtering - skip this check if rooms are nested in property
-      if (selectedProperty && !areRoomsNestedInProperty && !roomBelongsToProperty(room, selectedProperty)) {
+    debugLog(`Starting room filtering with ${rooms.length} rooms`);
+    debugLog('Filtering parameters:', {
+      selectedProperty,
+      searchQuery,
+      areRoomsNestedInProperty
+    });
+
+    const results = rooms.filter((room) => {
+      if (!room || !room.name) {
+        debugLog('Skipping invalid room:', room);
         return false;
       }
-      
-      // Search filtering
+
+      if (selectedProperty && !areRoomsNestedInProperty) {
+        if (!roomBelongsToProperty(room, selectedProperty)) {
+          return false;
+        }
+      }
+
       if (searchQuery) {
         const search = searchQuery.toLowerCase();
         const nameMatch = room.name.toLowerCase().includes(search);
         const typeMatch = room.room_type?.toLowerCase().includes(search) || false;
         
-        return nameMatch || typeMatch;
+        if (!nameMatch && !typeMatch) {
+          debugLog(`Room ${room.name} doesn't match search query "${searchQuery}"`);
+          return false;
+        }
       }
-      
+
       return true;
     });
-  }, [rooms, searchQuery, selectedProperty, roomBelongsToProperty, areRoomsNestedInProperty]);
 
-  // Get property name for display
+    debugLog(`Filtering complete: ${results.length} rooms match the criteria`);
+    return results;
+  }, [rooms, searchQuery, selectedProperty, areRoomsNestedInProperty]);
+
+  // Debug filtered rooms changes
+  useEffect(() => {
+    debugLog(`Filtered Rooms Changed: ${filteredRooms.length} rooms after filtering`);
+    if (filteredRooms.length === 0 && rooms && rooms.length > 0) {
+      debugLog('WARNING: No rooms match the criteria after filtering');
+      debugLog('Current filtering parameters:', {
+        areRoomsNestedInProperty,
+        selectedProperty,
+        searchQuery,
+        totalRooms: rooms.length
+      });
+    }
+  }, [filteredRooms, rooms, areRoomsNestedInProperty, selectedProperty, searchQuery]);
+
+  // Get property name
   const getPropertyName = (): string => {
-    if (!selectedProperty) return "All Properties";
-    
-    // Check session user properties
+    if (!selectedProperty) {
+      debugLog('No property selected, using default name');
+      return "All Properties";
+    }
+
     if (session?.user?.properties && Array.isArray(session.user.properties)) {
+      debugLog('Looking for property name in session properties:', session.user.properties);
       const property = session.user.properties.find(
         p => p && typeof p === 'object' && 'property_id' in p && p.property_id === selectedProperty
       );
-      
       if (property && typeof property === 'object' && 'name' in property && property.name) {
+        debugLog(`Found property name: ${property.name}`);
         return property.name;
       }
     }
-    
+
+    debugLog(`Using fallback property name for ID: ${selectedProperty}`);
     return `Property ${selectedProperty}`;
   };
 
@@ -113,14 +193,22 @@ const RoomAutocomplete = ({
         <Building className="h-3.5 w-3.5" />
         <span>
           Showing rooms for: <span className="font-medium text-gray-700">{getPropertyName()}</span>
-          {filteredRooms.length > 0 && 
+          {filteredRooms.length > 0 && (
             <span className="ml-1">({filteredRooms.length} available)</span>
-          }
+          )}
         </span>
       </div>
       {areRoomsNestedInProperty && (
         <div className="text-xs text-blue-600">
           Using rooms from property structure
+        </div>
+      )}
+      {debug && (
+        <div className="text-xs text-gray-500 bg-gray-100 p-1 rounded">
+          Debug: Selected Property: {selectedProperty || 'none'} | 
+          Nested Structure: {areRoomsNestedInProperty ? 'Yes' : 'No'} | 
+          Rooms: {rooms?.length || 0} | 
+          Filtered: {filteredRooms.length}
         </div>
       )}
       
@@ -135,17 +223,16 @@ const RoomAutocomplete = ({
               !selectedRoom?.name && "text-gray-500"
             )}
           >
-            {selectedRoom?.name ? 
-              `${selectedRoom.name}${selectedRoom.room_type ? ` - ${selectedRoom.room_type}` : ''}` : 
-              "Select room..."
-            }
+            {selectedRoom?.name
+              ? `${selectedRoom.name}${selectedRoom.room_type ? ` - ${selectedRoom.room_type}` : ''}`
+              : "Select room..."}
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-gray-400" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 bg-white border border-gray-200 shadow-md">
           <Command shouldFilter={false} className="border-0">
-            <CommandInput 
-              placeholder="Search room..." 
+            <CommandInput
+              placeholder="Search room..."
               value={searchQuery}
               onValueChange={setSearchQuery}
               className="h-11 text-base border-b border-gray-200"
