@@ -27,28 +27,14 @@ const RoomAutocomplete = ({
   // Find the current property name for display purposes
   const currentPropertyName = userProperties.find(p => p.property_id === selectedProperty)?.name || "All Properties";
 
-  // Get the numeric ID of the selected property (important for filtering)
-  const selectedPropertyObj = userProperties.find(p => p.property_id === selectedProperty);
-  
-  // Use a type assertion to access id, since it exists at runtime but TypeScript doesn't recognize it
-  const selectedPropertyNumericId = selectedPropertyObj ? Number((selectedPropertyObj as any).id) : null;
-
-  // Filter rooms by property ID and search query
+  // Filter rooms by search query only (for now)
   const displayRooms = useMemo(() => {
     if (!Array.isArray(rooms)) return [];
 
     return rooms.filter(room => {
       // Skip invalid rooms
       if (!room || !room.name) return false;
-
-      // Filter by property if one is selected and we have its numeric ID
-      if (selectedProperty && selectedProperty !== "all" && selectedPropertyNumericId) {
-        // Check if room.properties array contains the numeric ID of the selected property
-        if (!Array.isArray(room.properties) || !room.properties.includes(selectedPropertyNumericId)) {
-          return false;
-        }
-      }
-
+      
       // Apply search filter
       if (searchQuery) {
         const search = searchQuery.toLowerCase();
@@ -60,20 +46,21 @@ const RoomAutocomplete = ({
       
       return true;
     });
-  }, [rooms, selectedProperty, selectedPropertyNumericId, searchQuery]);
+  }, [rooms, searchQuery]);
 
   // Debug logging
   useEffect(() => {
-    console.log("Selected Property ID (string):", selectedProperty);
-    console.log("Selected Property Numeric ID:", selectedPropertyNumericId);
+    console.log("Selected Property:", selectedProperty);
     console.log("Total Rooms:", rooms?.length || 0);
     console.log("Filtered Rooms:", displayRooms.length);
     
-    if (rooms?.length > 0 && displayRooms.length === 0) {
-      console.log("Sample Room (not matched):", rooms[0]);
-      console.log("  - Properties array:", rooms[0].properties);
+    if (rooms?.length > 0) {
+      console.log("Sample Room:", rooms[0]);
+      if (rooms[0].properties) {
+        console.log("Sample Room Properties:", rooms[0].properties);
+      }
     }
-  }, [selectedProperty, selectedPropertyNumericId, rooms, displayRooms]);
+  }, [selectedProperty, rooms, displayRooms]);
 
   return (
     <div className="space-y-2">
@@ -112,7 +99,7 @@ const RoomAutocomplete = ({
                 {!Array.isArray(rooms) || rooms.length === 0 ? (
                   "No rooms available for this property."
                 ) : displayRooms.length === 0 ? (
-                  "No matching rooms found for this property."
+                  "No matching rooms found. Try a different search term."
                 ) : (
                   "No rooms found."
                 )}
