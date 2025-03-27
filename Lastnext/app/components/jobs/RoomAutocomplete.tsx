@@ -17,7 +17,7 @@ export interface Room {
   created_at: string;
   property_id?: string | number;
   property?: number | string;
-  properties?: number[]; // Array of Property PKs (numeric IDs)
+  properties?: string[]; // Changed to string[] to match property_id
 }
 
 interface RoomAutocompleteProps {
@@ -56,29 +56,15 @@ const RoomAutocomplete = ({
       return false;
     }
 
-    // Map property_id (string) to id (number)
-    const propertyMap = userProperties.reduce((map, prop) => {
-      map[prop.property_id] = prop.id; // prop.id is number, property_id is string
-      return map;
-    }, {} as Record<string, number>);
-
-    const numericPropertyId = propertyMap[propertyId]; // This is a number or undefined
-
-    const matches = room.properties.some(prop => {
-      const propNum = Number(prop); // Ensure prop is treated as a number
-      const matchesNumeric = numericPropertyId !== undefined && propNum === numericPropertyId;
-      const matchesDirect = String(prop) === propertyId; // Fallback for string comparison
-      return matchesNumeric || matchesDirect;
-    });
+    const matches = room.properties.some(prop => prop === propertyId);
 
     debugLog(`Room ${room.name} property check`, {
       roomProperties: room.properties,
       selectedPropertyId: propertyId,
-      numericPropertyId,
       matches,
       types: {
         roomProperties: room.properties.map(p => typeof p),
-        numericPropertyId: typeof numericPropertyId,
+        propertyId: typeof propertyId,
       },
     });
 

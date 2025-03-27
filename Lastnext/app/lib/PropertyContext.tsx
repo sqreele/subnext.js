@@ -1,6 +1,3 @@
-// File: ./app/lib/PropertyContext.tsx
-"use client";
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useSession } from "next-auth/react";
 
