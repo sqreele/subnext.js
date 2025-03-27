@@ -31,20 +31,52 @@ const RoomAutocomplete = ({
   const displayRooms = useMemo(() => {
     if (!Array.isArray(rooms)) return [];
 
+    // For debugging
+    console.log("Filtering rooms with these properties:");
+    if (rooms.length > 0) {
+      const sampleRoom = rooms[0];
+      console.log("Sample room structure:", JSON.stringify(sampleRoom, null, 2));
+      console.log("Property field:", sampleRoom.property);
+      console.log("Properties field:", sampleRoom.properties);
+    }
+
     return rooms.filter(room => {
       // Skip invalid rooms
       if (!room || !room.name) return false;
       
       // Apply property filter if a property is selected
       if (selectedProperty) {
-        // Check if room belongs to the selected property
-        const belongsToProperty = 
-          // Check property field directly
-          (room.property && String(room.property) === selectedProperty) ||
-          // Check properties array
-          (room.properties && room.properties.some(prop => String(prop) === selectedProperty));
+        // The rooms in your data structure might not have direct property information
+        // They might have been pre-filtered by the API based on the property
+        // If we're in a component that already received rooms for a specific property,
+        // we can skip property filtering
         
-        if (!belongsToProperty) return false;
+        // Check if user has only one property - if so, rooms are likely for that property
+        if (userProperties.length === 1 && userProperties[0].property_id === selectedProperty) {
+          // Skip property filtering - all rooms belong to this property
+        }
+        else {
+          // Various ways a room might be associated with a property
+          const belongsToProperty = 
+            // Check property field directly 
+            (room.property && String(room.property) === selectedProperty) ||
+            // Check numeric property field (some APIs return numbers)
+            (room.property && Number(room.property) === Number(selectedProperty)) ||
+            // Check properties array with string comparison
+            (room.properties && Array.isArray(room.properties) && 
+              room.properties.some(prop => String(prop) === selectedProperty)) ||
+            // Sometimes the property ID is in the room ID format
+            (room.room_id && String(room.room_id).includes(selectedProperty)) ||
+            // Check property_id field if it exists
+            (room.property_id && String(room.property_id) === selectedProperty);
+            
+          // If none of the above checks passed, don't include this room
+          if (!belongsToProperty) {
+            // Log for debugging
+            console.log(`Room ${room.name} (ID: ${room.room_id}) filtered out - not matching property ${selectedProperty}`);
+            return false;
+          }
+        }
       }
       
       // Apply search filter
@@ -58,7 +90,7 @@ const RoomAutocomplete = ({
       
       return true;
     });
-  }, [rooms, searchQuery, selectedProperty]);
+  }, [rooms, searchQuery, selectedProperty, userProperties]);
 
   // Debug logging
   useEffect(() => {
