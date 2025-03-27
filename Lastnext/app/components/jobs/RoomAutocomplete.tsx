@@ -4,112 +4,108 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/app/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/app/components/ui/popover";
 import { Button } from "@/app/components/ui/button";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, Building } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 import { Room } from "@/app/lib/types";
 import { useProperty } from "@/app/lib/PropertyContext";
+import { useSession } from "next-auth/react";
 
 interface RoomAutocompleteProps {
   rooms: Room[];
   selectedRoom: Room | null;
   onSelect: (room: Room) => void;
+  propertyIdField?: keyof Room; // Optional prop to specify which field to use for property ID matching
 }
 
 const RoomAutocomplete = ({ 
   rooms, 
   selectedRoom, 
-  onSelect
+  onSelect,
+  propertyIdField = 'property' // Default to 'property' for backward compatibility
 }: RoomAutocompleteProps) => {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const { selectedProperty, userProperties } = useProperty();
+  const { selectedProperty } = useProperty();
+  const { data: session } = useSession();
 
-  // Find the current property name for display purposes
-  const currentPropertyName = userProperties.find(p => p.property_id === selectedProperty)?.name || "All Properties";
+  // Safely check if a room belongs to the selected property
+  const roomBelongsToProperty = (room: Room, propertyId: string | null): boolean => {
+    if (!propertyId) return true;
+    
+    // Check all possible property reference fields
+    const propertyFields: (keyof Room)[] = ['property_id', 'property'];
+    
+    for (const field of propertyFields) {
+      if (room[field] !== undefined && String(room[field]) === propertyId) {
+        return true;
+      }
+    }
+    
+    // Check properties array if it exists
+    if (room.properties && Array.isArray(room.properties)) {
+      return room.properties.some(prop => String(prop) === propertyId);
+    }
+    
+    return false;
+  };
 
   // Filter rooms by property and search query
-  const displayRooms = useMemo(() => {
-    if (!Array.isArray(rooms)) return [];
-
-    // For debugging
-    console.log("Filtering rooms with these properties:");
-    if (rooms.length > 0) {
-      const sampleRoom = rooms[0];
-      console.log("Sample room structure:", JSON.stringify(sampleRoom, null, 2));
-      console.log("Property field:", sampleRoom.property);
-      console.log("Properties field:", sampleRoom.properties);
+  const filteredRooms = useMemo(() => {
+    // Validate input rooms array
+    if (!Array.isArray(rooms) || rooms.length === 0) {
+      return [];
     }
 
-    return rooms.filter(room => {
+    return rooms.filter((room) => {
       // Skip invalid rooms
       if (!room || !room.name) return false;
       
-      // Apply property filter if a property is selected
-      if (selectedProperty) {
-        // The rooms in your data structure might not have direct property information
-        // They might have been pre-filtered by the API based on the property
-        // If we're in a component that already received rooms for a specific property,
-        // we can skip property filtering
-        
-        // Check if user has only one property - if so, rooms are likely for that property
-        if (userProperties.length === 1 && userProperties[0].property_id === selectedProperty) {
-          // Skip property filtering - all rooms belong to this property
-        }
-        else {
-          // Various ways a room might be associated with a property
-          const belongsToProperty = 
-            // Check property field directly 
-            (room.property && String(room.property) === selectedProperty) ||
-            // Check numeric property field (some APIs return numbers)
-            (room.property && Number(room.property) === Number(selectedProperty)) ||
-            // Check properties array with string comparison
-            (room.properties && Array.isArray(room.properties) && 
-              room.properties.some(prop => String(prop) === selectedProperty)) ||
-            // Sometimes the property ID is in the room ID format
-            (room.room_id && String(room.room_id).includes(selectedProperty)) ||
-            // Check property_id field if it exists
-            (room.property_id && String(room.property_id) === selectedProperty);
-            
-          // If none of the above checks passed, don't include this room
-          if (!belongsToProperty) {
-            // Log for debugging
-            console.log(`Room ${room.name} (ID: ${room.room_id}) filtered out - not matching property ${selectedProperty}`);
-            return false;
-          }
-        }
+      // Property filtering
+      if (selectedProperty && !roomBelongsToProperty(room, selectedProperty)) {
+        return false;
       }
       
-      // Apply search filter
+      // Search filtering
       if (searchQuery) {
         const search = searchQuery.toLowerCase();
-        const roomName = (room.name || '').toLowerCase();
-        const roomType = (room.room_type || '').toLowerCase();
+        const nameMatch = room.name.toLowerCase().includes(search);
+        const typeMatch = room.room_type?.toLowerCase().includes(search) || false;
         
-        return roomName.includes(search) || roomType.includes(search);
+        return nameMatch || typeMatch;
       }
       
       return true;
     });
-  }, [rooms, searchQuery, selectedProperty, userProperties]);
+  }, [rooms, searchQuery, selectedProperty, roomBelongsToProperty]);
 
-  // Debug logging
-  useEffect(() => {
-    console.log("Selected Property:", selectedProperty);
-    console.log("Total Rooms:", rooms?.length || 0);
-    console.log("Filtered Rooms:", displayRooms.length);
+  // Get property name for display
+  const getPropertyName = (): string => {
+    if (!selectedProperty) return "All Properties";
     
-    if (rooms?.length > 0) {
-      console.log("Sample Room:", rooms[0]);
-      if (rooms[0].properties) {
-        console.log("Sample Room Properties:", rooms[0].properties);
+    // Check session user properties
+    if (session?.user?.properties && Array.isArray(session.user.properties)) {
+      const property = session.user.properties.find(
+        p => p && typeof p === 'object' && 'property_id' in p && p.property_id === selectedProperty
+      );
+      
+      if (property && typeof property === 'object' && 'name' in property && property.name) {
+        return property.name;
       }
     }
-  }, [selectedProperty, rooms, displayRooms]);
+    
+    return `Property ${selectedProperty}`;
+  };
 
   return (
     <div className="space-y-2">
-      <div className="text-sm text-gray-500">
-        Showing rooms for: <span className="font-medium text-gray-700">{currentPropertyName}</span>
+      <div className="flex items-center gap-2 text-sm text-gray-500">
+        <Building className="h-3.5 w-3.5" />
+        <span>
+          Showing rooms for: <span className="font-medium text-gray-700">{getPropertyName()}</span>
+          {filteredRooms.length > 0 && 
+            <span className="ml-1">({filteredRooms.length} available)</span>
+          }
+        </span>
       </div>
       
       <Popover open={open} onOpenChange={setOpen}>
@@ -124,7 +120,7 @@ const RoomAutocomplete = ({
             )}
           >
             {selectedRoom?.name ? 
-              `${selectedRoom.name} - ${selectedRoom.room_type || 'No type'}` : 
+              `${selectedRoom.name}${selectedRoom.room_type ? ` - ${selectedRoom.room_type}` : ''}` : 
               "Select room..."
             }
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-gray-400" />
@@ -141,17 +137,19 @@ const RoomAutocomplete = ({
             <CommandList>
               <CommandEmpty className="py-3 px-4 text-sm text-gray-500">
                 {!Array.isArray(rooms) || rooms.length === 0 ? (
-                  "No rooms available for this property."
-                ) : displayRooms.length === 0 ? (
-                  "No matching rooms found. Try a different search term."
+                  "No rooms available. Please check API data."
+                ) : filteredRooms.length === 0 && selectedProperty ? (
+                  `No rooms found for property ${getPropertyName()}`
+                ) : filteredRooms.length === 0 && searchQuery ? (
+                  `No rooms match "${searchQuery}"`
                 ) : (
-                  "No rooms found."
+                  "No rooms found"
                 )}
               </CommandEmpty>
               <CommandGroup className="max-h-60 overflow-y-auto">
-                {displayRooms.map((room) => (
+                {filteredRooms.map((room) => (
                   <CommandItem
-                    key={room.room_id}
+                    key={`${room.room_id}-${room.name}`}
                     value={room.name}
                     onSelect={() => {
                       onSelect(room);
@@ -172,7 +170,9 @@ const RoomAutocomplete = ({
                         )}
                       />
                       <span className="font-medium">{room.name}</span>
-                      <span className="text-gray-500">- {room.room_type || "No type"}</span>
+                      {room.room_type && (
+                        <span className="text-gray-500">- {room.room_type}</span>
+                      )}
                     </div>
                   </CommandItem>
                 ))}
