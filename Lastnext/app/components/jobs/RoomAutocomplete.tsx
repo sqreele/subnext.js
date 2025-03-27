@@ -27,13 +27,25 @@ const RoomAutocomplete = ({
   // Find the current property name for display purposes
   const currentPropertyName = userProperties.find(p => p.property_id === selectedProperty)?.name || "All Properties";
 
-  // Filter rooms by search query only (for now)
+  // Filter rooms by property and search query
   const displayRooms = useMemo(() => {
     if (!Array.isArray(rooms)) return [];
 
     return rooms.filter(room => {
       // Skip invalid rooms
       if (!room || !room.name) return false;
+      
+      // Apply property filter if a property is selected
+      if (selectedProperty) {
+        // Check if room belongs to the selected property
+        const belongsToProperty = 
+          // Check property field directly
+          (room.property && String(room.property) === selectedProperty) ||
+          // Check properties array
+          (room.properties && room.properties.some(prop => String(prop) === selectedProperty));
+        
+        if (!belongsToProperty) return false;
+      }
       
       // Apply search filter
       if (searchQuery) {
@@ -46,7 +58,7 @@ const RoomAutocomplete = ({
       
       return true;
     });
-  }, [rooms, searchQuery]);
+  }, [rooms, searchQuery, selectedProperty]);
 
   // Debug logging
   useEffect(() => {
