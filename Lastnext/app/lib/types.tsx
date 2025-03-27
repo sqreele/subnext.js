@@ -85,7 +85,7 @@ export interface Room {
   created_at: string;
   property_id?: string | number;
   property?: number| string;
-  properties?: string[];
+  properties?:number;
 }
 
 export interface Job {

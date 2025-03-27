@@ -45,15 +45,26 @@ const RoomAutocomplete = ({
       return false;
     }
 
-    const matches = room.properties.some(prop => prop === propertyId);
+    // Convert propertyId to a number for comparison with room.properties (number[])
+    const propertyIdNum = Number(propertyId);
+    const isValidNumber = !isNaN(propertyIdNum);
+
+    if (!isValidNumber) {
+      debugLog(`Invalid propertyId "${propertyId}" cannot be converted to a number`);
+      return false;
+    }
+
+    const matches = room.properties.some(prop => prop === propertyIdNum);
 
     debugLog(`Room ${room.name} property check`, {
       roomProperties: room.properties,
       selectedPropertyId: propertyId,
+      propertyIdNum,
       matches,
       types: {
         roomProperties: room.properties.map(p => typeof p),
         propertyId: typeof propertyId,
+        propertyIdNum: typeof propertyIdNum,
       },
     });
 
