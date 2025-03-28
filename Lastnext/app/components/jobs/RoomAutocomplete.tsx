@@ -40,17 +40,11 @@ const RoomAutocomplete = ({
       return true;
     }
     
-    // Special case: Property ID "1" appears to be a global property in your system
-    // In your API data, rooms have properties: [1] which should match any property
+    // Check if room.properties includes the selected property (as either string or number)
     if (room.properties && Array.isArray(room.properties)) {
-      // Check if properties array contains the number 1
-      if (room.properties.includes(1)) {
-        debugLog(`Room ${room.name} has global property ID 1`);
-        return true;
-      }
-      
-      // Check if room.properties includes the selected property (as either string or number)
       const propertyIdNum = Number(propertyId);
+      
+      // Direct comparison: room.properties contains the selected property ID as a number
       if (!isNaN(propertyIdNum)) {
         if (room.properties.includes(propertyIdNum)) {
           debugLog(`Room ${room.name} properties includes ${propertyIdNum}`);
