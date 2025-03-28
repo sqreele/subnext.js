@@ -36,48 +36,58 @@ const RoomAutocomplete = ({
   const roomBelongsToProperty = (room: Room, propertyId: string | null): boolean => {
     // If no property is selected, show all rooms
     if (!propertyId) {
+      debugLog(`No property selected, showing room: ${room.name}`);
       return true;
     }
     
-    // Check direct property_id property
-    if (room.property_id && String(room.property_id) === propertyId) {
-      return true;
-    }
-    
-    // Check property property
-    if (room.property && String(room.property) === propertyId) {
-      return true;
-    }
-    
-    // Check properties array if it exists
+    // Special case: Property ID "1" appears to be a global property in your system
+    // In your API data, rooms have properties: [1] which should match any property
     if (room.properties && Array.isArray(room.properties)) {
-      // Convert propertyId to both number and string for flexible comparison
+      // Check if properties array contains the number 1
+      if (room.properties.includes(1)) {
+        debugLog(`Room ${room.name} has global property ID 1`);
+        return true;
+      }
+      
+      // Check if room.properties includes the selected property (as either string or number)
       const propertyIdNum = Number(propertyId);
-      const propertyIdStr = String(propertyId);
-      
-      // Check if any property in the array matches the selected property
-      const matches = room.properties.some(prop => {
-        if (typeof prop === 'object' && prop !== null) {
-          // Handle property object
-          return String(prop.property_id) === propertyIdStr;
-        } else {
-          // Handle property as primitive (number or string)
-          return String(prop) === propertyIdStr || (
-            !isNaN(propertyIdNum) && Number(prop) === propertyIdNum
-          );
+      if (!isNaN(propertyIdNum)) {
+        if (room.properties.includes(propertyIdNum)) {
+          debugLog(`Room ${room.name} properties includes ${propertyIdNum}`);
+          return true;
         }
-      });
+      }
       
-      return matches;
+      // Handle case where properties might be an array of objects
+      for (const prop of room.properties) {
+        if (typeof prop === 'object' && prop !== null) {
+          // Safely check if property_id exists on the object
+          const propObj = prop as any;
+          if ('property_id' in propObj && String(propObj.property_id) === propertyId) {
+            debugLog(`Room ${room.name} has property object with matching property_id`);
+            return true;
+          }
+        } else if (String(prop) === propertyId) {
+          debugLog(`Room ${room.name} has property string matching ${propertyId}`);
+          return true;
+        }
+      }
     }
     
-    // Special case: Property ID "1" (based on your comment in the original code)
-    // This appears to be a system-wide property that should match any selection
-    if (propertyId === "1" || propertyId === 1) {
+    // Check direct property_id field if it exists
+    if (room.property_id && String(room.property_id) === propertyId) {
+      debugLog(`Room ${room.name} property_id matches ${propertyId}`);
       return true;
     }
     
+    // Check property field if it exists
+    if (room.property && String(room.property) === propertyId) {
+      debugLog(`Room ${room.name} property matches ${propertyId}`);
+      return true;
+    }
+
     // If none of the above conditions match, the room doesn't belong to the property
+    debugLog(`Room ${room.name} does not match property: ${propertyId}`);
     return false;
   };
 
@@ -106,7 +116,8 @@ const RoomAutocomplete = ({
       }
 
       // Filter by property
-      if (selectedProperty && !roomBelongsToProperty(room, selectedProperty)) {
+      const matchesProperty = !selectedProperty || roomBelongsToProperty(room, selectedProperty);
+      if (!matchesProperty) {
         return false;
       }
 
@@ -129,13 +140,18 @@ const RoomAutocomplete = ({
     if (results.length === 0 && rooms.length > 0) {
       debugLog("WARNING: No rooms match criteria", {
         selectedProperty,
-        sampleRoom: rooms[0],
+        sampleRooms: rooms.slice(0, 3).map(r => ({
+          name: r.name,
+          properties: r.properties,
+          property: r.property,
+          property_id: r.property_id
+        })),
         propertiesAvailable: userProperties.length > 0,
       });
     }
     
     return results;
-  }, [rooms, searchQuery, selectedProperty, roomBelongsToProperty]);
+  }, [rooms, searchQuery, selectedProperty]);
 
   // Get property name for display
   const getPropertyName = (): string => {
