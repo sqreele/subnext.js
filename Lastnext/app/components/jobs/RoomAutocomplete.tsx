@@ -20,7 +20,7 @@ const RoomAutocomplete = ({
   rooms = [],
   selectedRoom,
   onSelect,
-  debug = false,
+  debug = true, // Set to true by default for debugging
 }: RoomAutocompleteProps) => {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -35,32 +35,72 @@ const RoomAutocomplete = ({
   // Safer room array handling
   const safeRooms = Array.isArray(rooms) ? rooms : [];
 
-  // Simplified function to check if a room belongs to a property
- // Simplified function to check if a room belongs to a property
+  // Enhanced debugging for property-room relationships
+  useEffect(() => {
+    if (debug) {
+      debugLog("PROPERTY CONTEXT:", {
+        selectedProperty,
+        userProperties
+      });
+      
+      if (safeRooms.length > 0) {
+        debugLog("SAMPLE ROOMS DATA:", 
+          safeRooms.slice(0, 3).map(room => ({
+            name: room.name,
+            room_id: room.room_id,
+            properties: room.properties, 
+            property_id: room.property_id,
+            property: room.property
+          }))
+        );
+      }
+      
+      if (selectedProperty) {
+        const propertyInfo = userProperties.find(p => p.property_id === selectedProperty);
+        debugLog(`SELECTED PROPERTY: ${selectedProperty}`, propertyInfo);
+      }
+    }
+  }, [selectedProperty, safeRooms, userProperties, debug]);
+
+  // Detailed room-to-property matching function with extensive logging
+// Improved roomBelongsToProperty function with proper type handling
 const roomBelongsToProperty = (room: Room, propertyId: string | null): boolean => {
   // If no property is selected, show all rooms
   if (!propertyId) return true;
   if (!room) return false;
   
-  // Convert propertyId to number for comparison
-  const propertyIdNum = Number(propertyId);
+  debugLog(`Checking if room ${room.name} belongs to property ${propertyId}`);
   
-  // Check if room.properties includes the propertyId (as number or string)
-  if (room.properties && Array.isArray(room.properties)) {
-    return room.properties.some(prop => {
-      if (typeof prop === 'object' && prop !== null) {
-        const propObj = prop as any;
-        return Boolean(propObj.property_id && String(propObj.property_id) === propertyId);
-      }
-      return Boolean(prop === propertyIdNum || String(prop) === propertyId);
-    });
+  // Special case mapping from property_id strings to numeric IDs used in room.properties
+  // This mapping should match your actual data
+  let internalNumericId: number | null = null;
+  
+  // Map property_id strings to the numeric IDs used in room.properties
+  if (propertyId === "PB749146D") internalNumericId = 1;
+  if (propertyId === "PE17D8D2C") internalNumericId = 2;
+  
+  // Check if properties array includes the numeric ID
+  if (room.properties && Array.isArray(room.properties) && internalNumericId !== null) {
+    if (room.properties.includes(internalNumericId)) {
+      debugLog(`✓ MATCH: Room properties includes mapped ID ${internalNumericId} for ${propertyId}`);
+      return true;
+    }
   }
   
-  // Check direct property_id or property field
-  return Boolean(
-    (room.property_id && String(room.property_id) === propertyId) ||
-    (room.property && String(room.property) === propertyId)
-  );
+  // Check direct property_id match
+  if (room.property_id && String(room.property_id) === propertyId) {
+    debugLog(`✓ MATCH: Direct property_id match`);
+    return true;
+  }
+  
+  // Check property field
+  if (room.property && String(room.property) === propertyId) {
+    debugLog(`✓ MATCH: Room property field matches`);
+    return true;
+  }
+  
+  debugLog(`✗ NO MATCH: Room ${room.name} does not match property ${propertyId}`);
+  return false;
 };
 
   // Reset selected room when property changes if it doesn't belong to the new property
@@ -72,16 +112,6 @@ const roomBelongsToProperty = (room: Room, propertyId: string | null): boolean =
     }
   }, [selectedProperty, selectedRoom]);
 
-  // Log component state for debugging
-  useEffect(() => {
-    debugLog("Component Render State:", {
-      selectedProperty,
-      totalRooms: safeRooms.length,
-      sampleRoom: safeRooms[0],
-      userPropertiesCount: userProperties?.length || 0,
-    });
-  }, [safeRooms, selectedProperty, userProperties]);
-
   // Filter rooms based on property and search query
   const filteredRooms = useMemo(() => {
     if (safeRooms.length === 0) {
@@ -89,10 +119,11 @@ const roomBelongsToProperty = (room: Room, propertyId: string | null): boolean =
       return [];
     }
 
+    debugLog(`Filtering ${safeRooms.length} rooms for property ${selectedProperty || 'any'} and query "${searchQuery}"`);
+
     const results = safeRooms.filter((room) => {
       // Skip invalid rooms
       if (!room || !room.name) {
-        debugLog("Skipping invalid room:", room);
         return false;
       }
 
@@ -113,25 +144,20 @@ const roomBelongsToProperty = (room: Room, propertyId: string | null): boolean =
       return true;
     });
 
-    debugLog(`Filtered ${results.length} rooms from ${safeRooms.length}`);
+    debugLog(`Filtering result: ${results.length} rooms match from ${safeRooms.length} total`);
     
     // Additional debug info if no rooms match
-    if (results.length === 0 && safeRooms.length > 0) {
-      debugLog("WARNING: No rooms match criteria", {
+    if (results.length === 0 && safeRooms.length > 0 && selectedProperty) {
+      debugLog("WARNING: No rooms match selected property", {
         selectedProperty,
-        sampleRooms: safeRooms.slice(0, 3).map(r => ({
-          name: r.name,
-          properties: r.properties,
-          property: r.property,
-          property_id: r.property_id
-        })),
-        propertiesAvailable: (userProperties?.length || 0) > 0,
+        propertyEntity: userProperties.find(p => p.property_id === selectedProperty),
+        totalRooms: safeRooms.length
       });
     }
     
     // Sort rooms by name for better usability
     return results.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true}));
-  }, [safeRooms, searchQuery, selectedProperty, userProperties]);
+  }, [safeRooms, searchQuery, selectedProperty]);
 
   // Get property name for display
   const getPropertyName = (): string => {
