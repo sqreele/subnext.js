@@ -45,6 +45,7 @@ interface FormValues {
   room: Room;
   files: File[];
   is_defective: boolean;
+  is_preventivemaintenance: boolean;
 }
 
 const validationSchema = Yup.object().shape({
@@ -69,6 +70,7 @@ const validationSchema = Yup.object().shape({
       return files.every((file) => file.type.startsWith('image/'));
     }),
   is_defective: Yup.boolean().default(false),
+  is_preventivemaintenance: Yup.boolean().default(false),
 });
 
 const initialValues: FormValues = {
@@ -80,6 +82,7 @@ const initialValues: FormValues = {
   room: { room_id: 0, name: '', room_type: '', is_active: true, created_at: new Date().toISOString(), property: 0, properties: [] },
   files: [],
   is_defective: false,
+  is_preventivemaintenance: false,
 };
 
 const CreateJobForm: React.FC = () => {
@@ -137,6 +140,7 @@ const CreateJobForm: React.FC = () => {
         username: session.user.username,
         user_id: session.user.id,
         is_defective: values.is_defective,
+        is_preventivemaintenance: values.is_preventivemaintenance,
       };
 
       Object.entries(payload).forEach(([key, value]) => {
@@ -292,18 +296,35 @@ const CreateJobForm: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-md border border-gray-200">
-              <Checkbox
-                id="is_defective"
-                checked={values.is_defective}
-                onCheckedChange={(checked) => setFieldValue('is_defective', checked)}
-                className="mt-1 h-5 w-5 border-gray-300 bg-white"
-              />
-              <div className="space-y-1">
-                <label htmlFor="is_defective" className="text-base font-medium text-gray-700">
-                  Defective Item
-                </label>
-                <p className="text-sm text-gray-500">Mark if defective or needs contractor repair</p>
+            <div className="space-y-4">
+              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-md border border-gray-200">
+                <Checkbox
+                  id="is_defective"
+                  checked={values.is_defective}
+                  onCheckedChange={(checked) => setFieldValue('is_defective', checked)}
+                  className="mt-1 h-5 w-5 border-gray-300 bg-white"
+                />
+                <div className="space-y-1">
+                  <label htmlFor="is_defective" className="text-base font-medium text-gray-700">
+                    Defective Item
+                  </label>
+                  <p className="text-sm text-gray-500">Mark if defective or needs contractor repair</p>
+                </div>
+              </div>
+
+              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-md border border-gray-200">
+                <Checkbox
+                  id="is_preventivemaintenance"
+                  checked={values.is_preventivemaintenance}
+                  onCheckedChange={(checked) => setFieldValue('is_preventivemaintenance', checked)}
+                  className="mt-1 h-5 w-5 border-gray-300 bg-white"
+                />
+                <div className="space-y-1">
+                  <label htmlFor="is_preventivemaintenance" className="text-base font-medium text-gray-700">
+                    Preventive Maintenance
+                  </label>
+                  <p className="text-sm text-gray-500">Mark if this is a preventive maintenance job</p>
+                </div>
               </div>
             </div>
 

@@ -6,6 +6,8 @@ import { Button } from '@/app/components/ui/button';
 import { CalendarClock, Home, MapPin } from 'lucide-react';
 import { Room, Property, Job } from '@/app/lib/types';
 import { cn } from '@/app/lib/utils';
+import Link from 'next/link';
+
 type RoomDetailContentProps = {
   room: Room;
   properties: Property[];
@@ -13,6 +15,13 @@ type RoomDetailContentProps = {
 };
 
 export default function RoomDetailContent({ room, properties, jobs }: RoomDetailContentProps) {
+  // Filter the jobs to only include those related to this room
+  const roomJobs = jobs.filter(job => 
+    job.rooms?.some(jobRoom => 
+      String(jobRoom.room_id) === String(room.room_id)
+    )
+  );
+
   const getPropertyName = () => {
     if (room.property) {
       const property = properties.find(p => p.property_id === String(room.property));
@@ -72,34 +81,34 @@ export default function RoomDetailContent({ room, properties, jobs }: RoomDetail
           {/* Jobs Section */}
           <div className="mt-6">
             <h2 className="text-xl font-semibold text-gray-800 mb-2">Jobs in this Room</h2>
-            {jobs.length > 0 ? (
+            {roomJobs.length > 0 ? (
               <ul className="space-y-2">
-                {jobs.map((job) => (
-                  <li key={job.job_id} className="border p-3 rounded-md bg-gray-50">
-                    <p><strong>Job ID:</strong> {job.job_id}</p>
-                    <p>
-                      <strong>Status:</strong>{' '}
-                      <Badge className={cn("px-2 py-1 text-xs", statusColors[job.status])}>
-                        {job.status.replace('_', ' ').toUpperCase()}
-                      </Badge>
-                    </p>
-                    <p><strong>Description:</strong> {job.description || 'N/A'}</p>
-                    <p>
-                      <strong>Priority:</strong>{' '}
-                      <Badge className={cn("px-2 py-1 text-xs", priorityColors[job.priority])}>
-                        {job.priority.toUpperCase()}
-                      </Badge>
-                    </p>
-                    <p><strong>Created:</strong> {new Date(job.created_at).toLocaleDateString()}</p>
+                {roomJobs.map((job) => (
+                  <li key={job.job_id} className="border p-3 rounded-md bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <Link href={`/dashboard/jobs/${job.job_id}`} className="block">
+                      <div className="flex justify-between items-start">
+                        <p><strong>Job ID:</strong> {job.job_id}</p>
+                        <Badge className={cn("px-2 py-1 text-xs", statusColors[job.status])}>
+                          {job.status.replace('_', ' ').toUpperCase()}
+                        </Badge>
+                      </div>
+                      <p className="mt-2"><strong>Description:</strong> {job.description || 'N/A'}</p>
+                      <div className="flex justify-between items-center mt-2">
+                        <Badge className={cn("px-2 py-1 text-xs", priorityColors[job.priority])}>
+                          {job.priority.toUpperCase()}
+                        </Badge>
+                        <span className="text-sm text-gray-500"><strong>Created:</strong> {new Date(job.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </Link>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-gray-500">No jobs found for this room.</p>
+              <p className="text-gray-500 p-4 bg-gray-50 rounded-md border border-gray-200">No jobs found for this room.</p>
             )}
           </div>
 
-          <Button variant="outline" onClick={() => window.history.back()}>
+          <Button variant="outline" onClick={() => window.history.back()} className="mt-4">
             Back to Search
           </Button>
         </CardContent>
