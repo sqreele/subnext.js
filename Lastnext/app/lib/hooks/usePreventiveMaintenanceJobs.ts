@@ -30,9 +30,8 @@ export function usePreventiveMaintenanceJobs({
   const loadJobs = useCallback(async () => {
     // If we have initial jobs and don't need to auto-load, just use those
     if (!autoLoad && initialJobs.length > 0) {
-      // Apply filtering to these initial jobs as well
-      const filteredJobs = initialJobs.filter(job => job.is_preventivemaintenance === true);
-      setJobs(filteredJobs);
+      // Use initial jobs as-is without filtering for preventive maintenance
+      setJobs(initialJobs);
       return;
     }
 
@@ -40,20 +39,26 @@ export function usePreventiveMaintenanceJobs({
       setIsLoading(true);
       setError(null);
       
-      // Fetch jobs using the API function
-      let fetchedJobs: Job[] = await fetchPreventiveMaintenanceJobs({
-        propertyId,
-        limit
-      });
+      // Fetch all jobs with relevant filters except is_preventivemaintenance
+      let fetchedJobs: Job[] = [];
       
-      // Ensure we're filtering for preventive maintenance jobs regardless
-      // of what the API returns
-      fetchedJobs = fetchedJobs.filter(job => job.is_preventivemaintenance === true);
+      try {
+        // Try to use specific API that might add preventive maintenance filter
+        fetchedJobs = await fetchPreventiveMaintenanceJobs({
+          propertyId,
+          limit
+        });
+      } catch (fetchError) {
+        console.error('Error with special fetch, falling back to standard fetch:', fetchError);
+        // Fall back to general job fetching
+        fetchedJobs = await fetchJobsForProperty(propertyId || '');
+      }
       
+      // Don't filter by is_preventivemaintenance, use all jobs
       setJobs(fetchedJobs);
     } catch (err) {
-      console.error('Error loading preventive maintenance jobs:', err);
-      setError('Failed to load preventive maintenance jobs. Please try again.');
+      console.error('Error loading jobs:', err);
+      setError('Failed to load jobs. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -63,8 +68,8 @@ export function usePreventiveMaintenanceJobs({
     if (autoLoad && initialJobs.length === 0) {
       loadJobs();
     } else if (initialJobs.length > 0) {
-      // Filter initial jobs for preventive maintenance
-      setJobs(initialJobs.filter(job => job.is_preventivemaintenance === true));
+      // Use initial jobs as-is without filtering
+      setJobs(initialJobs);
     }
   }, [loadJobs, autoLoad, initialJobs]);
 
