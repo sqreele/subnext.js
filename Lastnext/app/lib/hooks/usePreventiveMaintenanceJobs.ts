@@ -30,7 +30,9 @@ export function usePreventiveMaintenanceJobs({
   const loadJobs = useCallback(async () => {
     // If we have initial jobs and don't need to auto-load, just use those
     if (!autoLoad && initialJobs.length > 0) {
-      setJobs(initialJobs);
+      // Apply filtering to these initial jobs as well
+      const filteredJobs = initialJobs.filter(job => job.is_preventivemaintenance === true);
+      setJobs(filteredJobs);
       return;
     }
 
@@ -38,13 +40,15 @@ export function usePreventiveMaintenanceJobs({
       setIsLoading(true);
       setError(null);
       
-      let fetchedJobs: Job[] = [];
-      
-      // Use the fetchPreventiveMaintenanceJobs function that's specifically designed for this
-      fetchedJobs = await fetchPreventiveMaintenanceJobs({
+      // Fetch jobs using the API function
+      let fetchedJobs: Job[] = await fetchPreventiveMaintenanceJobs({
         propertyId,
         limit
       });
+      
+      // Ensure we're filtering for preventive maintenance jobs regardless
+      // of what the API returns
+      fetchedJobs = fetchedJobs.filter(job => job.is_preventivemaintenance === true);
       
       setJobs(fetchedJobs);
     } catch (err) {
