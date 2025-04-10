@@ -48,6 +48,7 @@ const navItems = [
   { href: '/dashboard/chartdashboad', label: 'Analytics', icon: LineChart },
   { href: '/dashboard/profile', label: 'Profile', icon: Users2 },
   { href: '/dashboard/createJob', label: 'Create Job', icon: PlusCircle },
+  { href: '/dashboard/Preventive_maintenance', label: 'PM', icon: PlusCircle },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 

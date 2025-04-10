@@ -107,6 +107,7 @@ export interface Job {
   remarks?: string;
   is_defective?: boolean;
   image_urls?: string[];
+  is_preventivemaintenance?: boolean;
 }
 
 // Property-related types
@@ -119,6 +120,7 @@ export interface Property {
   created_at: string;
   rooms?: Room[];
   properties?: Property[];
+  is_preventivemaintenance?: boolean;
 }
 
 // User-related types
@@ -161,7 +163,7 @@ export interface UserFilterProps {
 }
 
 // Filters and Sorting
-export type TabValue = 'all' | 'waiting_sparepart' | 'pending' | 'completed' | 'cancelled' | 'defect';
+export type TabValue = 'all' | 'waiting_sparepart' | 'pending' | 'completed' | 'cancelled' | 'defect'| 'preventive_maintenance';
 export type SortOrder = 'Newest first' | 'Oldest first';
 
 export interface FilterState {
@@ -171,6 +173,7 @@ export interface FilterState {
   topic: string | null;
   room: string | null;
   dateRange?: DateRange;
+  isPreventiveMaintenance?: boolean;
 }
 
 export interface SortState {
@@ -222,6 +225,7 @@ export const FILTER_TITLES: Record<TabValue, string> = {
   completed: 'Completed Jobs Report',
   cancelled: 'Cancelled Jobs Report',
   defect: 'Defective Jobs Report',
+  preventive_maintenance: 'Preventive Maintenance Report',
 };
 
 export const PRIORITY_COLORS: Record<JobPriority, string> = {

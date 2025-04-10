@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Search, Filter, X, Calendar, CalendarIcon, Check } from "lucide-react";
+import { Search, Filter, X, Calendar, CalendarIcon, Check, Wrench } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import {
@@ -28,6 +28,7 @@ export interface FilterState {
     from?: Date;
     to?: Date;
   };
+  is_preventivemaintenance?: boolean | null;
 }
 
 interface JobFiltersProps {
@@ -50,7 +51,8 @@ const JobFilters: React.FC<JobFiltersProps> = ({
     filters.search !== "" ? 1 : 0,
     filters.status !== "all" ? 1 : 0,
     filters.priority !== "all" ? 1 : 0,
-    filters.dateRange?.from || filters.dateRange?.to ? 1 : 0
+    filters.dateRange?.from || filters.dateRange?.to ? 1 : 0,
+    filters.is_preventivemaintenance !== null ? 1 : 0
   ].reduce((a, b) => a + b, 0);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -86,6 +88,14 @@ const JobFilters: React.FC<JobFiltersProps> = ({
     });
   };
 
+  const handlePreventiveMaintenanceChange = (value: string) => {
+    const boolValue = value === "true" ? true : value === "false" ? false : null;
+    onFilterChange({
+      ...filters,
+      is_preventivemaintenance: boolValue
+    });
+  };
+
   // Format date range for display
   const formatDateRange = () => {
     if (!filters.dateRange?.from && !filters.dateRange?.to) return "Any Date";
@@ -104,6 +114,13 @@ const JobFilters: React.FC<JobFiltersProps> = ({
     if (filters.dateRange.to) {
       return `Until ${format(filters.dateRange.to, "MMM d, yyyy")}`;
     }
+  };
+
+  // Format preventive maintenance value for select display
+  const getPreventiveMaintenanceValue = () => {
+    if (filters.is_preventivemaintenance === true) return "true";
+    if (filters.is_preventivemaintenance === false) return "false";
+    return "null";
   };
 
   return (
@@ -162,6 +179,21 @@ const JobFilters: React.FC<JobFiltersProps> = ({
               <SelectItem value="low">Low</SelectItem>
               <SelectItem value="medium">Medium</SelectItem>
               <SelectItem value="high">High</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          {/* Preventive Maintenance filter */}
+          <Select
+            value={getPreventiveMaintenanceValue()}
+            onValueChange={handlePreventiveMaintenanceChange}
+          >
+            <SelectTrigger className="w-full md:w-40 h-10 bg-gray-50 border-gray-200">
+              <SelectValue placeholder="Maintenance Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="null">All Types</SelectItem>
+              <SelectItem value="true">Preventive Maintenance</SelectItem>
+              <SelectItem value="false">Regular Jobs</SelectItem>
             </SelectContent>
           </Select>
           
@@ -265,6 +297,20 @@ const JobFilters: React.FC<JobFiltersProps> = ({
               <X 
                 className="h-3 w-3 cursor-pointer" 
                 onClick={() => onFilterChange({...filters, priority: "all"})}
+              />
+            </Badge>
+          )}
+          
+          {filters.is_preventivemaintenance !== null && (
+            <Badge 
+              variant="secondary" 
+              className="flex items-center gap-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100"
+            >
+              <Wrench className="h-3 w-3 mr-1" />
+              {filters.is_preventivemaintenance === true ? "Preventive Maintenance" : "Regular Jobs"}
+              <X 
+                className="h-3 w-3 cursor-pointer" 
+                onClick={() => onFilterChange({...filters, is_preventivemaintenance: null})}
               />
             </Badge>
           )}

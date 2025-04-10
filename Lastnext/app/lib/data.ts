@@ -38,6 +38,42 @@ export const fetchJobsForProperty = async (propertyId: string): Promise<Job[]> =
 };
 
 /**
+ * Fetch preventive maintenance jobs
+ * @param options - Additional filter options
+ * @returns Promise resolving to array of preventive maintenance Jobs
+ */
+export const fetchPreventiveMaintenanceJobs = async (options?: {
+  propertyId?: string;
+  status?: JobStatus;
+  limit?: number;
+}): Promise<Job[]> => {
+  try {
+    // Build query parameters
+    const params = new URLSearchParams();
+    params.append('is_preventivemaintenance', 'true');
+    
+    if (options?.propertyId) {
+      params.append('property', options.propertyId);
+    }
+    
+    if (options?.status) {
+      params.append('status', options.status);
+    }
+    
+    if (options?.limit) {
+      params.append('limit', options.limit.toString());
+    }
+    
+    const queryString = params.toString();
+    const response = await fetchData<Job[]>(`/api/jobs/?${queryString}`);
+    return response ?? [];
+  } catch (error) {
+    console.error('Error fetching preventive maintenance jobs:', error);
+    return [];
+  }
+};
+
+/**
  * Create a new job
  * @param jobData - Partial Job data to create
  * @param accessToken - Optional authentication token
@@ -129,6 +165,27 @@ export const updateJobStatus = async (jobId: string, status: JobStatus, accessTo
 };
 
 /**
+ * Toggle preventive maintenance status
+ * @param jobId - ID of job to update
+ * @param isPreventiveMaintenance - Whether the job is preventive maintenance
+ * @returns Promise resolving to updated Job
+ */
+export const togglePreventiveMaintenance = async (
+  jobId: string, 
+  isPreventiveMaintenance: boolean
+): Promise<Job> => {
+  try {
+    if (!jobId) throw new Error('Job ID is required');
+    return await patchData<Job, { is_preventivemaintenance: boolean }>(
+      `/api/jobs/${jobId}/`, 
+      { is_preventivemaintenance: isPreventiveMaintenance }
+    );
+  } catch (error) {
+    throw handleApiError(error);
+  }
+};
+
+/**
  * Upload job image
  * @param jobId - ID of job to associate image with
  * @param imageFile - File object to upload
@@ -175,17 +232,24 @@ export const searchJobs = async (
 }> => {
   try {
     const params: Record<string, string> = { page: String(page), limit: String(limit) };
+    
+    // Handle tab-specific filters
     if (tab !== 'all') {
       if (tab === 'defect') params.is_defective = 'true';
+      else if (tab === 'preventive_maintenance') params.is_preventivemaintenance = 'true';
       else params.status = tab;
     }
     
+    // Apply additional filters
     if (filters.user) params.user = filters.user;
     if (filters.priority) params.priority = filters.priority;
     if (filters.topic) params.topic = filters.topic;
     if (filters.room) params.room = filters.room;
     if (filters.dateRange?.from) params.date_from = filters.dateRange.from.toISOString().split('T')[0];
     if (filters.dateRange?.to) params.date_to = filters.dateRange.to.toISOString().split('T')[0];
+    if (filters.isPreventiveMaintenance !== undefined) {
+      params.is_preventivemaintenance = filters.isPreventiveMaintenance ? 'true' : 'false';
+    }
 
     const queryString = new URLSearchParams(params).toString();
     const response = await fetchData<{

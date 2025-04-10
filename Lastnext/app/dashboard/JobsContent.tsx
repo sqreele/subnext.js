@@ -7,7 +7,7 @@ import JobList from "@/app/components/jobs/jobList";
 import { Job, Property, TabValue } from "@/app/lib/types";
 import {
   Inbox, Clock, PlayCircle, CheckCircle2, XCircle,
-  AlertTriangle, Filter, ChevronDown,
+  AlertTriangle, Filter, ChevronDown, Wrench,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent,
@@ -21,6 +21,11 @@ interface JobsContentProps {
   properties: Property[];
 }
 
+// Update the Job type or extend it here if necessary
+interface ExtendedJob extends Job {
+  is_preventive_maintenance?: boolean; // Added the property with correct naming convention
+}
+
 const tabConfig = [
   { value: "all", label: "All Jobs", icon: Inbox },
   { value: "pending", label: "Pending", icon: Clock },
@@ -28,6 +33,7 @@ const tabConfig = [
   { value: "completed", label: "Completed", icon: CheckCircle2 },
   { value: "cancelled", label: "Cancelled", icon: XCircle },
   { value: "defect", label: "Defect", icon: AlertTriangle },
+  { value: "preventive_maintenance", label: "Maintenance", icon: Wrench },
 ] as const;
 
 export default function JobsContent({ jobs, properties }: JobsContentProps) {
@@ -38,7 +44,7 @@ export default function JobsContent({ jobs, properties }: JobsContentProps) {
   const filteredJobs = useMemo(() => {
     if (!Array.isArray(jobs)) return [];
     
-    let filtered = jobs;
+    let filtered = jobs as ExtendedJob[]; // Cast to the extended type
     
     if (selectedProperty) {
       filtered = filtered.filter(job => 
@@ -59,6 +65,9 @@ export default function JobsContent({ jobs, properties }: JobsContentProps) {
         return filtered.filter(job => job.status === 'cancelled');
       case 'defect':
         return filtered.filter(job => job.is_defective);
+      case 'preventive_maintenance':
+        // Updated property name with standard naming convention and added null check
+        return filtered.filter(job => job.is_preventive_maintenance === true);
       default:
         return filtered;
     }
@@ -85,7 +94,7 @@ export default function JobsContent({ jobs, properties }: JobsContentProps) {
       >
         <div className="space-y-4 mb-4">
           {/* Desktop Tabs */}
-          <TabsList className="hidden md:grid md:grid-cols-6 gap-2 p-2 bg-gray-100 rounded-lg border border-gray-200">
+          <TabsList className="hidden md:grid md:grid-cols-7 gap-2 p-2 bg-gray-100 rounded-lg border border-gray-200">
             {tabConfig.map(({ value, label, icon: Icon }) => (
               <TabsTrigger 
                 key={value} 
