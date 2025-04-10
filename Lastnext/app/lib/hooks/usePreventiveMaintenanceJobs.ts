@@ -1,7 +1,7 @@
 // app/lib/hooks/usePreventiveMaintenanceJobs.ts
 import { useState, useEffect, useCallback } from 'react';
 import { Job, JobStatus } from '@/app/lib/types';
-import { fetchJobs } from '@/app/lib/data';
+import { fetchJobsForProperty, fetchPreventiveMaintenanceJobs } from '@/app/lib/data';
 
 interface UsePreventiveMaintenanceJobsOptions {
   propertyId?: string;
@@ -23,15 +23,15 @@ export function usePreventiveMaintenanceJobs({
   autoLoad = true,
   initialJobs = []
 }: UsePreventiveMaintenanceJobsOptions) {
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [isLoading, setIsLoading] = useState<boolean>(autoLoad && initialJobs.length === 0);
   const [error, setError] = useState<string | null>(null);
 
   const loadJobs = useCallback(async () => {
+    // If we have initial jobs and don't need to auto-load, just use those
     if (!autoLoad && initialJobs.length > 0) {
-      // Filter initial jobs to only include preventive maintenance jobs
-      const pmJobs = initialJobs.filter(job => job.is_preventivemaintenance === true);
-      setJobs(pmJobs);
+      // Use initial jobs as-is without filtering for preventive maintenance
+      setJobs(initialJobs);
       return;
     }
 
@@ -39,46 +39,44 @@ export function usePreventiveMaintenanceJobs({
       setIsLoading(true);
       setError(null);
       
-      // Fetch all jobs and filter locally
-      const allJobs = await fetchJobs();
+      // Fetch all jobs with relevant filters except is_preventivemaintenance
+      let fetchedJobs: Job[] = [];
       
-      // Only keep jobs with is_preventivemaintenance === true
-      const pmJobs = allJobs.filter(job => job.is_preventivemaintenance === true);
+      try {
+        // Try to use specific API that might add preventive maintenance filter
+        fetchedJobs = await fetchPreventiveMaintenanceJobs({
+          propertyId,
+          limit
+        });
+      } catch (fetchError) {
+        console.error('Error with special fetch, falling back to standard fetch:', fetchError);
+        // Fall back to general job fetching
+        fetchedJobs = await fetchJobsForProperty(propertyId || '');
+      }
       
-      setJobs(pmJobs);
+      // Don't filter by is_preventivemaintenance, use all jobs
+      setJobs(fetchedJobs);
     } catch (err) {
-      console.error('Error loading preventive maintenance jobs:', err);
-      setError('Failed to load preventive maintenance jobs. Please try again.');
+      console.error('Error loading jobs:', err);
+      setError('Failed to load jobs. Please try again.');
     } finally {
       setIsLoading(false);
     }
-  }, [autoLoad, initialJobs]);
+  }, [propertyId, limit, autoLoad, initialJobs]);
 
   useEffect(() => {
-    if (autoLoad) {
+    if (autoLoad && initialJobs.length === 0) {
       loadJobs();
     } else if (initialJobs.length > 0) {
-      // Filter initial jobs to only include preventive maintenance jobs
-      const pmJobs = initialJobs.filter(job => job.is_preventivemaintenance === true);
-      setJobs(pmJobs);
+      // Use initial jobs as-is without filtering
+      setJobs(initialJobs);
     }
   }, [loadJobs, autoLoad, initialJobs]);
 
   const updateJob = useCallback((updatedJob: Job) => {
-    // Only include job if it has is_preventivemaintenance === true
-    if (updatedJob.is_preventivemaintenance === true) {
-      setJobs(prev => {
-        const exists = prev.some(job => job.job_id === updatedJob.job_id);
-        if (exists) {
-          return prev.map(job => job.job_id === updatedJob.job_id ? updatedJob : job);
-        } else {
-          return [...prev, updatedJob];
-        }
-      });
-    } else {
-      // Remove job if it's no longer a preventive maintenance job
-      setJobs(prev => prev.filter(job => job.job_id !== updatedJob.job_id));
-    }
+    setJobs(prev => prev.map(job => 
+      job.job_id === updatedJob.job_id ? updatedJob : job
+    ));
   }, []);
 
   const getStats = useCallback((): PMJobsStats => {
