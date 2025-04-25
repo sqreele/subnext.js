@@ -4,6 +4,18 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "https://pmcs.site");
 
+export class ApiError extends Error {
+  status: number;
+  errorData: any;
+
+  constructor(status: number, message: string, errorData?: any) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.errorData = errorData;
+  }
+}
+
 export async function fetchWithToken<T>(
   url: string,
   token?: string,
@@ -42,34 +54,43 @@ export async function fetchWithToken<T>(
 
     if (!response.ok) {
       const contentType = response.headers.get("content-type");
-      let errorMessage = `Request failed with status ${response.status}: ${responseText}`;
+      let errorMessage = `Request failed with status ${response.status}`;
+      let errorData = null;
+      
       if (contentType?.includes("application/json") && responseText) {
         try {
-          const errorData = JSON.parse(responseText);
+          errorData = JSON.parse(responseText);
           errorMessage = errorData.detail || errorMessage;
         } catch (parseError) {
           console.error("Failed to parse error JSON:", parseError);
         }
       }
-      throw new Error(errorMessage);
+      
+      throw new ApiError(response.status, errorMessage, errorData);
     }
 
     if (!responseText.trim()) {
       if (method === "GET" && url.includes("/api/jobs") && !url.includes("/my-jobs/")) {
         return [] as unknown as T;
       }
-      throw new Error("Received empty response from server");
+      throw new ApiError(204, "Received empty response from server");
     }
 
     try {
       return JSON.parse(responseText) as T;
     } catch (parseError) {
       console.error("Error parsing JSON response:", parseError);
-      throw new Error(`Failed to parse response as JSON: ${responseText.substring(0, 200)}...`);
+      throw new ApiError(
+        500, 
+        `Failed to parse response as JSON: ${responseText.substring(0, 200)}...`
+      );
     }
   } catch (error) {
     console.error(`Error during ${method} request to ${url}:`, error);
-    throw error;
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(0, (error as Error).message || "Network error");
   }
 }
 
