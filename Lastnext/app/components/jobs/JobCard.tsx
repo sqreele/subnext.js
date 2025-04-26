@@ -43,33 +43,40 @@ export function JobCard({ job, properties = [] }: JobCardProps) {
     const jobProperties = [
       ...(job.profile_image?.properties || []),
       ...(job.properties || []),
-      ...(job.rooms?.flatMap(room => room.properties || []) || [])
+      ...(job.rooms?.flatMap(room => room.properties || []) || []),
     ];
 
     if (selectedProperty) {
       const matchingProperty = jobProperties.find(
-        prop => typeof prop === 'object' 
-          ? prop.property_id === selectedProperty 
-          : String(prop) === selectedProperty
+        prop =>
+          typeof prop === 'object' && 'property_id' in prop
+            ? String(prop.property_id) === selectedProperty
+            : String(prop) === selectedProperty
       );
 
       if (matchingProperty) {
-        if (typeof matchingProperty === 'object') return matchingProperty.name;
+        if (typeof matchingProperty === 'object' && 'name' in matchingProperty) {
+          return matchingProperty.name;
+        }
         const fullProperty = properties.find(p => String(p.property_id) === selectedProperty);
         return fullProperty?.name;
       }
     }
 
     const firstMatchingProperty = jobProperties.find(
-      prop => typeof prop === 'object' && prop.name
+      prop => typeof prop === 'object' && 'name' in prop
     );
 
-    if (typeof firstMatchingProperty === 'object' && firstMatchingProperty) {
+    if (typeof firstMatchingProperty === 'object' && 'name' in firstMatchingProperty) {
       return firstMatchingProperty.name;
     }
 
     const propertyFromList = properties.find(p =>
-      jobProperties.some(jobProp => String(jobProp) === String(p.property_id))
+      jobProperties.some(jobProp =>
+        typeof jobProp === 'object' && 'property_id' in jobProp
+          ? String(jobProp.property_id) === String(p.property_id)
+          : String(jobProp) === String(p.property_id)
+      )
     );
 
     return propertyFromList?.name || 'N/A';
@@ -224,7 +231,7 @@ export function JobCard({ job, properties = [] }: JobCardProps) {
                 {job.profile_image && job.profile_image.profile_image ? (
                   <LazyImage
                     src={job.profile_image.profile_image}
-                    alt={String(job.user ?? 'Staff')}
+                    alt={typeof job.user === 'object' && job.user ? job.user.username : String(job.user ?? 'Staff')}
                     className="w-full h-full object-cover rounded-full"
                   />
                 ) : (
@@ -234,8 +241,12 @@ export function JobCard({ job, properties = [] }: JobCardProps) {
                 )}
               </div>
               <div className="space-y-1">
-                <p className="text-sm font-semibold text-gray-700">{job.user || 'Unassigned'}</p>
-                <p className="text-xs text-gray-500">{job.profile_image?.positions || 'Staff'}</p>
+                <p className="text-sm font-semibold text-gray-700">
+                  {typeof job.user === 'object' && job.user ? job.user.username : job.user || 'Unassigned'}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {typeof job.user === 'object' && job.user ? job.user.positions : 'Staff'}
+                </p>
               </div>
             </div>
           )}

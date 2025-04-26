@@ -1,4 +1,3 @@
-// app/components/jobs/PreventiveMaintenanceList.tsx with debugging additions
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -358,7 +357,9 @@ export default function PreventiveJobsDashboard({ initialJobs = [], propertyId, 
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
                   <User className="h-4 w-4" />
-                  <span>Assigned to: {job.user || 'Unassigned'}</span>
+                  <span>
+                    Assigned to: {typeof job.user === 'object' && job.user ? job.user.username : job.user || 'Unassigned'}
+                  </span>
                 </div>
               </div>
               
