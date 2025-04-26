@@ -63,7 +63,8 @@ export interface User {
 
 // --- Profile-related Types ---
 export interface ProfileImage { // Simplified - might not be needed if UserProfile used directly
-  profile_image: string | null; // Allow null
+  profile_image: string | null; 
+  properties: Property[]; // <<< Ensure this syntax is EXACTLY like this
   // Other fields might not be needed here if UserProfile is the main source
 }
 
@@ -83,6 +84,8 @@ export interface UserContextType {
   selectedProperty: string | null; // Assuming property ID is string
   setSelectedProperty: (propertyId: string | null) => void; // Allow setting null
   loading: boolean;
+  error: string | null;                   // <<< ADDED error property
+  refetch: () => Promise<UserProfile | null>;
 }
 
 
