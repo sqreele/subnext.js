@@ -7,7 +7,7 @@ import { Button } from "@/app/components/ui/button";
 import CreateJobButton from "@/app/components/jobs/CreateJobButton";
 import { pdf } from "@react-pdf/renderer";
 import { saveAs } from "file-saver";
-import JobsPDFDocument from "@/app/components/ducument/JobsPDFGenerator"; // Fixed typo in import path
+import JobsPDFDocument from "@/app/components/ducument/JobsPDFGenerator";
 import { useProperty } from "@/app/lib/PropertyContext";
 import {
   DropdownMenu,
@@ -46,7 +46,7 @@ export default function JobActions({
   jobs = [],
   onRefresh,
   currentTab = "all",
-  properties = []
+  properties = [],
 }: JobActionsProps) {
   const router = useRouter();
   const [isGenerating, setIsGenerating] = useState(false);
@@ -76,10 +76,9 @@ export default function JobActions({
   const handleDateFilterChange = (filter: DateFilter) => {
     if (onDateFilter) {
       if (filter === "custom") {
-        // TODO: Implement date picker UI for custom range
         const endDate = new Date();
         const startDate = new Date();
-        startDate.setDate(startDate.getDate() - 7); // Placeholder: last 7 days
+        startDate.setDate(startDate.getDate() - 7);
         onDateFilter(filter, startDate, endDate);
       } else {
         onDateFilter(filter);
@@ -117,47 +116,33 @@ export default function JobActions({
     }
   };
 
-  // Enhanced filteredJobsCount calculation to handle more property structures
   const filteredJobsCount = jobs.filter((job) => {
-    // No property selected means include all jobs
     if (!selectedProperty) return true;
-    
-    // If job has no properties field or it's not an array or empty, exclude the job
+
     if (!job.properties || !Array.isArray(job.properties) || job.properties.length === 0) {
       return false;
     }
-    
-    // Check all possible property structures
+
     return job.properties.some((prop: any) => {
-      // Case 1: Property is a string or number ID
-      if (typeof prop === 'string' || typeof prop === 'number') {
+      if (typeof prop === "string" || typeof prop === "number") {
         return String(prop) === selectedProperty;
       }
-      
-      // Case 2: Property is an object with property_id
-      if (prop && typeof prop === 'object' && 'property_id' in prop) {
+      if (prop && typeof prop === "object" && "property_id" in prop) {
         return String(prop.property_id) === selectedProperty;
       }
-      
-      // Case 3: Property is an object with id field
-      if (prop && typeof prop === 'object' && 'id' in prop) {
+      if (prop && typeof prop === "object" && "id" in prop) {
         return String(prop.id) === selectedProperty;
       }
-      
-      // Case 4: Try to match any property value that might contain the ID
-      if (prop && typeof prop === 'object') {
-        return Object.values(prop).some(value => 
-          (typeof value === 'string' || typeof value === 'number') && 
-          String(value) === selectedProperty
+      if (prop && typeof prop === "object") {
+        return Object.values(prop).some(
+          (value) =>
+            (typeof value === "string" || typeof value === "number") &&
+            String(value) === selectedProperty
         );
       }
-      
       return false;
     });
   }).length;
-
-  // Uncomment for debugging
-  // console.log("Jobs:", jobs.length, "Filtered:", filteredJobsCount, "Selected:", selectedProperty);
 
   const menuItemClass = "flex items-center gap-2 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-800 hover:text-white cursor-pointer";
   const menuLabelClass = "text-xs font-semibold text-zinc-400 px-3 py-1.5";
@@ -172,17 +157,12 @@ export default function JobActions({
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className={buttonClass}>
               <Building className="h-4 w-4" />
-              <span className="truncate max-w-[120px]">
-                {getPropertyName(selectedProperty)}
-              </span>
+              <span className="truncate max-w-[120px]">{getPropertyName(selectedProperty)}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className={dropdownContentClass}>
             <DropdownMenuLabel className={menuLabelClass}>Properties</DropdownMenuLabel>
-            <DropdownMenuItem
-              onClick={() => setSelectedProperty(null)}
-              className={menuItemClass}
-            >
+            <DropdownMenuItem onClick={() => setSelectedProperty(null)} className={menuItemClass}>
               <Building className="h-4 w-4" />
               All Properties
             </DropdownMenuItem>
@@ -269,11 +249,7 @@ export default function JobActions({
               <Plus className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent 
-            align="end" 
-            className={`${dropdownContentClass} max-h-[75vh] overflow-y-auto`}
-            sideOffset={5}
-          >
+          <DropdownMenuContent align="end" className={`${dropdownContentClass} max-h-[75vh] overflow-y-auto`} sideOffset={5}>
             <DropdownMenuLabel className={menuLabelClass}>Properties</DropdownMenuLabel>
             <DropdownMenuItem onClick={() => setSelectedProperty(null)} className={menuItemClass}>
               <Building className="h-4 w-4" /> All Properties
@@ -284,7 +260,7 @@ export default function JobActions({
                 onClick={() => setSelectedProperty(property.property_id)}
                 className={menuItemClass}
               >
-                <Building className="h-4 w-4" /> 
+                <Building className="h-4 w-4" />
                 <span className="truncate">{property.name}</span>
               </DropdownMenuItem>
             ))}
@@ -297,11 +273,17 @@ export default function JobActions({
             <DropdownMenuItem onClick={() => handleDateFilterChange("today")} className={menuItemClass}>
               <Calendar className="h-4 w-4" /> Today
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleDateFilterChange("yesterday")} className={menuItemClass}>
+              <Calendar className="h-4 w-4" /> Yesterday
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleDateFilterChange("thisWeek")} className={menuItemClass}>
               <Calendar className="h-4 w-4" /> This Week
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleDateFilterChange("thisMonth")} className={menuItemClass}>
               <Calendar className="h-4 w-4" /> This Month
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleDateFilterChange("custom")} className={menuItemClass}>
+              <Calendar className="h-4 w-4" /> Custom Range
             </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-zinc-800 my-1" />
 
@@ -314,11 +296,7 @@ export default function JobActions({
             </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-zinc-800 my-1" />
 
-            <DropdownMenuItem
-              onClick={handleGeneratePDF}
-              disabled={isGenerating}
-              className={menuItemClass}
-            >
+            <DropdownMenuItem onClick={handleGeneratePDF} disabled={isGenerating} className={menuItemClass}>
               <FileDown className="h-4 w-4" />
               {isGenerating ? "Generating..." : `Export PDF (${filteredJobsCount || 0})`}
             </DropdownMenuItem>
