@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Formik, Form, Field } from 'formik';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Formik, Form, Field, FormikErrors, FormikTouched } from 'formik';
 import * as Yup from 'yup';
 import axios from 'axios';
 import { Button } from '@/app/components/ui/button';
 import { Textarea } from '@/app/components/ui/textarea';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp, Loader } from 'lucide-react';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import {
   Select,
@@ -18,19 +18,17 @@ import {
 import { Alert, AlertDescription } from '@/app/components/ui/alert';
 import { useSession, signIn } from 'next-auth/react';
 import { Label } from '@/app/components/ui/label';
-import RoomAutocomplete from '@/app/components/jobs/RoomAutocomplete';
-import FileUpload from '@/app/components/jobs/FileUpload';
-import { Room, TopicFromAPI } from '@/app/lib/types';
+import RoomAutocomplete from '@/app/components/jobs/RoomAutocomplete'; // Removed { RoomAutocompleteProps }
+import FileUpload, { FileUploadProps } from '@/app/components/jobs/FileUpload';
+import { Room, TopicFromAPI, Property } from '@/app/lib/types';
 import { useRouter } from 'next/navigation';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 });
 
 interface FormValues {
@@ -42,7 +40,7 @@ interface FormValues {
     title: string;
     description: string;
   };
-  room: Room;
+  room: Room | null;
   files: File[];
   is_defective: boolean;
   is_preventivemaintenance: boolean;
@@ -55,20 +53,23 @@ const validationSchema = Yup.object().shape({
   remarks: Yup.string().nullable(),
   topic: Yup.object().shape({
     title: Yup.string().required('Topic is required'),
-  }),
-  room: Yup.object().shape({
-    room_id: Yup.number().required('Room must be selected').min(1, 'Room must be selected'),
-  }),
-  files: Yup.array()
-    .min(1, 'At least one image is required')
-    .test('fileSize', 'One or more files are larger than 5MB', (files) => {
-      if (!files) return true;
-      return files.every((file) => file.size <= MAX_FILE_SIZE);
-    })
-    .test('fileType', 'Only image files are allowed', (files) => {
-      if (!files) return true;
-      return files.every((file) => file.type.startsWith('image/'));
+    description: Yup.string(),
+  }).required(),
+  room: Yup.object()
+    .nullable()
+    .required('Room selection is required')
+    .shape({
+      room_id: Yup.number().typeError('Invalid Room ID').required('Room ID missing').min(1, 'Room must be selected'),
+      name: Yup.string().required('Room name missing'),
     }),
+  files: Yup.array()
+    .of(
+      Yup.mixed<File>()
+        .test('fileSize', 'File too large (max 5MB)', (value) => !value || !(value instanceof File) || value.size <= MAX_FILE_SIZE)
+        .test('fileType', 'Only image files allowed', (value) => !value || !(value instanceof File) || value.type.startsWith('image/'))
+    )
+    .min(1, 'At least one image is required')
+    .required('At least one image is required'),
   is_defective: Yup.boolean().default(false),
   is_preventivemaintenance: Yup.boolean().default(false),
 });
@@ -79,17 +80,16 @@ const initialValues: FormValues = {
   priority: 'medium',
   remarks: '',
   topic: { title: '', description: '' },
-  room: { room_id: 0, name: '', room_type: '', is_active: true, created_at: new Date().toISOString(), property: 0, properties: [] },
+  room: null,
   files: [],
   is_defective: false,
   is_preventivemaintenance: false,
 };
 
-const CreateJobForm: React.FC = () => {
+const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }) => {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [topics, setTopics] = useState<TopicFromAPI[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showRemarks, setShowRemarks] = useState(false);
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -100,271 +100,318 @@ const CreateJobForm: React.FC = () => {
     }
   }, [status, session?.user?.accessToken]);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
+    const headers = { Authorization: `Bearer ${session?.user?.accessToken}` };
     try {
-      const headers = { Authorization: `Bearer ${session?.user?.accessToken}` };
+      setError(null);
       const [roomsResponse, topicsResponse] = await Promise.all([
         axiosInstance.get('/api/rooms/', { headers }),
         axiosInstance.get('/api/topics/', { headers }),
       ]);
+      if (!Array.isArray(roomsResponse.data)) throw new Error('Invalid format for rooms');
+      if (!Array.isArray(topicsResponse.data)) throw new Error('Invalid format for topics');
       setRooms(roomsResponse.data);
       setTopics(topicsResponse.data);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      setError('Failed to load rooms and topics.');
+    } catch (fetchError) {
+      console.error('Error fetching data:', fetchError);
+      setError('Failed to load rooms and topics. Please check connection or try again.');
     }
-  };
+  }, [session?.user?.accessToken]);
 
-  const handleSubmit = async (values: FormValues, { resetForm }: { resetForm: () => void }) => {
+  const handleSubmit = async (
+    values: FormValues,
+    { resetForm, setSubmitting }: { resetForm: () => void; setSubmitting: (isSubmitting: boolean) => void }
+  ) => {
     if (!session?.user) {
       setError('Please log in to create a job');
       await signIn();
       return;
     }
+    if (!values.room) {
+      setError('Please select a room.');
+      setSubmitting(false);
+      return;
+    }
 
     setError(null);
-    setIsSubmitting(true);
 
     try {
       const formData = new FormData();
-      const payload = {
-        description: values.description.trim(),
-        status: values.status,
-        priority: values.priority,
-        room_id: values.room.room_id,
-        topic_data: JSON.stringify({
-          title: values.topic.title.trim(),
-          description: values.topic.description.trim(),
-        }),
-        remarks: values.remarks?.trim() || 'No remarks provided',
-        username: session.user.username,
-        user_id: session.user.id,
-        is_defective: values.is_defective,
-        is_preventivemaintenance: values.is_preventivemaintenance,
-      };
-
-      Object.entries(payload).forEach(([key, value]) => {
-        formData.append(key, value.toString());
-      });
-
+      formData.append('description', values.description.trim());
+      formData.append('status', values.status);
+      formData.append('priority', values.priority);
+      formData.append('room_id', String(values.room.room_id));
+      formData.append('topic_title', values.topic.title.trim());
+      formData.append('remarks', values.remarks?.trim() || '');
+      formData.append('user_id', session.user.id);
+      formData.append('is_defective', values.is_defective ? 'true' : 'false');
+      formData.append('is_preventivemaintenance', values.is_preventivemaintenance ? 'true' : 'false');
       values.files.forEach((file) => {
-        formData.append('images', file);
+        formData.append('images', file, file.name);
       });
 
       const response = await axiosInstance.post('/api/jobs/', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          Authorization: `Bearer ${session.user.accessToken}`,
-        },
+        headers: { Authorization: `Bearer ${session.user.accessToken}` },
       });
 
       console.log('Job created:', response.data);
       resetForm();
+      onJobCreated?.();
       router.push('/dashboard/myJobs');
-    } catch (error) {
-      console.error('Error creating job:', error);
-      setError(axios.isAxiosError(error) ? error.response?.data?.detail || error.message : 'An unexpected error occurred');
+    } catch (submitError) {
+      console.error('Error creating job:', submitError);
+      let message = 'An unexpected error occurred.';
+      if (axios.isAxiosError(submitError)) {
+        const responseData = submitError.response?.data as any;
+        if (responseData && typeof responseData === 'object') {
+          if (responseData.detail) {
+            message = responseData.detail;
+          } else {
+            const fieldErrors = Object.entries(responseData)
+              .map(([field, errors]) => `${field}: ${(Array.isArray(errors) ? errors.join(', ') : errors)}`)
+              .join('; ');
+            if (fieldErrors) message = `Validation Failed: ${fieldErrors}`;
+          }
+        } else if (submitError.message) {
+          message = submitError.message;
+        }
+      } else if (submitError instanceof Error) {
+        message = submitError.message;
+      }
+      setError(message);
     } finally {
-      setIsSubmitting(false);
+      setSubmitting(false);
     }
   };
 
   if (status === 'loading') {
-    return <div className="text-center text-base text-gray-500 py-4">Loading...</div>;
+    return (
+      <div className="text-center p-6">
+        <Loader className="inline-block animate-spin mr-2 h-5 w-5" /> Loading session...
+      </div>
+    );
   }
-
   if (status === 'unauthenticated') {
     return (
-      <div className="text-center space-y-4 py-4">
-        <p className="text-base text-gray-700">Please log in to create a job.</p>
-        <Button onClick={() => signIn()} variant="outline" className="w-full h-12 text-base bg-white border-gray-300 text-gray-700 hover:bg-gray-50">
-          Log In
-        </Button>
+      <div className="text-center p-6 space-y-4">
+        <p>Please log in to create a job.</p>
+        <Button onClick={() => signIn()}>Log In</Button>
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-2xl mx-auto bg-white rounded-lg shadow-sm p-4 sm:p-6">
+    <div className="w-full max-w-2xl mx-auto bg-white rounded-lg shadow-sm p-4 sm:p-6 border">
+      <h2 className="text-xl font-semibold mb-6 text-gray-800">Create New Maintenance Job</h2>
       {error && (
-        <Alert variant="destructive" className="mb-6 bg-red-50 text-red-700 border border-red-200">
-          <AlertDescription className="text-sm">{error}</AlertDescription>
+        <Alert variant="destructive" className="mb-6">
+          <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      <Formik initialValues={initialValues} validationSchema={validationSchema} onSubmit={handleSubmit}>
-        {({ values, errors, touched, setFieldValue }) => (
+      <Formik initialValues={initialValues} validationSchema={validationSchema} onSubmit={handleSubmit} enableReinitialize>
+        {({ values, errors, touched, setFieldValue, isSubmitting }) => (
           <Form className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="description" className="text-base font-medium text-gray-700">Description</Label>
+            <div className="space-y-1">
+              <Label htmlFor="description" className="font-medium">
+                Description *
+              </Label>
               <Field
                 as={Textarea}
                 id="description"
                 name="description"
-                placeholder="Enter job description"
-                className={`w-full min-h-24 text-base px-4 py-3 bg-white border ${touched.description && errors.description ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                placeholder="Enter job description..."
+                disabled={isSubmitting}
+                className={`w-full min-h-[90px] ${touched.description && errors.description ? 'border-red-500' : 'border-gray-300'}`}
               />
               {touched.description && errors.description && (
-                <span className="text-sm text-red-500">{errors.description}</span>
+                <p className="text-xs text-red-600 mt-1">{errors.description}</p>
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-base font-medium text-gray-700">Status</Label>
-              <Select value={values.status} onValueChange={(value) => setFieldValue('status', value)}>
-                <SelectTrigger className="w-full h-12 text-base bg-white border-gray-300">
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent className="bg-white border border-gray-200 shadow-md">
-                  <SelectItem value="pending" className="text-base py-2.5 hover:bg-gray-50">Pending</SelectItem>
-                  <SelectItem value="in_progress" className="text-base py-2.5 hover:bg-gray-50">In Progress</SelectItem>
-                  <SelectItem value="completed" className="text-base py-2.5 hover:bg-gray-50">Completed</SelectItem>
-                  <SelectItem value="waiting_sparepart" className="text-base py-2.5 hover:bg-gray-50">Waiting Sparepart</SelectItem>
-                  <SelectItem value="cancelled" className="text-base py-2.5 hover:bg-gray-50">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="font-medium">Status *</Label>
+                <Select
+                  value={values.status}
+                  onValueChange={(value) => value && setFieldValue('status', value)}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger className={touched.status && errors.status ? 'border-red-500' : 'border-gray-300'}>
+                    <SelectValue placeholder="Select Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="waiting_sparepart">Waiting Sparepart</SelectItem>
+                  </SelectContent>
+                </Select>
+                {touched.status && errors.status && <p className="text-xs text-red-600 mt-1">{errors.status}</p>}
+              </div>
+              <div className="space-y-1">
+                <Label className="font-medium">Priority *</Label>
+                <Select
+                  value={values.priority}
+                  onValueChange={(value) => value && setFieldValue('priority', value)}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger className={touched.priority && errors.priority ? 'border-red-500' : 'border-gray-300'}>
+                    <SelectValue placeholder="Select Priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                  </SelectContent>
+                </Select>
+                {touched.priority && errors.priority && <p className="text-xs text-red-600 mt-1">{errors.priority}</p>}
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-base font-medium text-gray-700">Priority</Label>
-              <Select value={values.priority} onValueChange={(value) => setFieldValue('priority', value)}>
-                <SelectTrigger className="w-full h-12 text-base bg-white border-gray-300">
-                  <SelectValue placeholder="Select priority" />
-                </SelectTrigger>
-                <SelectContent className="bg-white border border-gray-200 shadow-md">
-                  <SelectItem value="low" className="text-base py-2.5 hover:bg-gray-50">Low</SelectItem>
-                  <SelectItem value="medium" className="text-base py-2.5 hover:bg-gray-50">Medium</SelectItem>
-                  <SelectItem value="high" className="text-base py-2.5 hover:bg-gray-50">High</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-base font-medium text-gray-700">Room</Label>
-              {touched.room?.room_id && errors.room?.room_id && (
-                <span className="text-sm text-red-500 block">{errors.room.room_id}</span>
-              )}
+            <div className="space-y-1">
+              <Label className="font-medium">Room *</Label>
               <RoomAutocomplete
                 rooms={rooms}
                 selectedRoom={values.room}
                 onSelect={(selectedRoom) => setFieldValue('room', selectedRoom)}
+                disabled={isSubmitting}
               />
+              {touched.room && errors.room && (
+                <p className="text-xs text-red-600 mt-1">
+                  {typeof errors.room === 'string' ? errors.room : (errors.room as FormikErrors<Room>).room_id}
+                </p>
+              )}
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-base font-medium text-gray-700">Topic</Label>
-              {touched.topic?.title && errors.topic?.title && (
-                <span className="text-sm text-red-500 block">{errors.topic.title}</span>
-              )}
+            <div className="space-y-1">
+              <Label className="font-medium">Topic *</Label>
               <Select
                 value={values.topic.title}
                 onValueChange={(value) => {
-                  const selectedTopic = topics.find((t) => t.title === value);
-                  if (selectedTopic) {
-                    setFieldValue('topic', {
-                      title: selectedTopic.title,
-                      description: selectedTopic.description || '',
-                    });
-                  }
+                  const topic = topics.find((t) => t.title === value);
+                  if (topic) setFieldValue('topic', { title: topic.title, description: topic.description || '' });
                 }}
+                disabled={isSubmitting || topics.length === 0}
               >
-                <SelectTrigger className="w-full h-12 text-base bg-white border-gray-300">
-                  <SelectValue placeholder="Select topic" />
+                <SelectTrigger
+                  className={touched.topic?.title && errors.topic?.title ? 'border-red-500' : 'border-gray-300'}
+                >
+                  <SelectValue placeholder="Select Topic" />
                 </SelectTrigger>
-                <SelectContent className="bg-white border border-gray-200 shadow-md">
-                  {topics.map((topic) => (
-                    <SelectItem key={topic.id} value={topic.title} className="text-base py-2.5 hover:bg-gray-50">
-                      {topic.title}
+                <SelectContent>
+                  {topics.length > 0 ? (
+                    topics.map((topic) => (
+                      <SelectItem key={topic.id} value={topic.title}>
+                        {topic.title}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="" disabled>
+                      Loading topics...
                     </SelectItem>
-                  ))}
+                  )}
                 </SelectContent>
               </Select>
+              {touched.topic?.title && errors.topic?.title && (
+                <p className="text-xs text-red-600 mt-1">{errors.topic.title}</p>
+              )}
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-base font-medium text-gray-700">Images</Label>
-              {touched.files && errors.files && (
-                <span className="text-sm text-red-500 block">
-                  {typeof errors.files === 'string' ? errors.files : 'Invalid file input'}
-                </span>
-              )}
+            <div className="space-y-1">
+              <Label className="font-medium">Images *</Label>
               <FileUpload
                 onFileSelect={(selectedFiles) => setFieldValue('files', selectedFiles)}
-                error={errors.files as string | undefined}
-                touched={touched.files as boolean | undefined}
+                error={touched.files && typeof errors.files === 'string' ? errors.files : undefined}
+                touched={!!touched.files}
                 maxFiles={5}
-                maxSize={5}
+                maxSize={MAX_FILE_SIZE / 1024 / 1024}
+                disabled={isSubmitting}
               />
+              {touched.files && typeof errors.files === 'string' && (
+                <p className="text-xs text-red-600 mt-1">{errors.files}</p>
+              )}
             </div>
 
-            <div className="space-y-4">
-              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-md border border-gray-200">
-                <Checkbox
+            <div className="space-y-3 pt-2">
+              <div className="flex items-start space-x-3">
+                <Field
+                  as={Checkbox}
+                  name="is_defective"
                   id="is_defective"
-                  checked={values.is_defective}
-                  onCheckedChange={(checked) => setFieldValue('is_defective', checked)}
-                  className="mt-1 h-5 w-5 border-gray-300 bg-white"
+                  disabled={isSubmitting}
+                  className="mt-0.5"
                 />
-                <div className="space-y-1">
-                  <label htmlFor="is_defective" className="text-base font-medium text-gray-700">
+                <div className="grid gap-0.5">
+                  <Label htmlFor="is_defective" className="text-sm font-medium">
                     Defective Item
-                  </label>
-                  <p className="text-sm text-gray-500">Mark if defective or needs contractor repair</p>
+                  </Label>
+                  <p className="text-xs text-gray-500">Mark if defective or needs contractor repair.</p>
                 </div>
               </div>
-
-              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-md border border-gray-200">
-                <Checkbox
+              <div className="flex items-start space-x-3">
+                <Field
+                  as={Checkbox}
+                  name="is_preventivemaintenance"
                   id="is_preventivemaintenance"
-                  checked={values.is_preventivemaintenance}
-                  onCheckedChange={(checked) => setFieldValue('is_preventivemaintenance', checked)}
-                  className="mt-1 h-5 w-5 border-gray-300 bg-white"
+                  disabled={isSubmitting}
+                  className="mt-0.5"
                 />
-                <div className="space-y-1">
-                  <label htmlFor="is_preventivemaintenance" className="text-base font-medium text-gray-700">
+                <div className="grid gap-0.5">
+                  <Label htmlFor="is_preventivemaintenance" className="text-sm font-medium">
                     Preventive Maintenance
-                  </label>
-                  <p className="text-sm text-gray-500">Mark if this is a preventive maintenance job</p>
+                  </Label>
+                  <p className="text-xs text-gray-500">Mark if this is a scheduled preventive job.</p>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-2 border-t border-gray-200 pt-4">
-              <div 
-                className="flex items-center justify-between cursor-pointer py-2"
+            <div className="space-y-1 border-t pt-4">
+              <div
+                className="flex items-center justify-between cursor-pointer"
                 onClick={() => setShowRemarks(!showRemarks)}
+                role="button"
+                aria-expanded={showRemarks}
+                aria-controls="remarks-textarea"
               >
-                <Label className="text-base font-medium text-gray-700 cursor-pointer flex items-center gap-2">
-                  Remarks
-                  {showRemarks ? <ChevronUp className="h-5 w-5 text-gray-500" /> : <ChevronDown className="h-5 w-5 text-gray-500" />}
+                <Label className="font-medium flex items-center gap-1 cursor-pointer">
+                  Remarks <span className="text-xs text-gray-500">(Optional)</span>
                 </Label>
+                {showRemarks ? (
+                  <ChevronUp size={16} className="text-gray-600" />
+                ) : (
+                  <ChevronDown size={16} className="text-gray-600" />
+                )}
               </div>
-              <div className={`transition-all duration-200 ${showRemarks ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'} overflow-hidden`}>
-                <Field 
-                  as={Textarea} 
-                  id="remarks" 
-                  name="remarks" 
-                  placeholder="Add notes (optional)"
-                  className="w-full min-h-24 text-base px-4 py-3 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              <div
+                className={`transition-all duration-300 ease-in-out overflow-hidden ${
+                  showRemarks ? 'max-h-60 opacity-100 pt-2' : 'max-h-0 opacity-0'
+                }`}
+              >
+                <Field
+                  as={Textarea}
+                  id="remarks-textarea"
+                  name="remarks"
+                  placeholder="Add any additional notes..."
+                  disabled={isSubmitting}
+                  className={`w-full min-h-[70px] ${touched.remarks && errors.remarks ? 'border-red-500' : 'border-gray-300'}`}
                 />
+                {touched.remarks && errors.remarks && (
+                  <p className="text-xs text-red-600 mt-1">{errors.remarks}</p>
+                )}
               </div>
             </div>
 
-            <div className="flex flex-col gap-4 pt-4">
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full h-12 text-base bg-blue-600 hover:bg-blue-700 text-white font-medium"
-              >
-                {isSubmitting ? 'Creating...' : 'Create Job'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => router.push('/dashboard/myJobs')}
-                disabled={isSubmitting}
-                className="w-full h-12 text-base bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-              >
+            <div className="flex justify-end gap-3 pt-4">
+              <Button type="button" variant="outline" onClick={() => router.back()} disabled={isSubmitting}>
                 Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting || !session}>
+                {isSubmitting ? (
+                  <>
+                    <Loader className="mr-2 h-4 w-4 animate-spin" /> Creating...
+                  </>
+                ) : (
+                  'Create Job'
+                )}
               </Button>
             </div>
           </Form>

@@ -122,6 +122,7 @@ export interface Room {
   // Based on model, Room links to Property via ManyToMany 'properties'
   // Backend serializer might provide property IDs or nested Property objects
   properties?: (number | string | Property)[]; // IDs or nested objects
+  property_id?: string | number | null;
   // Remove property_id / property if not directly on Room model/serializer output
 }
 

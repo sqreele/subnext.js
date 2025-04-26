@@ -1,16 +1,20 @@
-import React, { useState, useCallback, useEffect } from "react";
+"use client";
+
+import React, { useState, useCallback, useEffect, ChangeEventHandler } from "react";
 import Image from "next/image";
 import { Upload, X, AlertCircle } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Progress } from "@/app/components/ui/progress";
 import { Alert, AlertDescription } from "@/app/components/ui/alert";
+import { cn } from "@/app/lib/utils";
 
-interface FileUploadProps {
+export interface FileUploadProps {
   onFileSelect: (files: File[]) => void;
   maxFiles?: number;
-  maxSize?: number;
+  maxSize?: number; // Max size in MB
   error?: string | undefined;
   touched?: boolean | undefined;
+  disabled?: boolean;
 }
 
 const FileUpload: React.FC<FileUploadProps> = ({
@@ -19,12 +23,11 @@ const FileUpload: React.FC<FileUploadProps> = ({
   maxSize = 5,
   error,
   touched,
+  disabled = false,
 }) => {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [fileProgress, setFileProgress] = useState<{ [key: string]: number }>(
-    {}
-  );
+  const [fileProgress, setFileProgress] = useState<{ [key: string]: number }>({});
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const validateFiles = useCallback(
@@ -32,19 +35,16 @@ const FileUpload: React.FC<FileUploadProps> = ({
       if (files.length + selectedFiles.length > maxFiles) {
         return `Maximum ${maxFiles} files allowed`;
       }
-
-      const invalidFiles = files.filter((file) => !file.type.startsWith("image/"));
-      if (invalidFiles.length > 0) {
-        return "Only image files are allowed";
+      // Validate type
+      const invalidTypes = files.filter((file) => !file.type.startsWith("image/"));
+      if (invalidTypes.length > 0) {
+        return `Only image files are allowed (${invalidTypes.map(f => f.name).join(', ')})`;
       }
-
-      const oversizedFiles = files.filter(
-        (file) => file.size > maxSize * 1024 * 1024
-      );
+      // Validate size
+      const oversizedFiles = files.filter((file) => file.size > maxSize * 1024 * 1024);
       if (oversizedFiles.length > 0) {
-        return `Files must be smaller than ${maxSize}MB`;
+        return `File(s) too large: ${oversizedFiles.map(f => f.name).join(', ')} (Max ${maxSize}MB)`;
       }
-
       return null;
     },
     [maxFiles, maxSize, selectedFiles.length]
@@ -52,45 +52,43 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
   const handleFiles = useCallback(
     (files: File[]) => {
-      const error = validateFiles(files);
-      setValidationError(error);
+      if (disabled) return;
+      const currentError = validateFiles(files);
+      setValidationError(currentError);
 
-      if (!error) {
-        const newFiles = [...selectedFiles, ...files];
+      if (!currentError) {
+        const newFiles = [...selectedFiles, ...files].slice(0, maxFiles);
         setSelectedFiles(newFiles);
         onFileSelect(newFiles);
 
-        // Initialize progress for new files
+        // Simulate progress
         const newProgress = { ...fileProgress };
         files.forEach((file) => {
           newProgress[file.name] = 0;
         });
         setFileProgress(newProgress);
 
-        // Simulate progress
+        // Simulate upload progress
         files.forEach((file) => {
           let progress = 0;
           const interval = setInterval(() => {
-            if (progress >= 100) {
-              clearInterval(interval);
-              return;
-            }
-            progress += 5;
+            progress += 10;
             setFileProgress((prev) => ({
               ...prev,
               [file.name]: progress,
             }));
-          }, 100);
+            if (progress >= 100) {
+              clearInterval(interval);
+            }
+          }, 200);
         });
-      } else {
-        onFileSelect(selectedFiles); // Keep existing files if validation fails
       }
     },
-    [selectedFiles, fileProgress, onFileSelect, validateFiles]
+    [disabled, validateFiles, selectedFiles, maxFiles, onFileSelect, fileProgress]
   );
 
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange: ChangeEventHandler<HTMLInputElement> = useCallback(
+    (e) => {
       const files = Array.from(e.target.files || []);
       handleFiles(files);
       e.target.value = ""; // Reset input
@@ -100,18 +98,19 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
   const removeFile = useCallback(
     (index: number) => {
+      if (disabled) return;
       setSelectedFiles((prev) => {
         const newFiles = prev.filter((_, i) => i !== index);
         onFileSelect(newFiles);
         return newFiles;
       });
-      setValidationError(null); // Clear validation error when removing files
+      setValidationError(null);
     },
-    [onFileSelect]
+    [onFileSelect, disabled]
   );
 
   const handleDrop = useCallback(
-    (e: React.DragEvent) => {
+    (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       setIsDragging(false);
       const files = Array.from(e.dataTransfer.files);
@@ -120,82 +119,79 @@ const FileUpload: React.FC<FileUploadProps> = ({
     [handleFiles]
   );
 
-  const getFilePreview = useCallback((file: File) => {
-    try {
+  const getFilePreview = useCallback(
+    (file: File) => {
       return URL.createObjectURL(file);
-    } catch (error) {
-      console.error("Error creating preview:", error);
-      return "";
-    }
-  }, []);
+    },
+    []
+  );
 
   useEffect(() => {
+    // Cleanup object URLs to prevent memory leaks
     return () => {
-      // Cleanup object URLs on unmount
       selectedFiles.forEach((file) => {
-        try {
-          const url = getFilePreview(file);
-          if (url) URL.revokeObjectURL(url);
-        } catch (error) {
-          console.error("Error cleaning up:", error);
-        }
+        URL.revokeObjectURL(getFilePreview(file));
       });
     };
   }, [selectedFiles, getFilePreview]);
 
   return (
     <div className="space-y-4">
-      {(error || validationError) && (
+      {/* Display External (Formik) Error OR Internal Validation Error */}
+      {(touched && error) || validationError ? (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{error || validationError}</AlertDescription>
         </Alert>
-      )}
+      ) : null}
 
       <div
-        className={`flex items-center justify-center w-full ${
-          isDragging ? "border-primary" : "border-dashed"
-        } ${(touched && error) || validationError ? "border-red-500" : ""}`}
+        className={cn(
+          "border-2 border-dashed rounded-lg p-6 text-center",
+          isDragging ? "border-primary bg-primary/10" : "border-muted",
+          disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+        )}
         onDragOver={(e) => {
           e.preventDefault();
-          setIsDragging(true);
+          if (!disabled) setIsDragging(true);
         }}
-        onDragLeave={(e) => {
-          e.preventDefault();
-          setIsDragging(false);
-        }}
+        onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
       >
         <label
-          className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer transition-colors duration-200 ${
-            isDragging ? "bg-gray-100 border-primary" : "bg-gray-50 hover:bg-gray-100"
-          } ${(touched && error) || validationError ? "border-red-500" : ""}`}
+          className={cn(
+            "flex flex-col items-center gap-2",
+            disabled ? "pointer-events-none" : ""
+          )}
         >
-          <div className="flex flex-col items-center justify-center pt-5 pb-6">
-            <Upload className="w-8 h-8 mb-2 text-gray-500" />
-            <p className="text-sm text-gray-500">Click or drag images here</p>
-            <p className="mt-1 text-xs text-gray-500">
-              Max {maxFiles} files, up to {maxSize}MB each
-            </p>
-          </div>
+          <Upload className="h-8 w-8 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">
+            Drag and drop images or click to upload
+          </p>
+          <p className="text-xs text-muted-foreground">
+            (Max {maxFiles} files, {maxSize}MB each)
+          </p>
           <input
             type="file"
             className="hidden"
             multiple
             accept="image/*"
             onChange={handleFileChange}
+            disabled={disabled}
           />
         </label>
       </div>
 
+      {/* File Previews */}
       {selectedFiles.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {selectedFiles.map((file, index) => (
             <div
-              key={`${file.name}-${index}`}
-              className="relative flex items-center gap-4 p-4 bg-gray-50 rounded-lg group hover:bg-gray-100 transition-colors duration-200"
+              key={`${file.name}-${index}-${file.lastModified}`}
+              className="relative flex items-center gap-3 p-3 border rounded-lg group bg-background"
             >
-              <div className="relative w-16 h-16">
+              {/* Image Preview */}
+              <div className="relative w-16 h-16 flex-shrink-0">
                 <Image
                   src={getFilePreview(file)}
                   alt={`Preview ${index}`}
@@ -204,25 +200,32 @@ const FileUpload: React.FC<FileUploadProps> = ({
                   sizes="64px"
                 />
               </div>
-              <div className="flex-1">
-                <p className="text-sm font-medium truncate">{file.name}</p>
-                <p className="text-xs text-gray-500">
+              {/* File Info & Progress */}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate" title={file.name}>
+                  {file.name}
+                </p>
+                <p className="text-xs text-muted-foreground">
                   {(file.size / (1024 * 1024)).toFixed(2)}MB
                 </p>
                 <Progress
-                  value={fileProgress[file.name] || 0}
-                  className="h-1 mt-2"
+                  value={fileProgress[file.name] || (file ? 100 : 0)}
+                  className="h-1 mt-1"
                 />
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-                onClick={() => removeFile(index)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+              {/* Remove Button */}
+              {!disabled && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                  onClick={() => removeFile(index)}
+                  aria-label="Remove file"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           ))}
         </div>
