@@ -8,7 +8,7 @@ interface Property {
   description?: string;
   users?: number[];
   created_at?: string;
-  id: number; // Django PK, e.g., 1
+  id: string | number;  // Django PK, e.g., 1
 }
 
 interface PropertyContextType {
