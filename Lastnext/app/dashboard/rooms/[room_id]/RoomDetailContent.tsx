@@ -23,13 +23,21 @@ export default function RoomDetailContent({ room, properties, jobs }: RoomDetail
   );
 
   const getPropertyName = () => {
-    if (room.property) {
-      const property = properties.find(p => p.property_id === String(room.property));
-      return property?.name || 'N/A';
-    }
     if (room.properties && room.properties.length > 0) {
-      const firstProperty = properties.find(p => room.properties!.map(String).includes(p.property_id));
-      return firstProperty?.name || 'N/A';
+      // Handle the first property in the array
+      const prop = room.properties[0];
+      let propId: string | number;
+
+      if (typeof prop === 'string' || typeof prop === 'number') {
+        propId = String(prop);
+      } else if (typeof prop === 'object' && prop !== null) {
+        propId = String(prop.property_id || '');
+      } else {
+        return 'N/A';
+      }
+
+      const property = properties.find(p => p.property_id === propId);
+      return property?.name || 'N/A';
     }
     return 'N/A';
   };
@@ -71,7 +79,7 @@ export default function RoomDetailContent({ room, properties, jobs }: RoomDetail
           </div>
           <div className="flex items-center gap-2 text-gray-600">
             <Home className="w-4 h-4" />
-            <span>Property: {room.property || (room.properties?.join(', ') || 'N/A')}</span>
+            <span>Property: {getPropertyName()}</span>
           </div>
           <div className="flex items-center gap-2 text-gray-500">
             <CalendarClock className="w-4 h-4" />

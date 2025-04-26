@@ -1,9 +1,8 @@
-// ProfileDisplay.tsx - Mobile Optimized Version
 "use client";
 
 import React, { useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { User2, Mail, Calendar, Shield, Pencil, Building2, Users, Plus, AlertCircle } from "lucide-react";
+import { User2, Mail, Calendar, Shield, Pencil, Building2, Plus, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -82,7 +81,6 @@ function PropertyCard({ property }: PropertyCardProps) {
     setSelectedProperty(propId);
   }, [property.property_id, setSelectedProperty]);
 
-  // Improved touch target sizes for mobile
   return (
     <div
       className={cn(
@@ -104,7 +102,7 @@ function PropertyCard({ property }: PropertyCardProps) {
             size="sm"
             onClick={handleSelectProperty}
             className={cn(
-              "text-xs min-h-[36px]", // Increased height for better touch targets
+              "text-xs min-h-[36px]",
               isSelected
                 ? "bg-blue-600 text-white hover:bg-blue-700"
                 : "hover:bg-blue-100 hover:text-blue-700"
@@ -125,10 +123,6 @@ function PropertyCard({ property }: PropertyCardProps) {
         ))}
       </div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm">
-        <div className="flex items-center gap-2">
-          <Users className="h-4 w-4 text-muted-foreground" />
-          <span className="text-muted-foreground">{property.users?.length || 0} users assigned</span>
-        </div>
         <span className="text-muted-foreground">
           {property.created_at ? new Date(property.created_at).toLocaleDateString() : "N/A"}
         </span>
