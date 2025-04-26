@@ -96,8 +96,8 @@ const initialValues: FormValues = {
     room_type: '',
     is_active: true,
     created_at: new Date().toISOString(),
-    property: 0,
-    properties: []
+    properties: [] 
+  
   },
   files: [],
   is_defective: false,
