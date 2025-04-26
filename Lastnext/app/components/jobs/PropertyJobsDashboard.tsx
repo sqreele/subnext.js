@@ -68,6 +68,7 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
 
     try {
       const jobsData = await fetchJobs();
+      console.log("Fetched jobs user fields:", jobsData.map(job => ({ job_id: job.job_id, user: job.user })));
       console.log("Fetched all jobs:", JSON.stringify(jobsData, null, 2));
       console.log("Session User:", JSON.stringify(session.user, null, 2));
 
@@ -148,14 +149,7 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
         roomMatch = job.rooms.some((room) => {
           if (!room) return false;
           
-          // 1. Check direct room.property field
-          if (room.property) {
-            if (String(room.property) === effectiveProperty) {
-              return true;
-            }
-          }
-          
-          // 2. Check room.properties array with SPECIAL CASE for "1"
+          // Check room.properties array with SPECIAL CASE for "1"
           if (room.properties && room.properties.length) {
             return room.properties.some(prop => {
               // SPECIAL CASE: In your system, property ID "1" appears to be a special case
