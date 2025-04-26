@@ -39,7 +39,7 @@ export function JobCard({ job, properties = [] }: JobCardProps) {
     }));
   }, []);
 
-  const getPropertyName = useCallback(() => {
+  const getPropertyName = useCallback((): string => {
     const jobProperties = [
       ...(job.profile_image?.properties || []),
       ...(job.properties || []),
@@ -56,10 +56,10 @@ export function JobCard({ job, properties = [] }: JobCardProps) {
 
       if (matchingProperty) {
         if (typeof matchingProperty === 'object' && 'name' in matchingProperty) {
-          return matchingProperty.name;
+          return matchingProperty.name as string;
         }
         const fullProperty = properties.find(p => String(p.property_id) === selectedProperty);
-        return fullProperty?.name;
+        return fullProperty?.name || 'N/A';
       }
     }
 
@@ -68,7 +68,7 @@ export function JobCard({ job, properties = [] }: JobCardProps) {
     );
 
     if (typeof firstMatchingProperty === 'object' && 'name' in firstMatchingProperty) {
-      return firstMatchingProperty.name;
+      return firstMatchingProperty.name as string;
     }
 
     const propertyFromList = properties.find(p =>
