@@ -190,47 +190,76 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId: pro
   const handleDelete = useCallback((job: Job) => { setSelectedJob(job); setIsDeleteDialogOpen(true); }, []);
 
   // --- handleEditSubmit ---
-  const handleEditSubmit = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      if (!selectedJob || !session?.user?.accessToken || !updateJob || !toast) { console.error("Edit submit cancelled: Missing prerequisites."); return; }
+// --- handleEditSubmit (FIXED missing id, user) ---
+const handleEditSubmit = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    // Add checks for id and user on selectedJob in the guard clause for runtime safety
+    if (!selectedJob || !selectedJob.id || selectedJob.user === undefined || selectedJob.user === null || !session?.user?.accessToken || !updateJob || !toast) {
+        console.error("Edit submit cancelled: Missing prerequisites or required fields (id/user) on selectedJob.");
+        toast({ title: "Error", description: "Cannot edit job: missing required job data.", variant: "destructive" });
+        return;
+    }
 
-      const formData = new FormData(event.currentTarget);
-      const description = formData.get("description") as string;
-      const priority = formData.get("priority") as JobPriority;
-      if (!description || description.trim() === "") { toast({ title: "Validation Error", description: "Description is required.", variant: "destructive" }); return; }
-      if (!priority) { toast({ title: "Validation Error", description: "Priority is required.", variant: "destructive" }); return; }
-      const remarksValue = formData.get("remarks") as string | null;
-      const remarks: string | undefined = (remarksValue && remarksValue.trim() !== "") ? remarksValue.trim() : undefined;
-      const is_defective = formData.get("is_defective") === "on";
+    const formData = new FormData(event.currentTarget);
+    const description = formData.get("description") as string;
+    const priority = formData.get("priority") as JobPriority;
+    if (!description || description.trim() === "") { toast({ title: "Validation Error", description: "Description is required.", variant: "destructive" }); return; }
+    if (!priority) { toast({ title: "Validation Error", description: "Priority is required.", variant: "destructive" }); return; }
+    const remarksValue = formData.get("remarks") as string | null;
+    const remarks: string | undefined = (remarksValue && remarksValue.trim() !== "") ? remarksValue.trim() : undefined;
+    const is_defective = formData.get("is_defective") === "on";
 
-      setIsSubmitting(true);
-      try {
-          // Construct the FULL Job object for API and local state
-          const locallyUpdatedJob: Job = {
-              job_id: selectedJob.job_id, status: selectedJob.status, created_at: selectedJob.created_at,
-              property_id: selectedJob.property_id, rooms: selectedJob.rooms, topics: selectedJob.topics,
-              completed_at: selectedJob.completed_at, description: description, priority: priority,
-              remarks: remarks, is_defective: is_defective, updated_at: new Date().toISOString(),
-          };
+    setIsSubmitting(true);
+    try {
+        // --- Construct the FULL Job object for API and local state (FIXED) ---
+        const locallyUpdatedJob: Job = {
+            // Required fields from selectedJob
+            id: selectedJob.id,                   // <<< ADDED
+            user: selectedJob.user,               // <<< ADDED
+            job_id: selectedJob.job_id,
+            status: selectedJob.status,
+            created_at: selectedJob.created_at,
+            property_id: selectedJob.property_id, // Ensure this is correct based on Job type
+            rooms: selectedJob.rooms,             // Ensure this is correct based on Job type
+            topics: selectedJob.topics,           // Ensure this is correct based on Job type
+            completed_at: selectedJob.completed_at,
 
-          // API Call (expects full Job object) - Ensure imported updateJob is correct
-          await updateJob(locallyUpdatedJob); // API Update function
+            // Fields updated from the form
+            description: description,
+            priority: priority,
+            remarks: remarks,
+            is_defective: is_defective,
 
-          // Update local state via hook's updateJob function
-          updateJob(locallyUpdatedJob as Job); // Hook Update function (assertion as fallback)
+            // Timestamp
+            updated_at: new Date().toISOString(),
 
-          toast({ title: "Success", description: `Job #${selectedJob.job_id} updated.` });
-          setIsEditDialogOpen(false); setSelectedJob(null);
-      } catch (error) {
-           console.error("Error updating job:", error);
-           let errorTitle = "Error Updating Job"; let errorDesc = "An unexpected error occurred.";
-           if (error instanceof ApiError) { errorTitle = `Update Error (${error.status || 'Network'})`; if (error.errorData && typeof error.errorData === 'object') { const details = Object.entries(error.errorData).map(([field, messages]) => `${field}: ${(Array.isArray(messages) ? messages.join(', ') : messages)}`).join('; '); errorDesc = details || error.errorData.detail || error.message || "Update failed."; } else { errorDesc = error.message || "Update failed."; } }
-           else if (error instanceof Error) { errorDesc = error.message; }
-           toast({ title: errorTitle, description: errorDesc, variant: "destructive" });
-      } finally {
-          setIsSubmitting(false);
-      }
-  }, [selectedJob, session, updateJob, toast]); // Ensure hook's updateJob is dependency
+            // Add other optional fields from selectedJob if they are part of the Job type
+            profile_image: selectedJob.profile_image,
+            images: selectedJob.images,
+            image_urls: selectedJob.image_urls,
+            is_preventivemaintenance: selectedJob.is_preventivemaintenance,
+        };
+
+        // --- API Call ---
+        // Ensure updateJob (API function) expects the full Job object
+        await updateJob(locallyUpdatedJob);
+
+        // --- Update local state ---
+        // Ensure updateJob (hook function) expects the full Job object
+        updateJob(locallyUpdatedJob as Job); // Keep assertion as fallback
+
+        toast({ title: "Success", description: `Job #${selectedJob.job_id} updated.` });
+        setIsEditDialogOpen(false); setSelectedJob(null);
+    } catch (error) {
+         console.error("Error updating job:", error);
+         let errorTitle = "Error Updating Job"; let errorDesc = "An unexpected error occurred.";
+         if (error instanceof ApiError) { errorTitle = `Update Error (${error.status || 'Network'})`; if (error.errorData && typeof error.errorData === 'object') { const details = Object.entries(error.errorData).map(([field, messages]) => `${field}: ${(Array.isArray(messages) ? messages.join(', ') : messages)}`).join('; '); errorDesc = details || error.errorData.detail || error.message || "Update failed."; } else { errorDesc = error.message || "Update failed."; } }
+         else if (error instanceof Error) { errorDesc = error.message; }
+         toast({ title: errorTitle, description: errorDesc, variant: "destructive" });
+    } finally {
+        setIsSubmitting(false);
+    }
+}, [selectedJob, session, updateJob, toast]);
 
   // --- handleDeleteConfirm ---
   const handleDeleteConfirm = useCallback(async () => {

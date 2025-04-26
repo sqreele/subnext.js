@@ -1,27 +1,31 @@
-import { DateRange } from "react-day-picker";
-import 'next-auth';
+// ./app/lib/types.ts
 
-// Extend the built-in NextAuth session types
+import { DateRange } from "react-day-picker"; // Ensure this import is correct based on your project setup
+import 'next-auth'; // Required for module augmentation
+
+// --- NextAuth Module Augmentation ---
+// Extend the built-in NextAuth session and JWT types
 declare module 'next-auth' {
   interface Session {
     user: {
-      id: string;  // Changed to string to match Prisma
+      id: string;           // Changed to string if using string IDs (e.g., UUIDs from Prisma/DB)
       username: string;
       email: string | null;
       profile_image: string | null;
-      positions: string;
-      properties: Property[];
+      positions: string;      // Consider if this should be string[] or a specific enum/type
+      properties: Property[]; // Array of Property objects
       accessToken: string;
       refreshToken: string;
-      accessTokenExpires?: number; // Added for token expiration tracking
-      sessionToken?: string;  // Added to match DRF Session model
-      created_at: string;
-      error?: string;
+      accessTokenExpires?: number; // Optional: For client-side expiration checks
+      sessionToken?: string;       // Optional: If storing DRF session token
+      created_at: string;       // User creation timestamp
+      error?: string;            // Optional: For auth errors
     };
+    // Add other session properties if needed
+    expires: string; // Default NextAuth session expiry
   }
 }
 
-// Also extend the JWT type
 declare module "next-auth/jwt" {
   interface JWT {
     id: string;
@@ -29,17 +33,22 @@ declare module "next-auth/jwt" {
     email: string | null;
     profile_image: string | null;
     positions: string;
-    properties: Property[];
+    properties: Property[]; // Store serialized properties if possible/needed
     accessToken: string;
     refreshToken: string;
-    accessTokenExpires?: number; // Added for token expiration tracking
+    accessTokenExpires?: number;
     created_at?: string;
     error?: string;
+    // Add other JWT claims if needed (e.g., roles, permissions)
+    iat?: number;
+    exp?: number;
+    jti?: string;
   }
 }
 
+// --- Reusable User Type (Matches Session User structure) ---
 export interface User {
-  id: string;  // Changed to string to match Prisma
+  id: string;
   username: string;
   email: string | null;
   profile_image: string | null;
@@ -47,101 +56,109 @@ export interface User {
   properties: Property[];
   accessToken: string;
   refreshToken: string;
-  accessTokenExpires?: number; // Added for token expiration tracking
+  accessTokenExpires?: number;
   sessionToken?: string;
   created_at: string;
 }
 
-// Profile-related types
-export interface ProfileImage {
-  profile_image: string;
-  positions: string;
-  username: string;
-  properties: Property[];
+// --- Profile-related Types ---
+export interface ProfileImage { // Simplified - might not be needed if UserProfile used directly
+  profile_image: string | null; // Allow null
+  // Other fields might not be needed here if UserProfile is the main source
 }
 
-// Job-related types
+export interface UserProfile {
+  id: string; // UserProfile ID (might differ from User ID)
+  user: string; // Typically the User ID it links to
+  username: string;
+  email: string | null;
+  profile_image: string | null;
+  positions: string;
+  properties: Property[]; // Properties associated with this user's profile
+  created_at: string; // User creation timestamp (often from related User)
+}
+
+export interface UserContextType {
+  userProfile: UserProfile | null;
+  selectedProperty: string | null; // Assuming property ID is string
+  setSelectedProperty: (propertyId: string | null) => void; // Allow setting null
+  loading: boolean;
+}
+
+
+// --- Job-related Types ---
 export type JobStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled' | 'waiting_sparepart';
 export type JobPriority = 'low' | 'medium' | 'high';
 
 export interface JobImage {
   id: number;
-  image_url: string;
-  uploaded_by: number;
-  uploaded_at: string;
+  image_url: string; // URL provided by the backend serializer
+  uploaded_by?: number | string | User | null; // ID or nested user object depending on serializer depth
+  uploaded_at: string; // ISO date string
 }
 
 export interface Topic {
-  id?: number;
+  id: number; // Assuming ID is always present when fetched
   title: string;
-  description: string;
+  description: string | null; // Allow null description based on model
 }
 
+export interface TopicFromAPI { // Keep if API structure differs slightly from Topic
+  id: number;
+  title: string;
+  description: string | null; // Allow null description based on model
+}
+
+
 export interface Room {
-  room_id: number | string;
+  room_id: number; // Assuming primary key is integer
   name: string;
   room_type: string;
   is_active: boolean;
-  created_at: string;
-  property_id?: string | number;
-  property?: number| string;
-  properties?: number[];
+  created_at: string; // ISO date string
+  // Based on model, Room links to Property via ManyToMany 'properties'
+  // Backend serializer might provide property IDs or nested Property objects
+  properties?: (number | string | Property)[]; // IDs or nested objects
+  // Remove property_id / property if not directly on Room model/serializer output
 }
 
 export interface Job {
-  job_id: string | number;
-  id?: number;
+  id: number; // Primary key from DB
+  job_id: string; // Custom generated job ID string
   description: string;
   status: JobStatus;
   priority: JobPriority;
-  created_at: string;
-  updated_at: string;
-  completed_at: string | null;
-  user?: string | number;
-  profile_image?: ProfileImage | null;
-  images?: JobImage[];
-  topics?: Topic[];
-  rooms?: Room[];
-  properties?: number[];
-  property_id?: string | number;
-  remarks?: string;
-  is_defective?: boolean;
-  image_urls?: string[];
-  is_preventivemaintenance?: boolean;
+  created_at: string; // ISO date string
+  updated_at: string; // ISO date string
+  completed_at: string | null; // Allow null
+  user: number | string | User; // User ID or nested User object
+  updated_by?: number | string | User | null; // Optional user who last updated
+  profile_image?: ProfileImage | null; // Might be redundant if user object contains it
+  images?: JobImage[]; // Array of job images
+  topics?: Topic[]; // Array of topics
+  rooms?: Room[]; // Array of rooms (usually just one based on serializer logic?)
+  // properties?: number[]; // Seems unlikely based on model structure
+  property_id?: string | number; // Often inferred from Room or passed separately
+  remarks?: string | undefined | null; // Allow undefined or null based on usage
+  is_defective?: boolean; // Use boolean type
+  image_urls?: string[]; // Redundant if images array provides URLs? Check serializer
+  is_preventivemaintenance?: boolean; // Use boolean type
 }
 
-// Property-related types
+// --- Property-related Types ---
 export interface Property {
-  id: string | number; // Optional, as DRF uses property_id as the unique identifier
+  // id?: string | number; // Might not be present if property_id is the identifier
+  property_id: string; // Custom generated ID string
   name: string;
-  description: string;
-  property_id: string;
-  users: number[] | string[];
-  created_at: string;
-  rooms?: Room[];
-  properties?: Property[];
-  is_preventivemaintenance?: boolean;
+  description: string | null; // Allow null based on model
+  // users?: (number | string | User)[]; // User IDs or nested objects based on serializer
+  created_at: string; // ISO date string
+  rooms?: Room[]; // Nested rooms if serialized that way
+  // Remove properties?: Property[]; - self-reference seems unlikely here
 }
 
-// User-related types
-export interface UserProfile {
-  id: string;
-  username: string;
-  email: string | null;
-  profile_image: string | null;
-  positions: string;
-  properties: Property[];
-  created_at: string; //
-}
 
-export interface UserContextType {
-  userProfile: UserProfile | null;
-  selectedProperty: string | null;
-  setSelectedProperty: (propertyId: string) => void;
-  loading: boolean;
-}
-
-// Component prop types
+// --- Component Prop Types (Examples) ---
 export interface JobCardProps {
   job: Job;
 }
@@ -157,70 +174,83 @@ export interface PaginationProps {
 }
 
 export interface UserFilterProps {
-  users: string[];
+  // Adjust type based on what represents a user in filters (ID, username?)
+  users: (string | { id: string; username: string })[];
   selectedUser: string | null;
   onSelectUser: (user: string | null) => void;
 }
 
-// Filters and Sorting
-export type TabValue = 'all' | 'waiting_sparepart' | 'pending' | 'completed' | 'cancelled' | 'defect'| 'preventive_maintenance';
-export type SortOrder = 'Newest first' | 'Oldest first';
+// --- Filters and Sorting ---
+export type TabValue = 'all' | 'waiting_sparepart' | 'pending' | 'completed' | 'cancelled' | 'defect' | 'preventive_maintenance';
+export type SortOrder = 'Newest first' | 'Oldest first'; // Consider 'asc' | 'desc' for programmatic use
 
+// Filter state used by components and potentially API calls
 export interface FilterState {
-  user: string | null;
-  status: JobStatus | null;
-  priority: JobPriority | null;
-  topic: string | null;
-  room: string | null;
-  dateRange?: DateRange;
-  isPreventiveMaintenance?: boolean;
+  search: string;                 // Search term
+  status: JobStatus | "all";      // Job status filter ('all' means no filter)
+  priority: JobPriority | "all";    // Job priority filter ('all' means no filter) - CORRECTED
+  dateRange?: DateRange;          // Date range object from react-day-picker
+  is_preventivemaintenance?: boolean | null; // Filter by PM flag (null means ignore)
+  is_defective?: boolean | null;   // Filter by defect flag (null means ignore)
+
+  // Optional filters based on your UI/API capabilities
+  user?: string | null;           // Filter by user ID or username?
+  topic?: string | number | null; // Filter by topic ID or title?
+  room?: string | number | null;  // Filter by room ID or name?
+  property?: string | number | null;// Filter by property ID?
 }
 
+// Example Sort State (adjust based on actual sortable fields)
 export interface SortState {
-  field: 'created_at' | 'updated_at' | 'completed_at' | 'priority';
+  field: 'created_at' | 'updated_at' | 'completed_at' | 'priority' | 'status';
   direction: 'asc' | 'desc';
 }
 
-// API Responses
+
+// --- API Responses ---
+// Generic wrapper if your API uses one (optional)
 export interface ApiResponse<T = any> {
-  success?: boolean;
-  data?: T;
-  error?: string;
-  message?: string;
+  success?: boolean; // Indicate success/failure
+  data?: T;          // The actual payload
+  message?: string;  // Optional message
+  error?: string;    // Optional error string
 }
 
+// Standard DRF pagination structure
 export interface PaginatedResponse<T> {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: T[];
+  count: number;         // Total number of items matching filters
+  next: string | null;   // URL for the next page
+  previous: string | null;// URL for the previous page
+  results: T[];        // Array of items for the current page
 }
 
-export interface JobsApiResponse {
-  jobs: Job[];
-  totalPages: number;
-  currentPage: number;
-  totalJobs: number;
-  filters: Partial<FilterState>;
-}
+// Specific structure if your /api/jobs endpoint returns this directly (unlikely with DRF pagination)
+// export interface JobsApiResponse {
+//   jobs: Job[];
+//   totalPages: number;
+//   currentPage: number;
+//   totalJobs: number;
+//   filters?: Partial<FilterState>; // Echo back filters? Optional.
+// }
 
-export interface JobsPDFProps {
+export interface JobsPDFProps { // Props for a PDF generation component
   jobs: Job[];
   filter: TabValue;
 }
 
-// Constants for UI
+
+// --- UI Constants ---
 export const STATUS_COLORS: Record<JobStatus, string> = {
-  pending: '#FFA500',
-  waiting_sparepart: '#0000FF',
-  completed: '#008000',
-  cancelled: '#FF0000',
-  in_progress: '#9B59B6',
+  pending: '#FFA500', // Orange
+  waiting_sparepart: '#87CEEB', // SkyBlue (adjust color)
+  completed: '#008000', // Green
+  cancelled: '#FF0000', // Red
+  in_progress: '#9B59B6', // Purple
 };
 
 export const FILTER_TITLES: Record<TabValue, string> = {
   all: 'All Jobs Report',
-  waiting_sparepart: 'Active Jobs Report',
+  waiting_sparepart: 'Waiting Parts Report', // Corrected title
   pending: 'Pending Jobs Report',
   completed: 'Completed Jobs Report',
   cancelled: 'Cancelled Jobs Report',
@@ -229,79 +259,82 @@ export const FILTER_TITLES: Record<TabValue, string> = {
 };
 
 export const PRIORITY_COLORS: Record<JobPriority, string> = {
-  low: '#4CAF50',
-  medium: '#FF9800',
-  high: '#F44336',
+  low: '#4CAF50',    // Green
+  medium: '#FF9800', // Orange
+  high: '#F44336',   // Red
 };
 
-export interface TopicFromAPI {
-  id: number;
-  title: string;
-  description: string;
-}
+// ShadCN Variant mappings (ensure these variant names exist in your Button/Badge theme)
+export const PRIORITY_VARIANTS = {
+  high: 'destructive',
+  medium: 'secondary', // Or 'warning' if you have one
+  low: 'outline',    // Or 'success' if you have one
+  default: 'default',
+} as const; // Use const assertion for stricter typing
 
-export interface RegisterFormData {
+export const STATUS_VARIANTS = {
+  completed: 'outline',   // Or 'success'
+  in_progress: 'secondary', // Or 'info'
+  pending: 'default',   // Or 'warning'
+  cancelled: 'destructive',
+  waiting_sparepart: 'default', // Or a distinct color/variant
+  default: 'default',
+} as const;
+
+
+// --- Other Misc Types ---
+export interface RegisterFormData { // For user registration form
   username: string;
   email: string;
   password: string;
 }
 
-export interface ErrorState {
+export interface ErrorState { // Simple error state shape
   message: string;
-  field?: string;
+  field?: string; // Optional field association
 }
 
-export const ITEMS_PER_PAGE = 5;
-export const MAX_VISIBLE_PAGES = 5;
+export const ITEMS_PER_PAGE = 10; // Default items per page (can be overridden)
+export const MAX_VISIBLE_PAGES = 5; // For pagination UI component
 
-export const PRIORITY_VARIANTS = {
-  high: 'destructive',
-  medium: 'secondary',
-  low: 'outline',
-  default: 'default',
-} as const;
 
-export const STATUS_VARIANTS = {
-  completed: 'outline',
-  in_progress: 'secondary',
-  pending: 'default',
-  cancelled: 'destructive',
-  waiting_sparepart: 'default',
-  default: 'default',
-} as const;
-
+// --- Search Feature Types ---
 export interface SearchCriteria {
   query?: string;
-  category?: 'Jobs' | 'Properties' | 'All';
-  status?: string;
+  category?: 'Jobs' | 'Properties' | 'All'; // Example categories
+  status?: string; // Could be JobStatus or other status types
   dateRange?: {
-    start?: string;
-    end?: string;
+    start?: string; // ISO Date string
+    end?: string;   // ISO Date string
   };
   page?: number;
   pageSize?: number;
 }
 
-// Search response type
-export interface SearchResponse {
+export interface SearchResponse { // Example structure for combined search results
   jobs: Job[];
   properties: Property[];
-  totalCount: number;
-  error?: string;
+  totalCount: number; // Total across all categories matching criteria
+  error?: string;     // Optional error message
 }
 
-// DRF-specific helper types
+
+// --- DRF Specific Error Types ---
+// For detailed validation errors from DRF serializers
 export interface DRFValidationError {
-  [key: string]: string[];
+  [key: string]: string[]; // Field name -> array of error strings
 }
 
+// General structure for DRF error responses (can include detail or field errors)
 export interface DRFErrorResponse {
-  detail?: string;
+  detail?: string; // Common for authentication errors, not found, etc.
+  // Can also include specific field errors matching DRFValidationError structure
   [key: string]: string | string[] | undefined;
 }
 
-// Page props
-export type PageProps = {
-  params: { jobId: string };
-  searchParams: { [key: string]: string | string[] | undefined };
+
+// --- Page Prop Types (Example for Next.js App Router) ---
+export type PageProps<TParams = { jobId: string }, TSearchParams = { [key: string]: string | string[] | undefined }> = {
+  params: TParams;
+  searchParams: TSearchParams;
 };
