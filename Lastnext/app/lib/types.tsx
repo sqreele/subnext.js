@@ -51,6 +51,7 @@ export interface User {
   refreshToken: string;
   accessTokenExpires?: number;
   sessionToken?: string;
+  users?: number[];
   created_at: string;
 }
 
@@ -61,13 +62,14 @@ export interface ProfileImage {
 
 export interface UserProfile {
   id: string;
-  user: string;
+  user?: string;
   username: string;
   email: string | null;
   profile_image: string | null;
   positions: string;
   properties: Property[];
   created_at: string;
+
 }
 
 export interface UserContextType {
@@ -141,6 +143,7 @@ export interface Property {
   created_at: string;
   rooms?: Room[];
   id?: string;
+  
 }
 
 export interface JobCardProps {

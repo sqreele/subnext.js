@@ -133,6 +133,7 @@ export const authOptions: NextAuthOptions = {
             positions: user.positions || profileData.positions || "User",
             properties: normalizedProperties,
             created_at: user.created_at.toISOString() || profileData.created_at || new Date().toISOString(),
+           
           };
 
           /** 🔹 Step 8: Return the user object with token expiry time */
