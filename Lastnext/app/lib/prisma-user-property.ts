@@ -8,7 +8,6 @@ import { Property } from "@/app/lib/types";
 export async function getUserProperties(userId: string): Promise<Property[]> {
   try {
     // Attempt to get properties through direct relationship
-    // We need to be careful about the structure expected by TypeScript
     const result = await prisma.$queryRaw`
       SELECT 
         p.id, 
@@ -26,14 +25,12 @@ export async function getUserProperties(userId: string): Promise<Property[]> {
     // The result is an array of raw DB objects
     if (Array.isArray(result) && result.length > 0) {
       return result.map((prop: any) => ({
-        id: String(prop.id),
         property_id: String(prop.id),
         name: prop.name || `Property ${prop.id}`,
         description: prop.description || "",
         created_at: typeof prop.created_at === 'object' && prop.created_at !== null 
           ? prop.created_at.toISOString() 
           : (prop.created_at || new Date().toISOString()),
-        users: [],
       }));
     }
     
@@ -50,14 +47,12 @@ export async function getUserProperties(userId: string): Promise<Property[]> {
     }
 
     return user.properties.map((prop: any) => ({
-      id: String(prop.id),
       property_id: String(prop.id),
       name: prop.name || `Property ${prop.id}`,
       description: prop.description || "",
       created_at: typeof prop.created_at === 'object' && prop.created_at !== null 
         ? prop.created_at.toISOString() 
         : (prop.created_at || new Date().toISOString()),
-      users: [],
     }));
   } catch (error) {
     console.error("Error fetching user properties:", error);
@@ -115,14 +110,12 @@ export async function createPropertyForUser(
   });
 
   return {
-    id: newProperty.id,
     property_id: newProperty.id,
     name: newProperty.name || `Property ${newProperty.id}`,
     description: newProperty.description || "",
     created_at: typeof newProperty.created_at === 'object' && newProperty.created_at !== null 
       ? newProperty.created_at.toISOString()
       : (newProperty.created_at || new Date().toISOString()),
-    users: [],
   };
 }
 
@@ -184,13 +177,11 @@ export async function syncUserProperties(
   
   // Convert to our application Property type
   return results.map(prop => ({
-    id: prop.id,
     property_id: prop.id,
     name: prop.name || `Property ${prop.id}`,
     description: prop.description || "",
     created_at: typeof prop.created_at === 'object' && prop.created_at !== null 
       ? prop.created_at.toISOString()
       : (prop.created_at || new Date().toISOString()),
-    users: [],
   }));
 }

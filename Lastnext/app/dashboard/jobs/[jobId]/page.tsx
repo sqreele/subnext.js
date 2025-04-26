@@ -1,4 +1,3 @@
-// app/dashboard/jobs/[jobId]/page.tsx
 import { notFound } from 'next/navigation';
 import { fetchJob, fetchProperties } from '@/app/lib/data.server';
 import { getServerSession } from 'next-auth/next';
@@ -7,7 +6,7 @@ import type { Metadata, ResolvingMetadata } from 'next';
 import { MapPin, Clock, Calendar, User, CheckCircle2, MessageSquare, StickyNote, AlertTriangle } from 'lucide-react';
 import { Badge } from '@/app/components/ui/badge';
 import { cn } from '@/app/lib/utils';
-import { Job, Property, JobStatus, JobPriority } from '@/app/lib/types'; // Import types
+import { Job, Property, JobStatus, JobPriority } from '@/app/lib/types';
 
 type Props = {
   params: Promise<{ jobId: string }>;
@@ -54,7 +53,7 @@ export default async function JobPage({ params }: Props) {
 
     // Fetch job and properties
     const job = await fetchJob(jobId, accessToken);
-    const properties = await fetchProperties(accessToken); // Fetch properties server-side
+    const properties = await fetchProperties(accessToken);
 
     if (!job) {
       notFound();
@@ -138,7 +137,8 @@ export default async function JobPage({ params }: Props) {
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-gray-500" />
               <span>
-                <span className="font-semibold">Assigned to:</span> {job.user}
+                <span className="font-semibold">Assigned to:</span>{' '}
+                {typeof job.user === 'object' && job.user ? job.user.username : job.user || 'Unassigned'}
               </span>
             </div>
           )}
@@ -166,9 +166,12 @@ export default async function JobPage({ params }: Props) {
                 <span className="font-semibold">Properties:</span>
               </div>
               <ul className="ml-6 list-disc text-sm">
-                {job.properties.map(propId => {
-                  const prop = properties.find(p => p.property_id === String(propId)); // Ensure type consistency
-                  return <li key={propId}>{prop?.name || `ID: ${propId}`}</li>;
+                {job.properties.map((propId, index) => {
+                  const propKey = typeof propId === 'object' && propId ? 
+                    String(propId.property_id || propId.id || index) : 
+                    String(propId);
+                  const prop = properties.find(p => p.property_id === propKey);
+                  return <li key={propKey}>{prop?.name || `ID: ${propKey}`}</li>;
                 })}
               </ul>
             </div>
@@ -232,5 +235,4 @@ export default async function JobPage({ params }: Props) {
   }
 }
 
-export const revalidate = 0; // Disable caching for dynamic data
-
+export const revalidate = 0;
