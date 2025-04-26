@@ -140,6 +140,7 @@ export interface Property {
   description: string | null;
   created_at: string;
   rooms?: Room[];
+  id?: string;
 }
 
 export interface JobCardProps {
