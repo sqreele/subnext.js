@@ -8,7 +8,7 @@ import { Button } from "@/app/components/ui/button";
 import { Check, ChevronsUpDown, Building } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 import { useProperty } from "@/app/lib/PropertyContext";
-import { Room, Property } from "@/app/lib/types";
+import { Room } from "@/app/lib/types";
 
 interface RoomAutocompleteProps {
   rooms: Room[];
@@ -28,6 +28,7 @@ const RoomAutocomplete = ({
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const { selectedProperty, userProperties = [] } = useProperty();
+  const [fallbackMode, setFallbackMode] = useState(false);
 
   // Safer debug logging
   const debugLog = useCallback((message: string, data?: any) => {
@@ -39,88 +40,89 @@ const RoomAutocomplete = ({
   // Safer room array handling
   const safeRooms = useMemo(() => (Array.isArray(rooms) ? rooms : []), [rooms]);
 
-  // Log properties data for debugging
+  // Log data for debugging on component mount and when key props change
   useEffect(() => {
     if (debug) {
       debugLog("CONTEXT/PROPS:", {
         selectedProperty,
-        userPropertiesCount: userProperties?.length,
-        totalRoomsProp: safeRooms.length,
-        selectedRoom
+        userProperties,
+        totalRooms: safeRooms.length,
+        selectedRoom,
+        fallbackMode
       });
-
-      if (selectedProperty) {
-        const propertyInfo = userProperties.find(p => {
-          // Check both id and property_id fields for match
-          return (p.property_id && p.property_id === selectedProperty) || 
-                 (p.id && p.id === selectedProperty);
-        });
-        debugLog(`SELECTED PROPERTY ENTITY: ${selectedProperty}`, propertyInfo ?? 'Not found in userProperties');
-      }
     }
-  }, [selectedProperty, safeRooms, userProperties, debug, debugLog, selectedRoom]);
+  }, [selectedProperty, safeRooms.length, debug, debugLog, selectedRoom, fallbackMode, userProperties]);
 
-  // Enhanced roomBelongsToProperty with better property ID handling
+  // Enhanced roomBelongsToProperty to handle Django model relationships
   const roomBelongsToProperty = useCallback((room: Room, propertyId: string | null): boolean => {
-    // Early returns
+    // Early returns and special cases
     if (!propertyId) return true; // Show all if no property selected
     if (!room) return false;
+    if (fallbackMode) return true; // Show all rooms in fallback mode
     
-    // Special case for property ID "1" - often used as a global property
-    if (propertyId === "1") return true;
-
+    // Special handling for Lubd Bangkok Chainatown property
+    if (propertyId === "PB749146D") {
+      debugLog(`Property PB749146D selected - showing all rooms in special mode`);
+      return true;
+    }
+    
+    // Handle numeric property ID
+    const numericPropId = !isNaN(Number(propertyId)) ? Number(propertyId) : null;
+    const propIdStr = String(propertyId);
+    
     debugLog(`Checking if room ${room.name} (ID: ${room.room_id}) belongs to property ${propertyId}`);
 
-    // Check the 'properties' array field on the room object
+    // Check the room.properties array (if it exists)
     if (room.properties && Array.isArray(room.properties)) {
-      for (const propIdentifier of room.properties) {
-        // Handle null/undefined
-        if (propIdentifier === null || propIdentifier === undefined) continue;
+      for (const prop of room.properties) {
+        // Skip null/undefined properties
+        if (prop === null || prop === undefined) continue;
         
-        // Handle property object with property_id field
-        if (typeof propIdentifier === 'object' && 'property_id' in propIdentifier) {
-          const propId = propIdentifier.property_id;
-          debugLog(` -> Checking property object: property_id=${propId}`);
-          if (String(propId) === propertyId) {
-            debugLog(`✓ MATCH: property_id in object matches ${propertyId}`);
+        // Case 1: Property is an object with id or property_id
+        if (typeof prop === 'object') {
+          // Check the property_id field
+          if ('property_id' in prop && (prop.property_id === propertyId || String(prop.property_id) === propIdStr)) {
+            debugLog(`✓ MATCH: Found property_id match in room.properties`);
             return true;
+          }
+          
+          // Check the id field
+          if ('id' in prop && (prop.id === propertyId || String(prop.id) === propIdStr)) {
+            debugLog(`✓ MATCH: Found id match in room.properties`);
+            return true;
+          }
+          
+          // Check numeric ID if we have one
+          if (numericPropId !== null) {
+            if ('id' in prop && Number(prop.id) === numericPropId) {
+              debugLog(`✓ MATCH: Found numeric id match in room.properties`);
+              return true;
+            }
+            if ('property_id' in prop && Number(prop.property_id) === numericPropId) {
+              debugLog(`✓ MATCH: Found numeric property_id match in room.properties`);
+              return true;
+            }
           }
         }
         
-        // Handle property object with id field
-        if (typeof propIdentifier === 'object' && 'id' in propIdentifier) {
-          const propId = propIdentifier.id;
-          debugLog(` -> Checking property object: id=${propId}`);
-          if (String(propId) === propertyId) {
-            debugLog(`✓ MATCH: id in object matches ${propertyId}`);
+        // Case 2: Property is a primitive (ID directly)
+        if (typeof prop === 'string' || typeof prop === 'number') {
+          if (String(prop) === propIdStr) {
+            debugLog(`✓ MATCH: Found direct ID match in room.properties`);
             return true;
           }
-        }
-        
-        // Handle direct string/number property ID
-        if (typeof propIdentifier === 'string' || typeof propIdentifier === 'number') {
-          debugLog(` -> Checking direct property ID: ${propIdentifier}`);
-          if (String(propIdentifier) === propertyId) {
-            debugLog(`✓ MATCH: Direct property ID matches ${propertyId}`);
+          // Check numeric match
+          if (numericPropId !== null && Number(prop) === numericPropId) {
+            debugLog(`✓ MATCH: Found numeric direct ID match in room.properties`);
             return true;
           }
         }
       }
-      
-      debugLog(` -> No match found in room.properties array for room ${room.name}`);
-    } else {
-      debugLog(` -> room.properties array does not exist or is not an array for room ${room.name}`);
     }
 
-    // Special case for property_id PB749146D - if you have a specific rule
-    if (propertyId === 'PB749146D' && room.room_type === 'Hotel') {
-      debugLog(`✓ MATCH: Special case for PB749146D and Hotel rooms`);
-      return true;
-    }
-
-    debugLog(`✗ NO MATCH: Room ${room.name} does not match property ${propertyId}`);
+    // No match found through regular checks
     return false;
-  }, [debugLog]);
+  }, [debugLog, fallbackMode]);
 
   // Reset selected room when property changes if it doesn't belong
   useEffect(() => {
@@ -140,6 +142,24 @@ const RoomAutocomplete = ({
     
     debugLog(`Filtering ${safeRooms.length} rooms for property: ${selectedProperty || 'any'}, query: "${searchQuery}"`);
 
+    // Special case: Force all rooms for property PB749146D
+    if (selectedProperty === "PB749146D") {
+      debugLog("Using special case for PB749146D: showing all rooms");
+      const searchFiltered = searchQuery 
+        ? safeRooms.filter(room => {
+            const nameMatch = room.name?.toLowerCase().includes(searchQuery.toLowerCase());
+            const typeMatch = room.room_type?.toLowerCase().includes(searchQuery.toLowerCase());
+            return nameMatch || typeMatch;
+          })
+        : safeRooms;
+        
+      // Sort by name for better usability
+      return searchFiltered.sort((a, b) => 
+        a.name.localeCompare(b.name, undefined, {numeric: true, sensitivity: 'base'})
+      );
+    }
+
+    // Regular filtering
     const results = safeRooms.filter((room) => {
       // Skip invalid rooms
       if (!room || typeof room.name !== 'string') {
@@ -166,15 +186,34 @@ const RoomAutocomplete = ({
 
     debugLog(`Filtering result: ${results.length} rooms match.`);
     
+    // Auto-enable fallback mode if no rooms match and we're not already in fallback mode
+    if (results.length === 0 && !fallbackMode && selectedProperty && safeRooms.length > 0) {
+      debugLog("No rooms match current property - enabling fallback mode");
+      setFallbackMode(true);
+      return safeRooms.filter(room => {
+        if (searchQuery) {
+          const search = searchQuery.toLowerCase();
+          return room.name.toLowerCase().includes(search) || 
+                 (room.room_type && room.room_type.toLowerCase().includes(search));
+        }
+        return true;
+      });
+    }
+    
     // Sort rooms by name for better usability
     return results.sort((a, b) => 
       a.name.localeCompare(b.name, undefined, {numeric: true, sensitivity: 'base'})
     );
-  }, [safeRooms, searchQuery, selectedProperty, roomBelongsToProperty, debugLog]);
+  }, [safeRooms, searchQuery, selectedProperty, roomBelongsToProperty, fallbackMode, debugLog]);
 
   // Get property name with better error handling
   const getPropertyName = useCallback((): string => {
     if (!selectedProperty) return "All Properties";
+    
+    // Special case for PB749146D
+    if (selectedProperty === "PB749146D") {
+      return "Lubd Bangkok Chainatown";
+    }
     
     // Check userProperties array for matching property
     if (Array.isArray(userProperties) && userProperties.length > 0) {
@@ -196,17 +235,32 @@ const RoomAutocomplete = ({
       {/* Info text showing current property */}
       <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
         <Building className="h-3 w-3" />
-        <span>Showing rooms for: <span className="font-medium text-gray-700">{getPropertyName()}</span>
-         {(selectedProperty || searchQuery) && (<span className="ml-1">({filteredRooms.length} found)</span>)}
+        <span>
+          Showing rooms for: <span className="font-medium text-gray-700">{getPropertyName()}</span>
+          {(selectedProperty || searchQuery) && (<span className="ml-1">({filteredRooms.length} found)</span>)}
+          {fallbackMode && <span className="ml-1 text-amber-600">(Fallback Mode)</span>}
         </span>
       </div>
 
-      {/* Optional Debug Info */}
+      {/* Debug Info */}
       {debug && (
         <div className="text-xs text-gray-500 bg-gray-100 p-1 rounded mb-1">
           Debug: Prop: {selectedProperty || "any"} | Rooms: {safeRooms.length} | 
-          Filtered: {filteredRooms.length} | UserProps: {userProperties?.length || 0}
+          Filtered: {filteredRooms.length} | Fallback: {fallbackMode ? "Yes" : "No"}
         </div>
+      )}
+
+      {/* Toggle fallback mode button (debug only) */}
+      {debug && (
+        <Button 
+          type="button" 
+          variant="outline" 
+          size="sm" 
+          onClick={() => setFallbackMode(!fallbackMode)}
+          className="w-full h-6 text-xs mb-2"
+        >
+          {fallbackMode ? "Disable Fallback Mode" : "Enable Fallback Mode"}
+        </Button>
       )}
 
       {/* Popover and Command */}
@@ -221,6 +275,7 @@ const RoomAutocomplete = ({
               "w-full justify-between h-11 text-sm bg-white border-gray-300 font-normal",
               !selectedRoom?.name && "text-muted-foreground"
             )}
+            data-testid="room-select-button"
           >
             {selectedRoom?.name
               ? `${selectedRoom.name}${selectedRoom.room_type ? ` (${selectedRoom.room_type})` : ''}`
@@ -235,6 +290,7 @@ const RoomAutocomplete = ({
               value={searchQuery}
               onValueChange={setSearchQuery}
               className="h-10 text-sm"
+              data-testid="room-search-input"
             />
             <CommandList>
               <CommandEmpty className="py-4 px-4 text-sm text-center text-muted-foreground">
@@ -254,6 +310,7 @@ const RoomAutocomplete = ({
                         setOpen(false);
                     }}
                     className="text-sm"
+                    data-testid={`room-option-${room.room_id}`}
                   >
                     <Check 
                       className={cn(
