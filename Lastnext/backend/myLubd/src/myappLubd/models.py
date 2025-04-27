@@ -69,6 +69,7 @@ class Property(models.Model):
 
 
 class Room(models.Model):
+    id = models.AutoField(primary_key=True)
     room_id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100, unique=True)
     room_type = models.CharField(max_length=50, db_index=True)
