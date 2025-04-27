@@ -47,19 +47,24 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Memoize the current property ID to reduce unnecessary re-renders
+  const effectiveProperty = useMemo(() => {
+    return selectedProperty || (userProperties.length > 0 ? userProperties[0].property_id : null);
+  }, [selectedProperty, userProperties]);
+
+  // Simplified session refresh
   const refreshSession = async () => {
     try {
       await update();
-      console.log("Session refreshed successfully");
       return true;
     } catch (err) {
-      console.error("Session refresh failed:", err);
       setError("Session expired. Please log in again.");
       signOut();
       return false;
     }
   };
 
+  // Load jobs with optimized error handling
   const loadJobs = async () => {
     if (status !== "authenticated" || !session?.user) return;
 
@@ -68,37 +73,27 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
 
     try {
       const jobsData = await fetchJobs();
-      console.log("Fetched jobs user fields:", jobsData.map(job => ({ job_id: job.job_id, user: job.user })));
-      console.log("Fetched all jobs:", JSON.stringify(jobsData, null, 2));
-      console.log("Session User:", JSON.stringify(session.user, null, 2));
-
+      
       if (!Array.isArray(jobsData)) {
         throw new Error("Invalid jobs data format");
       }
 
-      const currentUserId = session.user.id; // e.g., "1"
-      const currentUsername = session.user.username; // e.g., "admin"
+      const currentUserId = session.user.id;
+      const currentUsername = session.user.username;
 
+      // Filter only once using simple conditions
       const userJobs = jobsData.filter((job) => {
-        const jobUser = String(job.user); // Convert to string for comparison
-        const matchesId = jobUser === String(currentUserId);
-        const matchesUsername = currentUsername && jobUser === currentUsername;
-        console.log(
-          `Job ID: ${job.job_id}, Job User: ${jobUser}, Current ID: ${currentUserId}, Current Username: ${currentUsername}, Matches ID: ${matchesId}, Matches Username: ${matchesUsername}`
-        );
-        return matchesId || matchesUsername;
+        const jobUser = String(job.user);
+        return jobUser === String(currentUserId) || (currentUsername && jobUser === currentUsername);
       });
 
-      console.log(`Filtered to ${userJobs.length} jobs for current user:`, JSON.stringify(userJobs, null, 2));
       setAllJobs(userJobs);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch jobs";
-      console.error("Error loading jobs:", errorMessage);
       setError(errorMessage);
       setAllJobs([]);
 
       if (errorMessage.includes("401") || errorMessage.includes("Unauthorized")) {
-        console.log("Detected auth error, attempting session refresh...");
         const refreshed = await refreshSession();
         if (refreshed) {
           await loadJobs();
@@ -109,169 +104,140 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
     }
   };
 
+  // Load jobs when necessary
   useEffect(() => {
     loadJobs();
-  }, [status, selectedProperty, jobCreationCount]);
+  }, [status, jobCreationCount]);
 
+  // Filter jobs by property with optimized logic
   useEffect(() => {
     const user = session?.user;
-    if (!user?.properties?.length) {
-      setError("No properties associated with this user");
+    if (!user?.properties?.length || !allJobs.length || !effectiveProperty) {
       setFilteredJobs([]);
       return;
     }
 
-    if (!allJobs.length) {
-      setFilteredJobs([]);
-      return;
-    }
-
-    // Get the effective property ID - either selected or default to first
-    const effectiveProperty = selectedProperty || 
-      (userProperties.length > 0 ? userProperties[0].property_id : null);
-
-    if (!effectiveProperty) {
-      setError("No property selected and no default available.");
-      setFilteredJobs([]);
-      return;
-    }
-
-    console.log("Filtering jobs for property:", effectiveProperty);
-    
+    // Optimized filtering with less logging
     const filtered = allJobs.filter((job) => {
       // Direct property_id match
-      const propertyMatch = job.property_id && 
-        (String(job.property_id) === effectiveProperty);
+      if (job.property_id && String(job.property_id) === effectiveProperty) {
+        return true;
+      }
       
-      // Room property match with special case handling for ID "1"
-      let roomMatch = false;
+      // Room property match with special case handling
       if (job.rooms && job.rooms.length > 0) {
-        roomMatch = job.rooms.some((room) => {
-          if (!room) return false;
+        for (const room of job.rooms) {
+          if (!room?.properties?.length) continue;
           
-          // Check room.properties array with SPECIAL CASE for "1"
-          if (room.properties && room.properties.length) {
-            return room.properties.some(prop => {
-              // SPECIAL CASE: In your system, property ID "1" appears to be a special case
-              // that should match any selected property
-              if (prop === 1 || String(prop) === "1") {
-                return true;
-              }
-              
-              // Handle object property representations
-              if (typeof prop === "object" && prop !== null && "property_id" in prop) {
-                return String((prop as { property_id: string | number }).property_id) === effectiveProperty;
-              }
-              
-              // Handle direct string/number property representation
-              return String(prop) === effectiveProperty;
-            });
+          for (const prop of room.properties) {
+            // Special case for property ID "1"
+            if (prop === 1 || String(prop) === "1") return true;
+            
+            // Object property representation
+            if (typeof prop === "object" && prop !== null && "property_id" in prop) {
+              if (String((prop as { property_id: string | number }).property_id) === effectiveProperty) return true;
+            }
+            
+            // Direct property representation
+            if (String(prop) === effectiveProperty) return true;
           }
-          
-          return false;
-        });
+        }
       }
       
       // Job properties array match
-      let propertiesMatch = false;
       if (job.properties && job.properties.length) {
-        propertiesMatch = job.properties.some(prop => {
-          // SPECIAL CASE: Same handling as above
-          if (prop === 1 || String(prop) === "1") {
-            return true;
-          }
+        for (const prop of job.properties) {
+          // Special case for property ID "1"
+          if (prop === 1 || String(prop) === "1") return true;
           
-          // Handle object property representations
+          // Object property representation
           if (typeof prop === "object" && prop !== null && "property_id" in prop) {
-            return String((prop as { property_id: string | number }).property_id) === effectiveProperty;
+            if (String((prop as { property_id: string | number }).property_id) === effectiveProperty) return true;
           }
           
-          // Handle direct string/number property representation
-          return String(prop) === effectiveProperty;
-        });
+          // Direct property representation
+          if (String(prop) === effectiveProperty) return true;
+        }
       }
       
-      // Determine overall match status and log detailed info for debugging
-      const matchResult = propertyMatch || roomMatch || propertiesMatch;
-      
-      // Build detailed log message
-      let matchDetails = [];
-      if (propertyMatch) matchDetails.push(`direct property match: ${job.property_id}`);
-      if (roomMatch) matchDetails.push("room match (see rooms array)");
-      if (propertiesMatch) matchDetails.push("properties array match");
-      
-      console.log(
-        `Job ID: ${job.job_id}, ` +
-        `Matches Property: ${matchResult ? 'YES' : 'NO'} ` +
-        (matchResult ? `(${matchDetails.join(', ')})` : '') +
-        `\nProperty ID: ${job.property_id || 'undefined'}, ` +
-        `Rooms: ${JSON.stringify(job.rooms || [])}, ` +
-        `Properties: ${JSON.stringify(job.properties || [])}`
-      );
-      
-      return matchResult;
+      return false;
     });
 
-    console.log(
-      `Filtered to ${filtered.length} jobs for property ${effectiveProperty}:`
-    );
     setFilteredJobs(filtered);
-  }, [allJobs, selectedProperty, session?.user?.properties, userProperties]);
+  }, [allJobs, effectiveProperty, session?.user?.properties]);
 
+  // Memoized job statistics
   const jobStats = useMemo(() => {
     const total = filteredJobs.length;
-    const statusCounts = filteredJobs.reduce((acc, job) => {
-      acc[job.status] = (acc[job.status] || 0) + 1;
-      return acc;
-    }, {} as Record<JobStatus, number>);
-
-    const getPercentage = (value: number): string =>
-      total > 0 ? ((value / total) * 100).toFixed(1) : "0";
+    if (total === 0) return [];
+    
+    // Use a simple accumulator approach for performance
+    const statusCounts = {} as Record<JobStatus, number>;
+    
+    for (const job of filteredJobs) {
+      statusCounts[job.status] = (statusCounts[job.status] || 0) + 1;
+    }
 
     return (["pending", "in_progress", "completed", "waiting_sparepart", "cancelled"] as JobStatus[]).map(
       (status) => ({
         name: status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " "),
         value: statusCounts[status] || 0,
         color: STATUS_COLORS[status],
-        percentage: getPercentage(statusCounts[status] || 0),
+        percentage: total > 0 ? ((statusCounts[status] || 0) / total * 100).toFixed(1) : "0",
       })
     );
   }, [filteredJobs]);
 
+  // Memoized job monthly data with optimization for large datasets
   const jobsByMonth = useMemo(() => {
-    if (!filteredJobs.length) return [];
+    if (filteredJobs.length === 0) return [];
 
+    // Use lodash for efficient grouping
     const grouped = _.groupBy(filteredJobs, (job) => {
       const date = job.created_at ? new Date(job.created_at) : new Date();
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
     });
 
-    return Object.entries(grouped)
-      .map(([month, monthJobs]) => {
-        const [year, monthNum] = month.split("-");
-        const date = new Date(parseInt(year), parseInt(monthNum) - 1);
-        const formattedMonth = date.toLocaleDateString("en-US", { month: "short" });
+    // Process grouped data
+    const result = Object.entries(grouped).map(([month, monthJobs]) => {
+      const [year, monthNum] = month.split("-");
+      const date = new Date(parseInt(year), parseInt(monthNum) - 1);
+      const formattedMonth = date.toLocaleDateString("en-US", { month: "short" });
 
-        return {
-          month: `${formattedMonth} ${year}`,
-          total: monthJobs.length,
-          completed: monthJobs.filter((job) => job.status === "completed").length,
-          pending: monthJobs.filter((job) => job.status === "pending").length,
-          waiting: monthJobs.filter((job) => job.status === "waiting_sparepart").length,
-          in_progress: monthJobs.filter((job) => job.status === "in_progress").length,
-          cancelled: monthJobs.filter((job) => job.status === "cancelled").length,
-        };
-      })
-      .sort((a, b) => {
-        const [aMonth, aYear] = a.month.split(" ");
-        const [bMonth, bYear] = b.month.split(" ");
-        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      // Count statuses in a single pass
+      const counts = {
+        completed: 0,
+        pending: 0,
+        waiting_sparepart: 0,
+        in_progress: 0,
+        cancelled: 0
+      };
+      
+      for (const job of monthJobs) {
+        if (counts.hasOwnProperty(job.status)) {
+          counts[job.status as keyof typeof counts]++;
+        }
+      }
 
-        if (aYear !== bYear) return parseInt(aYear) - parseInt(bYear);
-        return months.indexOf(aMonth) - months.indexOf(bMonth);
-      });
+      return {
+        month: `${formattedMonth} ${year}`,
+        total: monthJobs.length,
+        ...counts
+      };
+    });
+
+    // Sort chronologically
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return result.sort((a, b) => {
+      const [aMonth, aYear] = a.month.split(" ");
+      const [bMonth, bYear] = b.month.split(" ");
+
+      if (aYear !== bYear) return parseInt(aYear) - parseInt(bYear);
+      return months.indexOf(aMonth) - months.indexOf(bMonth);
+    });
   }, [filteredJobs]);
 
+  // Loading state
   if (status === "loading" || isLoading) {
     return (
       <Card className="w-full p-4">
@@ -282,6 +248,7 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
     );
   }
 
+  // Authentication state
   if (status === "unauthenticated") {
     return (
       <Card className="w-full p-4 bg-yellow-50 border border-yellow-200 rounded-md">
@@ -295,6 +262,7 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
     );
   }
 
+  // Error state
   if (error) {
     return (
       <Card className="w-full p-4 bg-red-50 border border-yellow-200 rounded-md">
@@ -308,7 +276,8 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
     );
   }
 
-  if (!filteredJobs.length) {
+  // No data state
+  if (filteredJobs.length === 0) {
     return (
       <Card className="w-full p-4 bg-yellow-50 border border-yellow-200 rounded-md">
         <CardContent className="text-center space-y-4">
@@ -325,9 +294,11 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
     );
   }
 
+  // Main dashboard view with optimized render performance
   return (
     <div className="space-y-4 px-2">
       <div className="space-y-4">
+        {/* Jobs by Status Chart */}
         <Card className="w-full">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg">Jobs by Status</CardTitle>
@@ -344,7 +315,7 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
                     dataKey="value"
                   >
                     {jobStats.map((entry, index) => (
-                      <Cell key={index} fill={entry.color} />
+                      <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
                   <Tooltip
@@ -360,6 +331,7 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
           </CardContent>
         </Card>
 
+        {/* Jobs by Month Chart - with limit to prevent rendering too many bars */}
         <Card className="w-full">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg">Jobs by Month</CardTitle>
@@ -367,7 +339,7 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
           <CardContent>
             <div className="h-[220px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={jobsByMonth}>
+                <BarChart data={jobsByMonth.slice(-12)}> {/* Limit to last 12 months */}
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} />
@@ -376,7 +348,7 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
                   <Bar dataKey="total" fill="#8884d8" name="Total Jobs" />
                   <Bar dataKey="completed" stackId="a" fill={STATUS_COLORS.completed} />
                   <Bar dataKey="pending" stackId="a" fill={STATUS_COLORS.pending} />
-                  <Bar dataKey="waiting" stackId="a" fill={STATUS_COLORS.waiting_sparepart} />
+                  <Bar dataKey="waiting_sparepart" stackId="a" fill={STATUS_COLORS.waiting_sparepart} name="Waiting" />
                   <Bar dataKey="in_progress" stackId="a" fill={STATUS_COLORS.in_progress} />
                   <Bar dataKey="cancelled" stackId="a" fill={STATUS_COLORS.cancelled} />
                 </BarChart>
@@ -385,6 +357,7 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
           </CardContent>
         </Card>
 
+        {/* Summary Statistics - Memoized and optimized */}
         <Card className="w-full">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg">Summary Statistics</CardTitle>
@@ -409,7 +382,7 @@ const PropertyJobsDashboard = ({ initialJobs = [] }: PropertyJobsDashboardProps)
                   : "100.0";
 
                 return (
-                  <div key={index} className="p-4 rounded-lg bg-gray-50 w-full flex flex-col">
+                  <div key={`stat-${index}`} className="p-4 rounded-lg bg-gray-50 w-full flex flex-col">
                     <p className="text-sm text-gray-500 mb-1">{item.name}</p>
                     <div className="flex items-baseline">
                       <p className="text-2xl font-semibold" style={{ color }}>
