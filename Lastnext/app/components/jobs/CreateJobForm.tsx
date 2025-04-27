@@ -305,7 +305,7 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
                       </SelectItem>
                     ))
                   ) : (
-                    <SelectItem value="" disabled>
+                    <SelectItem value="loading" disabled>
                       Loading topics...
                     </SelectItem>
                   )}

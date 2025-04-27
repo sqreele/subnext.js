@@ -1,40 +1,44 @@
+// app/lib/hooks/useJobsData.ts
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { fetchJobs } from "@/app/lib/data"; // Assuming fetchJobs might be updated for server-side filtering
-// import { useUser } from "@/app/lib/user-context"; // Only if userProfile is needed elsewhere in the hook
+import { fetchJobs, ApiError } from "@/app/lib/data"; // Import ApiError from data.ts
 import { Job } from "@/app/lib/types";
+import { useToast } from "@/app/components/ui/use-toast"; // Import toast for user feedback
 
 interface UseJobsDataOptions {
   propertyId?: string | null;
-  enabled?: boolean; // <-- Add enabled flag
+  enabled?: boolean;
+  retryCount?: number;
+  showToastErrors?: boolean;
 }
 
 // Default options
 const defaultOptions: UseJobsDataOptions = {
-  enabled: true, // Fetching is enabled by default
+  enabled: true,
+  retryCount: 2,
+  showToastErrors: true
 };
 
 export function useJobsData(options?: UseJobsDataOptions) {
-  const mergedOptions = { ...defaultOptions, ...options }; // Merge provided options with defaults
-  const { data: session, status: sessionStatus } = useSession(); // Get session status too
-  // const { userProfile } = useUser(); // Keep if needed
+  const mergedOptions = { ...defaultOptions, ...options };
+  const { data: session, status: sessionStatus } = useSession();
+  const { toast } = useToast(); // Get toast function
 
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [isLoading, setIsLoading] = useState(mergedOptions.enabled); // Start loading only if enabled
+  const [isLoading, setIsLoading] = useState(mergedOptions.enabled);
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [retryAttempt, setRetryAttempt] = useState(0);
 
   // Use passed propertyId, default to null
   const activePropertyId = mergedOptions.propertyId !== undefined ? mergedOptions.propertyId : null;
 
-  const refreshJobs = useCallback(async (showToast = false /* Not used here, maybe in MyJobs */) => {
+  const refreshJobs = useCallback(async (showToast = false) => {
     // Ensure session is ready before trying to fetch
     if (sessionStatus !== 'authenticated' || !session?.user?.accessToken) {
-      setJobs([]); // Clear jobs if not authenticated
-      // Avoid setting error here unless explicitly desired when disabled/unauthenticated
-      // setError("Authentication required to fetch jobs.");
+      setJobs([]);
       setIsLoading(false);
       return false;
     }
@@ -43,65 +47,115 @@ export function useJobsData(options?: UseJobsDataOptions) {
     setError(null);
 
     try {
-      // TODO: Ideally, pass filters to fetchJobs for server-side filtering
-      // e.g., const allJobs = await fetchJobs({ propertyId: activePropertyId, userId: session.user.id });
-      console.log(`Fetching all jobs (client-side filtering active for propertyId: ${activePropertyId}, userId: ${session.user.id})`);
-      const allJobs = await fetchJobs(); // Current: Fetches all, filters below
+      console.log(`[useJobsData] Fetching all jobs (propertyId: ${activePropertyId}, userId: ${session.user.id})`);
+      const allJobs = await fetchJobs();
 
       const userIdStr = String(session.user.id);
-      const username = session.user.username; // Assuming username exists on session.user
+      const username = session.user.username;
 
-      // --- Client-Side Filtering (Less efficient for large datasets) ---
+      // Client-Side Filtering
       const filteredJobs = allJobs.filter((job: Job) => {
-        // 1. Filter by Property (if activePropertyId is provided)
+        // Filter by Property
         const matchesProperty = !activePropertyId ||
           (job.property_id && String(job.property_id) === activePropertyId);
 
-        // 2. Filter by User (match user ID string OR username)
-        // Note: Relying on user ID (job.user === userIdStr) is generally more robust if backend is consistent.
+        // Filter by User
         const matchesUser = job.user === userIdStr || (username && job.user === username);
 
         return matchesProperty && matchesUser;
       });
-      // --- End Client-Side Filtering ---
 
       setJobs(filteredJobs);
       setLastRefreshed(new Date());
-      return true; // Indicate success
+      setRetryAttempt(0); // Reset retry counter on success
+      
+      if (showToast) {
+        toast({
+          title: "Jobs refreshed",
+          description: `Successfully loaded ${filteredJobs.length} jobs.`,
+          duration: 3000,
+        });
+      }
+      
+      return true;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "An unknown error occurred while fetching jobs";
-      console.error("Error fetching or filtering jobs:", err);
+      console.error("[useJobsData] Error fetching or filtering jobs:", err);
+      
       setError(errorMessage);
-      setJobs([]); // Clear jobs on error
-      return false; // Indicate failure
+      
+      // Retry logic for timeouts and network errors
+      if (retryAttempt < mergedOptions.retryCount! && 
+          (errorMessage.includes('timeout') || errorMessage.includes('network'))) {
+        
+        console.log(`[useJobsData] Retry attempt ${retryAttempt + 1}/${mergedOptions.retryCount}`);
+        setRetryAttempt(prev => prev + 1);
+        
+        // Implement exponential backoff
+        const backoffTime = 1000 * Math.pow(2, retryAttempt);
+        setTimeout(() => refreshJobs(false), backoffTime);
+        
+        // Don't show the error toast for retry attempts
+        if (mergedOptions.showToastErrors && retryAttempt === 0) {
+          toast({
+            title: "Connection issue",
+            description: "Retrying to load your jobs...",
+            variant: "default",
+            duration: 4000,
+          });
+        }
+      } else {
+        // Only show error toast on final attempt
+        if (mergedOptions.showToastErrors) {
+          toast({
+            title: "Error loading jobs",
+            description: errorMessage.includes('timeout') 
+              ? "Server is taking too long to respond. Please try again later." 
+              : errorMessage,
+            variant: "destructive",
+            duration: 5000,
+          });
+        }
+        
+        // After all retries, clear jobs
+        setJobs([]);
+      }
+      
+      return false;
     } finally {
-      setIsLoading(false);
+      // Set loading state to false only if all retries are exhausted or this isn't a retry situation
+      if (retryAttempt >= mergedOptions.retryCount! || !(error?.includes('timeout') || error?.includes('network'))) {
+        setIsLoading(false);
+      }
     }
   }, [
-      sessionStatus, // Add sessionStatus dependency
-      session?.user?.accessToken,
-      session?.user?.id,
-      session?.user?.username,
-      activePropertyId
-  ]); // Dependencies for refreshJobs
+    sessionStatus,
+    session?.user?.accessToken,
+    session?.user?.id,
+    session?.user?.username,
+    activePropertyId,
+    retryAttempt,
+    mergedOptions.retryCount,
+    mergedOptions.showToastErrors,
+    toast,
+    error
+  ]);
 
   useEffect(() => {
-    // Only run fetch if enabled and authenticated
     if (mergedOptions.enabled && sessionStatus === 'authenticated') {
-      console.log("useJobsData effect triggered: Refreshing jobs...");
+      console.log("[useJobsData] Effect triggered: Refreshing jobs...");
       refreshJobs();
     } else {
-        console.log(`useJobsData effect skipped: enabled=${mergedOptions.enabled}, sessionStatus=${sessionStatus}`);
-        // Optionally clear state if disabled or unauthenticated after being enabled
-         if (!mergedOptions.enabled || sessionStatus === 'unauthenticated') {
-             setJobs([]);
-             setError(null);
-             setIsLoading(false);
-         }
+      console.log(`[useJobsData] Effect skipped: enabled=${mergedOptions.enabled}, sessionStatus=${sessionStatus}`);
+      if (!mergedOptions.enabled || sessionStatus === 'unauthenticated') {
+        setJobs([]);
+        setError(null);
+        setIsLoading(false);
+      }
     }
-  }, [refreshJobs, mergedOptions.enabled, sessionStatus]); // Dependencies for the effect
+  }, [refreshJobs, mergedOptions.enabled, sessionStatus]);
 
-  // State modifier functions (remain unchanged, good)
+  // State modifier functions
   const addJob = useCallback((newJob: Job) => {
     setJobs(prevJobs => [newJob, ...prevJobs]);
   }, []);
@@ -122,17 +176,14 @@ export function useJobsData(options?: UseJobsDataOptions) {
 
   return {
     jobs,
-    // setJobs, // Consider removing for better encapsulation
     addJob,
     updateJob,
     removeJob,
     isLoading,
     error,
-    // activePropertyId, // Consumer already knows this as they pass it in options
     refreshJobs,
-    lastRefreshed
+    lastRefreshed,
+    retryCount: retryAttempt,
+    maxRetries: mergedOptions.retryCount
   };
 }
-
-// Default export remains the same
-// export default useJobsData; // Keep if this is the standard export
