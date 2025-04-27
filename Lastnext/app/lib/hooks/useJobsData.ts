@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { fetchJobs, ApiError } from "@/app/lib/data"; // Import ApiError from data.ts
+import { fetchJobs } from "@/app/lib/data"; // Import ApiError from data.ts
 import { Job } from "@/app/lib/types";
 import { useToast } from "@/app/components/ui/use-toast"; // Import toast for user feedback
 

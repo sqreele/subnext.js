@@ -432,6 +432,17 @@ export const uploadJobImage = async (jobId: string | number, imageFile: File): P
     throw handleApiError(error);
   }
 };
-
+/**
+ * Fetch jobs for the current authenticated user for a specific property
+ * @param propertyId - The ID of the property to fetch jobs for
+ * @returns Promise resolving to array of Jobs
+ * @throws ApiError if the underlying fetch fails or propertyId is missing
+ */
+export const fetchMyJobsForProperty = async (propertyId: string): Promise<Job[]> => {
+  if (!propertyId) throw new ApiError('Property ID is required', 400);
+  // Adjust the URL based on your actual backend endpoint
+  const response = await fetchData<Job[]>(`/api/jobs/my-jobs/?property=${propertyId}`);
+  return response ?? [];
+};
 // Export ApiError class if needed by other modules
 export { ApiError }; // Optional export if needed elsewhere

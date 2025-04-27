@@ -46,7 +46,7 @@ class JobAdmin(admin.ModelAdmin):
 
 @admin.register(Property)
 class PropertyAdmin(admin.ModelAdmin):
-    list_display = ['property_id', 'name', 'created_at', 'get_users_count']
+    list_display = ['id','property_id', 'name', 'created_at', 'get_users_count']
     search_fields = ['property_id', 'name', 'description']
     filter_horizontal = ['users']
     readonly_fields = ['property_id', 'created_at']
