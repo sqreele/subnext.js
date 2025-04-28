@@ -22,6 +22,7 @@ import { Alert, AlertDescription } from "@/app/components/ui/alert";
 import { useJobsData } from "@/app/lib/hooks/useJobsData";
 import { updateJob, deleteJob, ApiError } from "@/app/lib/data.server";
 import { Job, JobStatus, JobPriority } from "@/app/lib/types";
+import { useProperty } from "@/app/lib/PropertyContext"; // Added PropertyContext
 
 // Feature Component Imports
 import CreateJobButton from "@/app/components/jobs/CreateJobButton";
@@ -75,25 +76,67 @@ const getErrorMessage = (error: unknown): string => {
   return "An unknown error occurred";
 };
 
+// Helper function to check if a job belongs to a property
+const jobBelongsToProperty = (job: Job, propertyId: string): boolean => {
+  // Direct property match
+  if (job.property_id === propertyId) {
+    return true;
+  }
+
+  // Check profile_image.properties
+  const profileMatches = job.profile_image?.properties?.some(
+    prop => {
+      if (typeof prop === 'object' && prop !== null && 'property_id' in prop) {
+        return String(prop.property_id) === propertyId;
+      }
+      return String(prop) === propertyId;
+    }
+  ) || false;
+
+  if (profileMatches) return true;
+
+  // Check rooms.properties
+  const roomsMatch = job.rooms?.some(room => {
+    return room.properties?.some(
+      propId => String(propId) === propertyId
+    );
+  }) || false;
+
+  return roomsMatch;
+};
+
 // Main Component
 const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId: propActivePropertyId }) => {
   const { toast } = useToast();
   const { data: session, status: sessionStatus } = useSession();
   const router = useRouter();
+  
+  // Add PropertyContext integration
+  const { selectedProperty, setSelectedProperty, userProperties } = useProperty();
 
-  // Initialize propertyId from props or localStorage
+  // Initialize propertyId from props, PropertyContext, or localStorage
   const [localPropertyId, setLocalPropertyId] = useState<string | null>(null);
+  
   useEffect(() => {
-    // Try to load from localStorage on initial render
-    if (typeof window !== 'undefined' && !propActivePropertyId && !localPropertyId) {
+    // Try to load from localStorage on initial render if not provided via props or context
+    if (typeof window !== 'undefined' && !propActivePropertyId && !selectedProperty && !localPropertyId) {
       const storedPropertyId = localStorage.getItem("selectedPropertyId");
       if (storedPropertyId) {
         setLocalPropertyId(storedPropertyId);
+        // Also update the PropertyContext for consistency
+        setSelectedProperty(storedPropertyId);
       }
     }
-  }, [propActivePropertyId, localPropertyId]);
+  }, [propActivePropertyId, selectedProperty, localPropertyId, setSelectedProperty]);
 
-  const currentActivePropertyId = propActivePropertyId ?? localPropertyId;
+  // Determine the current active property ID, prioritizing props over context over local state
+  const currentActivePropertyId = propActivePropertyId ?? selectedProperty ?? localPropertyId;
+
+  // Get property name for display purposes
+  const getPropertyName = useCallback((propertyId: string): string => {
+    const property = userProperties.find(p => p.property_id === propertyId);
+    return property?.name || `Property ${propertyId}`;
+  }, [userProperties]);
 
   // State
   const [filters, setFilters] = useState<FilterState>({
@@ -140,11 +183,31 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId: pro
   // Determine if we can show cached jobs while retrying
   const showCachedJobs = allJobs && allJobs.length > 0 && isTimeoutError;
 
-  // Client-Side Filtering with proper safeguards
+  // Sync property changes
+  useEffect(() => {
+    // When selectedProperty changes in context but doesn't match our local state
+    if (selectedProperty && selectedProperty !== localPropertyId && selectedProperty !== propActivePropertyId) {
+      // Update our local reference
+      setLocalPropertyId(selectedProperty);
+      
+      // If we were viewing filtered jobs, refresh with the new property
+      refreshJobs(true);
+    }
+  }, [selectedProperty, localPropertyId, propActivePropertyId, refreshJobs]);
+
+  // Client-Side Filtering with proper safeguards and property filtering
   const filteredJobs = useMemo(() => {
     if (!allJobs || !Array.isArray(allJobs)) return [];
     
-    return allJobs.filter((job) => {
+    // First, filter jobs by property if needed
+    let propertyFilteredJobs = allJobs;
+    if (currentActivePropertyId) {
+      propertyFilteredJobs = allJobs.filter(job => 
+        jobBelongsToProperty(job, currentActivePropertyId)
+      );
+    }
+    
+    return propertyFilteredJobs.filter((job) => {
       // Null check for job object
       if (!job) return false;
       
@@ -204,7 +267,7 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId: pro
       
       return matchesSearch && matchesStatus && matchesPriority && matchesPreventive && matchesDate;
     });
-  }, [allJobs, filters]);
+  }, [allJobs, filters, currentActivePropertyId]);
 
 
   // Client-Side Pagination Calculations
@@ -304,8 +367,7 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId: pro
   }, [refreshJobs, toast]);
 
   // Edit Submit Handler with better error feedback
- // Edit Submit Handler with better error feedback
-const handleEditSubmit = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleEditSubmit = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     
     // Add checks for id and user on selectedJob in the guard clause for runtime safety
@@ -437,6 +499,7 @@ const handleEditSubmit = useCallback(async (event: React.FormEvent<HTMLFormEleme
       setIsSubmitting(false);
     }
   }, [selectedJob, session, updateLocalJob, toast]);
+
   // Delete Confirmation Handler with improved error handling
   const handleDeleteConfirm = useCallback(async () => {
     if (!selectedJob || !session?.user?.accessToken) {
@@ -518,6 +581,24 @@ const handleEditSubmit = useCallback(async (event: React.FormEvent<HTMLFormEleme
     }
   }, [selectedJob, session, removeJob, toast, currentJobs, currentPage]);
 
+  // Handle property selection change
+  const handlePropertyChange = useCallback((propertyId: string) => {
+    setSelectedProperty(propertyId);
+    
+    // Reset filters and current page when changing property
+    setFilters({
+      search: "",
+      status: "all",
+      priority: "all",
+      dateRange: {},
+      is_preventivemaintenance: null,
+    });
+    setCurrentPage(1);
+    
+    // Refresh jobs with the new property
+    refreshJobs(true);
+  }, [setSelectedProperty, refreshJobs]);
+
   // Authentication redirect effect
   useEffect(() => {
     if (sessionStatus === "unauthenticated" || 
@@ -594,7 +675,7 @@ const handleEditSubmit = useCallback(async (event: React.FormEvent<HTMLFormEleme
                     "No requests found"}
                 {session.user?.username ? ` for ${session.user.username}` : ""}
                 {currentActivePropertyId ? 
-                  ` at Property ${currentActivePropertyId}` : 
+                  ` at ${getPropertyName(currentActivePropertyId)}` : 
                   ""}
               </p>
             </div>
@@ -612,6 +693,24 @@ const handleEditSubmit = useCallback(async (event: React.FormEvent<HTMLFormEleme
             </div>
           </div>
         </div>
+
+        {/* Property Selector (if multiple properties) */}
+        {userProperties.length > 1 && (
+          <div className="mb-6">
+            <div className="flex flex-wrap gap-2">
+              {userProperties.map((property) => (
+                <Button
+                  key={property.property_id}
+                  variant={currentActivePropertyId === property.property_id ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handlePropertyChange(property.property_id)}
+                >
+                  {property.name || `Property ${property.property_id}`}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Filters */}
         <JobFilters 
@@ -641,7 +740,7 @@ const handleEditSubmit = useCallback(async (event: React.FormEvent<HTMLFormEleme
                   "No requests found"}
               {session.user?.username ? ` for ${session.user.username}` : ""}
               {currentActivePropertyId ? 
-                ` at Property ${currentActivePropertyId}` : 
+                ` at ${getPropertyName(currentActivePropertyId)}` : 
                 ""}
             </p>
           </div>
@@ -659,6 +758,24 @@ const handleEditSubmit = useCallback(async (event: React.FormEvent<HTMLFormEleme
           </div>
         </div>
       </div>
+
+      {/* Property Selector (if multiple properties) */}
+      {userProperties.length > 1 && (
+        <div className="mb-6">
+          <div className="flex flex-wrap gap-2">
+            {userProperties.map((property) => (
+              <Button
+                key={property.property_id}
+                variant={currentActivePropertyId === property.property_id ? "default" : "outline"}
+                size="sm"
+                onClick={() => handlePropertyChange(property.property_id)}
+              >
+                {property.name || `Property ${property.property_id}`}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <JobFilters 
@@ -753,7 +870,7 @@ const handleEditSubmit = useCallback(async (event: React.FormEvent<HTMLFormEleme
             {allJobs && allJobs.length > 0 ? 
               "No jobs match your current filters" : 
               "No maintenance jobs found"}
-            {currentActivePropertyId ? ` for this property` : ""}
+            {currentActivePropertyId ? ` for ${getPropertyName(currentActivePropertyId)}` : ""}
           </h3>
           <p className="text-sm text-gray-500 mt-2 max-w-md mx-auto">
             {allJobs && allJobs.length > 0 ? 
