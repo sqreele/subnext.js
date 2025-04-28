@@ -25,6 +25,7 @@ export async function getUserProperties(userId: string): Promise<Property[]> {
     // The result is an array of raw DB objects
     if (Array.isArray(result) && result.length > 0) {
       return result.map((prop: any) => ({
+        id: prop.id, // Add the id field required by Property type
         property_id: String(prop.id),
         name: prop.name || `Property ${prop.id}`,
         description: prop.description || "",
@@ -47,6 +48,7 @@ export async function getUserProperties(userId: string): Promise<Property[]> {
     }
 
     return user.properties.map((prop: any) => ({
+      id: prop.id, // Add the id field required by Property type
       property_id: String(prop.id),
       name: prop.name || `Property ${prop.id}`,
       description: prop.description || "",
@@ -110,6 +112,7 @@ export async function createPropertyForUser(
   });
 
   return {
+    id: newProperty.id, // Add the id field required by Property type
     property_id: newProperty.id,
     name: newProperty.name || `Property ${newProperty.id}`,
     description: newProperty.description || "",
@@ -177,6 +180,7 @@ export async function syncUserProperties(
   
   // Convert to our application Property type
   return results.map(prop => ({
+    id: prop.id, // Add the id field required by Property type
     property_id: prop.id,
     name: prop.name || `Property ${prop.id}`,
     description: prop.description || "",
