@@ -18,10 +18,11 @@ import {
 import { Alert, AlertDescription } from '@/app/components/ui/alert';
 import { useSession, signIn } from 'next-auth/react';
 import { Label } from '@/app/components/ui/label';
-import RoomAutocomplete from '@/app/components/jobs/RoomAutocomplete'; // Removed { RoomAutocompleteProps }
-import FileUpload, { FileUploadProps } from '@/app/components/jobs/FileUpload';
-import { Room, TopicFromAPI, Property } from '@/app/lib/types';
+import RoomAutocomplete from '@/app/components/jobs/RoomAutocomplete';
+import FileUpload from '@/app/components/jobs/FileUpload';
+import { Room, TopicFromAPI } from '@/app/lib/types';
 import { useRouter } from 'next/navigation';
+import { useProperty } from '@/app/lib/PropertyContext'; // Added PropertyContext
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -50,6 +51,7 @@ const validationSchema = Yup.object().shape({
   description: Yup.string().required('Description is required'),
   status: Yup.string().required('Status is required'),
   priority: Yup.string().required('Priority is required'),
+  // Make remarks optional by not providing a required() constraint
   remarks: Yup.string().nullable(),
   topic: Yup.object().shape({
     title: Yup.string().required('Topic is required'),
@@ -93,6 +95,16 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
   const [showRemarks, setShowRemarks] = useState(false);
   const { data: session, status } = useSession();
   const router = useRouter();
+  
+  // Add PropertyContext integration
+  const { selectedProperty, userProperties } = useProperty();
+  
+  // Get property name for display
+  const getPropertyName = useCallback((propertyId: string | null): string => {
+    if (!propertyId) return 'No Property Selected';
+    const property = userProperties.find(p => p.property_id === propertyId);
+    return property?.name || `Property ${propertyId}`;
+  }, [userProperties]);
 
   useEffect(() => {
     if (status === 'authenticated' && session?.user?.accessToken) {
@@ -104,19 +116,29 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
     const headers = { Authorization: `Bearer ${session?.user?.accessToken}` };
     try {
       setError(null);
+      
+      // Make sure we have a selected property
+      if (!selectedProperty) {
+        setError('Please select a property first');
+        return;
+      }
+      
+      // Get rooms and topics specific to the selected property
       const [roomsResponse, topicsResponse] = await Promise.all([
-        axiosInstance.get('/api/rooms/', { headers }),
+        axiosInstance.get(`/api/rooms/?property_id=${selectedProperty}`, { headers }),
         axiosInstance.get('/api/topics/', { headers }),
       ]);
+      
       if (!Array.isArray(roomsResponse.data)) throw new Error('Invalid format for rooms');
       if (!Array.isArray(topicsResponse.data)) throw new Error('Invalid format for topics');
+      
       setRooms(roomsResponse.data);
       setTopics(topicsResponse.data);
     } catch (fetchError) {
       console.error('Error fetching data:', fetchError);
       setError('Failed to load rooms and topics. Please check connection or try again.');
     }
-  }, [session?.user?.accessToken]);
+  }, [session?.user?.accessToken, selectedProperty]);
 
   const handleSubmit = async (
     values: FormValues,
@@ -125,6 +147,11 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
     if (!session?.user) {
       setError('Please log in to create a job');
       await signIn();
+      return;
+    }
+    if (!selectedProperty) {
+      setError('Please select a property first');
+      setSubmitting(false);
       return;
     }
     if (!values.room) {
@@ -142,10 +169,17 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
       formData.append('priority', values.priority);
       formData.append('room_id', String(values.room.room_id));
       formData.append('topic_title', values.topic.title.trim());
-      formData.append('remarks', values.remarks?.trim() || '');
+      
+      // Remarks field is optional, only append if it has a value
+      if (values.remarks?.trim()) {
+        formData.append('remarks', values.remarks.trim());
+      }
+      
       formData.append('user_id', session.user.id);
       formData.append('is_defective', values.is_defective ? 'true' : 'false');
       formData.append('is_preventivemaintenance', values.is_preventivemaintenance ? 'true' : 'false');
+      formData.append('property_id', selectedProperty);
+      
       values.files.forEach((file) => {
         formData.append('images', file, file.name);
       });
@@ -199,10 +233,25 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
       </div>
     );
   }
+  
+  if (!selectedProperty) {
+    return (
+      <div className="w-full max-w-2xl mx-auto bg-white rounded-lg shadow-sm p-4 sm:p-6 border">
+        <Alert className="mb-6">
+          <AlertDescription>Please select a property first to create a maintenance job.</AlertDescription>
+        </Alert>
+        <Button onClick={() => router.push('/dashboard')}>Go to Dashboard</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-2xl mx-auto bg-white rounded-lg shadow-sm p-4 sm:p-6 border">
-      <h2 className="text-xl font-semibold mb-6 text-gray-800">Create New Maintenance Job</h2>
+      <h2 className="text-xl font-semibold mb-2 text-gray-800">Create New Maintenance Job</h2>
+      <p className="text-sm text-gray-600 mb-6">
+        For property: {getPropertyName(selectedProperty)}
+      </p>
+      
       {error && (
         <Alert variant="destructive" className="mb-6">
           <AlertDescription>{error}</AlertDescription>
@@ -392,11 +441,8 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
                   name="remarks"
                   placeholder="Add any additional notes..."
                   disabled={isSubmitting}
-                  className={`w-full min-h-[70px] ${touched.remarks && errors.remarks ? 'border-red-500' : 'border-gray-300'}`}
+                  className="w-full min-h-[70px]"
                 />
-                {touched.remarks && errors.remarks && (
-                  <p className="text-xs text-red-600 mt-1">{errors.remarks}</p>
-                )}
               </div>
             </div>
 
