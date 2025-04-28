@@ -22,14 +22,14 @@ import RoomAutocomplete from '@/app/components/jobs/RoomAutocomplete';
 import FileUpload from '@/app/components/jobs/FileUpload';
 import { Room, TopicFromAPI } from '@/app/lib/types';
 import { useRouter } from 'next/navigation';
-import { useProperty } from '@/app/lib/PropertyContext'; // Added PropertyContext
+import { useProperty } from '@/app/lib/PropertyContext';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  headers: { 'Content-Type': 'application/json' },
+  // IMPORTANT: Don't set Content-Type header for FormData submissions
 });
 
 interface FormValues {
@@ -51,7 +51,6 @@ const validationSchema = Yup.object().shape({
   description: Yup.string().required('Description is required'),
   status: Yup.string().required('Status is required'),
   priority: Yup.string().required('Priority is required'),
-  // Make remarks optional by not providing a required() constraint
   remarks: Yup.string().nullable(),
   topic: Yup.object().shape({
     title: Yup.string().required('Topic is required'),
@@ -106,14 +105,11 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
     return property?.name || `Property ${propertyId}`;
   }, [userProperties]);
 
-  useEffect(() => {
-    if (status === 'authenticated' && session?.user?.accessToken) {
-      fetchData();
-    }
-  }, [status, session?.user?.accessToken]);
-
+  // Define fetchData before using it in useEffect
   const fetchData = useCallback(async () => {
-    const headers = { Authorization: `Bearer ${session?.user?.accessToken}` };
+    if (!session?.user?.accessToken) return;
+    
+    const headers = { Authorization: `Bearer ${session.user.accessToken}` };
     try {
       setError(null);
       
@@ -123,11 +119,16 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
         return;
       }
       
+      console.log("Fetching rooms with property ID:", selectedProperty);
+      
       // Get rooms and topics specific to the selected property
       const [roomsResponse, topicsResponse] = await Promise.all([
         axiosInstance.get(`/api/rooms/?property_id=${selectedProperty}`, { headers }),
         axiosInstance.get('/api/topics/', { headers }),
       ]);
+      
+      console.log("Rooms response:", roomsResponse.data);
+      console.log("Topics response:", topicsResponse.data);
       
       if (!Array.isArray(roomsResponse.data)) throw new Error('Invalid format for rooms');
       if (!Array.isArray(topicsResponse.data)) throw new Error('Invalid format for topics');
@@ -140,6 +141,59 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
     }
   }, [session?.user?.accessToken, selectedProperty]);
 
+  // Now use fetchData in useEffect after it's been defined
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user?.accessToken) {
+      fetchData();
+    }
+  }, [status, session?.user?.accessToken, fetchData, selectedProperty]);
+
+  // Helper function to format validation errors from API
+  const formatApiErrors = (data: any): string => {
+    if (!data) return 'An unknown error occurred';
+    
+    if (typeof data === 'string') return data;
+    
+    if (typeof data === 'object') {
+      if (data.detail) return data.detail;
+      
+      // Handle nested error objects
+      return Object.entries(data)
+        .map(([field, errors]) => {
+          // Handle array or string error messages
+          const errorText = Array.isArray(errors) 
+            ? errors.join(', ') 
+            : typeof errors === 'object' && errors !== null
+              ? JSON.stringify(errors)
+              : String(errors);
+          
+          return `${field}: ${errorText}`;
+        })
+        .join('; ');
+    }
+    
+    return 'Validation failed';
+  };
+
+  // Validate files before submission
+  const validateFiles = (files: File[]): string | null => {
+    if (!files || files.length === 0) {
+      return 'At least one image is required';
+    }
+    
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) {
+        return `File "${file.name}" is not an image`;
+      }
+      
+      if (file.size > MAX_FILE_SIZE) {
+        return `File "${file.name}" exceeds the 5MB size limit`;
+      }
+    }
+    
+    return null;
+  };
+
   const handleSubmit = async (
     values: FormValues,
     { resetForm, setSubmitting }: { resetForm: () => void; setSubmitting: (isSubmitting: boolean) => void }
@@ -149,13 +203,23 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
       await signIn();
       return;
     }
+    
     if (!selectedProperty) {
       setError('Please select a property first');
       setSubmitting(false);
       return;
     }
-    if (!values.room) {
-      setError('Please select a room.');
+    
+    if (!values.room || !values.room.room_id) {
+      setError('Please select a valid room');
+      setSubmitting(false);
+      return;
+    }
+    
+    // Extra validation for files
+    const fileError = validateFiles(values.files);
+    if (fileError) {
+      setError(fileError);
       setSubmitting(false);
       return;
     }
@@ -164,28 +228,46 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
 
     try {
       const formData = new FormData();
+      
+      // Trim text inputs and handle required fields
       formData.append('description', values.description.trim());
       formData.append('status', values.status);
       formData.append('priority', values.priority);
-      formData.append('room_id', String(values.room.room_id));
+      
+      // Ensure room_id is added as a number
+      formData.append('room_id', values.room.room_id.toString());
       formData.append('topic_title', values.topic.title.trim());
       
-      // Remarks field is optional, only append if it has a value
+      // Only add optional fields if they have values
       if (values.remarks?.trim()) {
         formData.append('remarks', values.remarks.trim());
       }
       
+      // Add user and property context
       formData.append('user_id', session.user.id);
-      formData.append('is_defective', values.is_defective ? 'true' : 'false');
-      formData.append('is_preventivemaintenance', values.is_preventivemaintenance ? 'true' : 'false');
       formData.append('property_id', selectedProperty);
       
-      values.files.forEach((file) => {
-        formData.append('images', file, file.name);
+      // Convert boolean values to strings
+      formData.append('is_defective', values.is_defective ? 'true' : 'false');
+      formData.append('is_preventivemaintenance', values.is_preventivemaintenance ? 'true' : 'false');
+      
+      // Add each file to formData with proper naming
+      values.files.forEach((file, index) => {
+        formData.append('images', file);
       });
 
+      // Debug: Log form data contents
+      console.log("FormData contents:");
+      for (let pair of formData.entries()) {
+        console.log(pair[0] + ': ' + (pair[1] instanceof File ? `File: ${pair[1].name} (${pair[1].size} bytes)` : pair[1]));
+      }
+      
+      // Send the request with proper authorization
       const response = await axiosInstance.post('/api/jobs/', formData, {
-        headers: { Authorization: `Bearer ${session.user.accessToken}` },
+        headers: { 
+          Authorization: `Bearer ${session.user.accessToken}`,
+          // Let the browser set the Content-Type for FormData
+        }
       });
 
       console.log('Job created:', response.data);
@@ -194,25 +276,20 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
       router.push('/dashboard/myJobs');
     } catch (submitError) {
       console.error('Error creating job:', submitError);
-      let message = 'An unexpected error occurred.';
+      
+      // Enhanced error logging
       if (axios.isAxiosError(submitError)) {
-        const responseData = submitError.response?.data as any;
-        if (responseData && typeof responseData === 'object') {
-          if (responseData.detail) {
-            message = responseData.detail;
-          } else {
-            const fieldErrors = Object.entries(responseData)
-              .map(([field, errors]) => `${field}: ${(Array.isArray(errors) ? errors.join(', ') : errors)}`)
-              .join('; ');
-            if (fieldErrors) message = `Validation Failed: ${fieldErrors}`;
-          }
-        } else if (submitError.message) {
-          message = submitError.message;
-        }
+        console.log("Error status:", submitError.response?.status);
+        console.log("Error response data:", submitError.response?.data);
+        console.log("Error headers:", submitError.response?.headers);
+        
+        // Display formatted error message
+        setError(formatApiErrors(submitError.response?.data));
       } else if (submitError instanceof Error) {
-        message = submitError.message;
+        setError(submitError.message);
+      } else {
+        setError('An unknown error occurred');
       }
-      setError(message);
     } finally {
       setSubmitting(false);
     }
@@ -225,6 +302,7 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
       </div>
     );
   }
+  
   if (status === 'unauthenticated') {
     return (
       <div className="text-center p-6 space-y-4">
@@ -257,7 +335,12 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      <Formik initialValues={initialValues} validationSchema={validationSchema} onSubmit={handleSubmit} enableReinitialize>
+      <Formik 
+        initialValues={initialValues} 
+        validationSchema={validationSchema} 
+        onSubmit={handleSubmit} 
+        enableReinitialize
+      >
         {({ values, errors, touched, setFieldValue, isSubmitting }) => (
           <Form className="space-y-6">
             <div className="space-y-1">
