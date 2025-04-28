@@ -1,4 +1,5 @@
-// ./app/lib/api-client.ts
+
+// ./app/lib/api-client.ts - Improved version
 "use client";
 
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from "axios";
@@ -33,7 +34,7 @@ export class ApiError extends Error {
   }
 }
 
-// Create API client instance with increased timeout
+// Create API client instance with increased timeout and debugging
 const apiClient: AxiosInstance = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ||
     (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "https://pmcs.site"),
@@ -43,6 +44,22 @@ const apiClient: AxiosInstance = axios.create({
     "Accept": "application/json",
   }
 });
+
+// Enable request debugging in development
+if (process.env.NODE_ENV === 'development') {
+  apiClient.interceptors.request.use(request => {
+    console.log('[API Request]', request.method?.toUpperCase(), request.url);
+    return request;
+  });
+  
+  apiClient.interceptors.response.use(response => {
+    console.log('[API Response]', response.status, response.config.url);
+    return response;
+  }, error => {
+    console.error('[API Error]', error.message, error.config?.url);
+    return Promise.reject(error);
+  });
+}
 
 // --- Retry Configuration ---
 const MAX_RETRIES = 2;
@@ -58,6 +75,7 @@ const pendingRequests: Array<(token: string | null) => void> = [];
 
 // Function to process queued requests after token refresh attempt
 const processPendingRequests = (token: string | null): void => {
+  console.log(`[Auth] Processing ${pendingRequests.length} pending requests with ${token ? 'new token' : 'no token'}`);
   pendingRequests.forEach(callback => callback(token));
   pendingRequests.length = 0; // Clear the queue
 };

@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 interface Property {
   property_id: string; // e.g., "PAA1A6A0E"
   name: string;
-  description?: string;
+  description?: string | null;  // Updated to accept null values
   users?: number[];
   created_at?: string;
   id: string | number;  // Django PK, e.g., 1
