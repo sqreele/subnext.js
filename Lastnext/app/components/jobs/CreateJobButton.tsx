@@ -404,10 +404,10 @@ const CreateJobButton: React.FC<CreateJobButtonProps> = ({ propertyId, onJobCrea
                             onFileSelect={(selectedFiles) => setFieldValue('files', selectedFiles)}
                             // Pass formik errors/touched status to FileUpload if it supports displaying them
                              error={(touched.files && errors.files) ? (errors.files as string) : undefined}
-                            touched={touched.files}
+                            touched={!!touched.files} 
                             maxFiles={5}
                             maxSize={MAX_FILE_SIZE / (1024*1024)} // Pass maxSize in MB
-                            className="mt-1"
+                            
                         />
                          {/* Display file-related errors specifically */}
                          {touched.files && errors.files && typeof errors.files === 'string' && (

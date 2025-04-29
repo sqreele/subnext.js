@@ -1,3 +1,5 @@
+"use client";
+
 import React from 'react';
 import { usePreventiveMaintenanceJobs } from '@/app/lib/hooks/usePreventiveMaintenanceJobs';
 import { Job } from '@/app/lib/types';
@@ -76,7 +78,7 @@ export default function PreventiveMaintenanceList({
         {jobs.map((job: Job) => (
           <div key={job.job_id} className="border p-4 rounded shadow-sm">
             <div className="flex justify-between">
-              <h3 className="font-medium">{job.title}</h3>
+              <h3 className="font-medium">{job.job_id}</h3>
               <span className={`px-2 py-1 rounded text-xs ${
                 job.status === 'completed' ? 'bg-green-100 text-green-800' :
                 job.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
@@ -88,8 +90,8 @@ export default function PreventiveMaintenanceList({
             </div>
             <p className="text-sm text-gray-600 mt-1">{job.description}</p>
             <div className="mt-2 flex justify-between text-xs text-gray-500">
-              <span>Scheduled: {new Date(job.scheduled_date).toLocaleDateString()}</span>
-              {job.assigned_to && <span>Assigned to: {job.assigned_to}</span>}
+              <span>Created: {new Date(job.created_at).toLocaleDateString()}</span>
+             
             </div>
           </div>
         ))}

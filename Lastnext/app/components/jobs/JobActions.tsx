@@ -238,7 +238,8 @@ export default function JobActions({
           {isGenerating ? "Generating..." : `Export (${filteredJobsCount || 0})`}
         </Button>
 
-        <CreateJobButton onJobCreated={handleRefresh} />
+        <CreateJobButton onJobCreated={handleRefresh} propertyId={selectedProperty ?? ""} />
+
       </div>
 
       {/* Mobile Actions */}
