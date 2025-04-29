@@ -1,7 +1,16 @@
-// ./app/components/ducument/JobsPDFGenerator.tsx
+// ./app/components/document/JobsPDFGenerator.tsx
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Image, Font } from '@react-pdf/renderer';
 import { Job, TabValue, FILTER_TITLES } from '@/app/lib/types';
+
+// ✅ Register Thai font (Sarabun)
+Font.register({
+  family: 'Sarabun',
+  fonts: [
+    { src: '/fonts/Sarabun-Regular.ttf', fontWeight: 'normal' },
+    { src: '/fonts/Sarabun-Bold.ttf', fontWeight: 'bold' },
+  ],
+});
 
 interface JobsPDFDocumentProps {
   jobs: Job[];
@@ -13,7 +22,8 @@ interface JobsPDFDocumentProps {
 const styles = StyleSheet.create({
   page: {
     padding: 20,
-    backgroundColor: '#ffffff'
+    backgroundColor: '#ffffff',
+    fontFamily: 'Sarabun', // ✅ Set Thai font
   },
   header: {
     marginBottom: 20,
@@ -80,16 +90,16 @@ const styles = StyleSheet.create({
 const JobsPDFDocument: React.FC<JobsPDFDocumentProps> = ({ jobs, filter, selectedProperty, propertyName }) => {
   const filteredJobs = jobs.filter((job) => {
     if (!selectedProperty) return true;
-    
-    return job.property_id === selectedProperty || 
-           (job.profile_image?.properties.some(
-             (prop) => String(prop.property_id) === selectedProperty
-           )) || false;
+
+    return job.property_id === selectedProperty ||
+      (job.profile_image?.properties.some(
+        (prop) => String(prop.property_id) === selectedProperty
+      )) || false;
   });
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'N/A';
-    
+
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: '2-digit',
@@ -100,7 +110,7 @@ const JobsPDFDocument: React.FC<JobsPDFDocumentProps> = ({ jobs, filter, selecte
   };
 
   const getPriorityColor = (priority: string) => {
-    switch(priority) {
+    switch (priority) {
       case 'high': return '#F44336';
       case 'medium': return '#FF9800';
       case 'low': return '#4CAF50';
@@ -108,24 +118,12 @@ const JobsPDFDocument: React.FC<JobsPDFDocumentProps> = ({ jobs, filter, selecte
     }
   };
 
-  // Helper function to extract user name or ID as string
   const getUserDisplayName = (user: any): string => {
     if (!user) return 'Unassigned';
-    
-    // If user is a string, return it directly
     if (typeof user === 'string') return user;
-    
-    // If user is an object, try to get a display name
     if (typeof user === 'object') {
-      // Check for common user properties
-      if (user.name) return user.name;
-      if (user.username) return user.username;
-      if (user.displayName) return user.displayName;
-      if (user.email) return user.email;
-      if (user.id) return String(user.id);
+      return user.name || user.username || user.displayName || user.email || String(user.id) || 'User';
     }
-    
-    // Fallback to a safe string representation
     return 'User';
   };
 
@@ -137,7 +135,7 @@ const JobsPDFDocument: React.FC<JobsPDFDocumentProps> = ({ jobs, filter, selecte
           <Text style={styles.subHeaderText}>{FILTER_TITLES[filter] || 'Job Report'}</Text>
           <Text style={styles.label}>Total Jobs: {filteredJobs.length}</Text>
         </View>
-        
+
         {filteredJobs.map((job) => (
           <View key={job.job_id} style={styles.jobRow}>
             <View style={styles.imageColumn}>
@@ -148,16 +146,16 @@ const JobsPDFDocument: React.FC<JobsPDFDocumentProps> = ({ jobs, filter, selecte
                 />
               )}
             </View>
-            
+
             <View style={styles.infoColumn}>
               <Text style={styles.label}>
-                Location: {job.rooms && job.rooms.length > 0 ? job.rooms[0].name : 'N/A'}
+                Location: {job.rooms?.[0]?.name || 'N/A'}
               </Text>
-              {job.rooms && job.rooms.length > 0 && job.rooms[0].room_type && (
+              {job.rooms?.[0]?.room_type && (
                 <Text style={styles.label}>Room type: {job.rooms[0].room_type}</Text>
               )}
               <Text style={styles.label}>
-                Topics: {job.topics && job.topics.length > 0 ? job.topics.map(topic => topic.title || 'N/A').join(', ') : 'None'}
+                Topics: {job.topics?.length ? job.topics.map(t => t.title || 'N/A').join(', ') : 'None'}
               </Text>
               <Text style={styles.statusBadge}>Status: {job.status.replace('_', ' ')}</Text>
               <Text style={{
@@ -170,7 +168,7 @@ const JobsPDFDocument: React.FC<JobsPDFDocumentProps> = ({ jobs, filter, selecte
                 Staff: {getUserDisplayName(job.user)}
               </Text>
             </View>
-            
+
             <View style={styles.dateColumn}>
               {job.description && (
                 <>
