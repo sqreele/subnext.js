@@ -7,7 +7,7 @@ import * as Yup from 'yup';
 import axios from 'axios';
 import { Button } from "@/app/components/ui/button";
 import { Textarea } from "@/app/components/ui/textarea";
-import { Plus, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, ChevronDown, ChevronUp, Loader } from "lucide-react";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import {
   Dialog,
@@ -89,9 +89,7 @@ const validationSchema = Yup.object().shape({
   is_defective: Yup.boolean().default(false),
 });
 
-// Initial Values remain the same
-const initialValues: FormValues = { /* ... */ };
-// ... (paste initialValues definition here) ...
+// Initial Values
 const initialValues: FormValues = {
   description: '',
   status: 'pending',
@@ -217,8 +215,8 @@ const CreateJobButton: React.FC<CreateJobButtonProps> = ({ propertyId, onJobCrea
 
       // Append payload fields to FormData
       Object.entries(payload).forEach(([key, value]) => {
-          // Convert boolean to string or handle appropriately if backend expects boolean
-          const valueToAppend = typeof value === 'boolean' ? String(value) : value;
+          // Convert ALL values to strings for FormData
+          const valueToAppend = value === null || value === undefined ? '' : String(value);
           formData.append(key, valueToAppend);
       });
 
@@ -358,7 +356,7 @@ const CreateJobButton: React.FC<CreateJobButtonProps> = ({ propertyId, onJobCrea
                             rooms={rooms} // Pass fetched rooms
                             selectedRoom={values.room}
                             onSelect={(selectedRoom) => setFieldValue('room', selectedRoom)}
-                            className="mt-1"
+                            
                         />
                          {/* Manually display validation error for room object */}
                         {touched.room?.room_id && errors.room?.room_id && (

@@ -120,7 +120,7 @@ export function JobCard({ job, properties = [] }: JobCardProps) {
   }, []);
 
   const handleCardClick = useCallback((e: MouseEvent) => {
-    router.push(`/dashboard/job/${job.job_id}`);
+    router.push(`/dashboard/jobs/${job.job_id}`);
   }, [job.job_id, router]);
 
   return (
