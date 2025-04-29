@@ -1,36 +1,26 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Formik, Form, Field, FormikErrors, FormikTouched } from 'formik';
+import { Formik, Form, Field, FormikErrors } from 'formik';
 import * as Yup from 'yup';
 import axios from 'axios';
-import { Button } from '@/app/components/ui/button';
-import { Textarea } from '@/app/components/ui/textarea';
+import { Button } from "@/app/components/ui/button";
+import { Textarea } from "@/app/components/ui/textarea";
 import { Plus, ChevronDown, ChevronUp, Loader } from 'lucide-react';
-import { Checkbox } from '@/app/components/ui/checkbox';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/app/components/ui/select';
-import { Alert, AlertDescription } from '@/app/components/ui/alert';
+import { Checkbox } from "@/app/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
+import { Alert, AlertDescription } from "@/app/components/ui/alert";
 import { useSession, signIn } from 'next-auth/react';
-import { Label } from '@/app/components/ui/label';
+import { Label } from "@/app/components/ui/label";
 import RoomAutocomplete from '@/app/components/jobs/RoomAutocomplete';
 import FileUpload from '@/app/components/jobs/FileUpload';
 import { Room, TopicFromAPI } from '@/app/lib/types';
 import { useRouter } from 'next/navigation';
 import { useProperty } from '@/app/lib/PropertyContext';
+import { useJob } from '@/app/lib/JobContext';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-
-const axiosInstance = axios.create({
-  baseURL: API_BASE_URL,
-  // IMPORTANT: Don't set Content-Type header for FormData submissions
-});
 
 interface FormValues {
   description: string;
@@ -51,7 +41,7 @@ const validationSchema = Yup.object().shape({
   description: Yup.string().required('Description is required'),
   status: Yup.string().required('Status is required'),
   priority: Yup.string().required('Priority is required'),
-  remarks: Yup.string().nullable(),
+  remarks: Yup.string().optional(), // Updated to make remarks optional
   topic: Yup.object().shape({
     title: Yup.string().required('Topic is required'),
     description: Yup.string(),
@@ -91,132 +81,89 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
   const [rooms, setRooms] = useState<Room[]>([]);
   const [topics, setTopics] = useState<TopicFromAPI[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [showRemarks, setShowRemarks] = useState(false);
   const { data: session, status } = useSession();
   const router = useRouter();
-  
-  // Add PropertyContext integration
+  const { triggerJobCreation } = useJob();
   const { selectedProperty, userProperties } = useProperty();
-  
-  // Get property name for display
+
   const getPropertyName = useCallback((propertyId: string | null): string => {
     if (!propertyId) return 'No Property Selected';
     const property = userProperties.find(p => p.property_id === propertyId);
     return property?.name || `Property ${propertyId}`;
   }, [userProperties]);
 
-  // Define fetchData before using it in useEffect
   const fetchData = useCallback(async () => {
     if (!session?.user?.accessToken) return;
-    
     const headers = { Authorization: `Bearer ${session.user.accessToken}` };
+
     try {
       setError(null);
-      
-      // Make sure we have a selected property
       if (!selectedProperty) {
         setError('Please select a property first');
         return;
       }
-      
-      console.log("Fetching rooms with property ID:", selectedProperty);
-      
-      // Get rooms and topics specific to the selected property
       const [roomsResponse, topicsResponse] = await Promise.all([
-        axiosInstance.get(`/api/rooms/?property_id=${selectedProperty}`, { headers }),
-        axiosInstance.get('/api/topics/', { headers }),
+        axios.get(`${API_BASE_URL}/api/rooms/?property_id=${selectedProperty}`, { headers }),
+        axios.get(`${API_BASE_URL}/api/topics/`, { headers }),
       ]);
-      
-      console.log("Rooms response:", roomsResponse.data);
-      console.log("Topics response:", topicsResponse.data);
-      
-      if (!Array.isArray(roomsResponse.data)) throw new Error('Invalid format for rooms');
-      if (!Array.isArray(topicsResponse.data)) throw new Error('Invalid format for topics');
-      
+
+      if (!Array.isArray(roomsResponse.data)) throw new Error('Invalid rooms data');
+      if (!Array.isArray(topicsResponse.data)) throw new Error('Invalid topics data');
+
       setRooms(roomsResponse.data);
       setTopics(topicsResponse.data);
     } catch (fetchError) {
-      console.error('Error fetching data:', fetchError);
-      setError('Failed to load rooms and topics. Please check connection or try again.');
+      console.error('Fetch error:', fetchError);
+      setError('Failed to load rooms/topics.');
     }
   }, [session?.user?.accessToken, selectedProperty]);
 
-  // Now use fetchData in useEffect after it's been defined
   useEffect(() => {
     if (status === 'authenticated' && session?.user?.accessToken) {
       fetchData();
     }
   }, [status, session?.user?.accessToken, fetchData, selectedProperty]);
 
-  // Helper function to format validation errors from API
   const formatApiErrors = (data: any): string => {
-    if (!data) return 'An unknown error occurred';
-    
+    if (!data) return 'Unknown error';
     if (typeof data === 'string') return data;
-    
     if (typeof data === 'object') {
       if (data.detail) return data.detail;
-      
-      // Handle nested error objects
       return Object.entries(data)
-        .map(([field, errors]) => {
-          // Handle array or string error messages
-          const errorText = Array.isArray(errors) 
-            ? errors.join(', ') 
-            : typeof errors === 'object' && errors !== null
-              ? JSON.stringify(errors)
-              : String(errors);
-          
-          return `${field}: ${errorText}`;
-        })
+        .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
         .join('; ');
     }
-    
     return 'Validation failed';
   };
 
-  // Validate files before submission
   const validateFiles = (files: File[]): string | null => {
-    if (!files || files.length === 0) {
-      return 'At least one image is required';
-    }
-    
+    if (!files.length) return 'At least one image is required';
     for (const file of files) {
-      if (!file.type.startsWith('image/')) {
-        return `File "${file.name}" is not an image`;
-      }
-      
-      if (file.size > MAX_FILE_SIZE) {
-        return `File "${file.name}" exceeds the 5MB size limit`;
-      }
+      if (!file.type.startsWith('image/')) return `File "${file.name}" is not an image`;
+      if (file.size > MAX_FILE_SIZE) return `File "${file.name}" exceeds 5MB limit`;
     }
-    
     return null;
   };
 
-  const handleSubmit = async (
-    values: FormValues,
-    { resetForm, setSubmitting }: { resetForm: () => void; setSubmitting: (isSubmitting: boolean) => void }
-  ) => {
+  const handleSubmit = async (values: FormValues, { resetForm, setSubmitting }: { resetForm: () => void; setSubmitting: (isSubmitting: boolean) => void }) => {
     if (!session?.user) {
-      setError('Please log in to create a job');
+      setError('Please login first');
       await signIn();
       return;
     }
-    
+
     if (!selectedProperty) {
-      setError('Please select a property first');
+      setError('Please select a property');
       setSubmitting(false);
       return;
     }
-    
+
     if (!values.room || !values.room.room_id) {
       setError('Please select a valid room');
       setSubmitting(false);
       return;
     }
-    
-    // Extra validation for files
+
     const fileError = validateFiles(values.files);
     if (fileError) {
       setError(fileError);
@@ -228,67 +175,41 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
 
     try {
       const formData = new FormData();
-      
-      // Trim text inputs and handle required fields
       formData.append('description', values.description.trim());
       formData.append('status', values.status);
       formData.append('priority', values.priority);
-      
-      // Ensure room_id is added as a number
       formData.append('room_id', values.room.room_id.toString());
-      formData.append('topic_title', values.topic.title.trim());
-      
-      // Only add optional fields if they have values
+      formData.append('topic_data', JSON.stringify({
+        title: values.topic.title.trim(),
+        description: values.topic.description.trim() || '',
+      }));
       if (values.remarks?.trim()) {
         formData.append('remarks', values.remarks.trim());
       }
-      
-      // Add user and property context
       formData.append('user_id', session.user.id);
       formData.append('property_id', selectedProperty);
-      
-      // Convert boolean values to strings
       formData.append('is_defective', values.is_defective ? 'true' : 'false');
       formData.append('is_preventivemaintenance', values.is_preventivemaintenance ? 'true' : 'false');
-      
-      // Add each file to formData with proper naming
-      values.files.forEach((file, index) => {
+      values.files.forEach(file => {
         formData.append('images', file);
       });
 
-      // Debug: Log form data contents
-      console.log("FormData contents:");
-      for (let pair of formData.entries()) {
-        console.log(pair[0] + ': ' + (pair[1] instanceof File ? `File: ${pair[1].name} (${pair[1].size} bytes)` : pair[1]));
-      }
-      
-      // Send the request with proper authorization
-      const response = await axiosInstance.post('/api/jobs/', formData, {
-        headers: { 
+      const response = await axios.post(`${API_BASE_URL}/api/jobs/`, formData, {
+        headers: {
           Authorization: `Bearer ${session.user.accessToken}`,
-          // Let the browser set the Content-Type for FormData
-        }
+        },
       });
 
-      console.log('Job created:', response.data);
       resetForm();
-      onJobCreated?.();
+      triggerJobCreation();
+      if (onJobCreated) onJobCreated();
       router.push('/dashboard/myJobs');
-    } catch (submitError) {
-      console.error('Error creating job:', submitError);
-      
-      // Enhanced error logging
-      if (axios.isAxiosError(submitError)) {
-        console.log("Error status:", submitError.response?.status);
-        console.log("Error response data:", submitError.response?.data);
-        console.log("Error headers:", submitError.response?.headers);
-        
-        // Display formatted error message
-        setError(formatApiErrors(submitError.response?.data));
-      } else if (submitError instanceof Error) {
-        setError(submitError.message);
+    } catch (error) {
+      console.error('Submission error:', error);
+      if (axios.isAxiosError(error)) {
+        setError(formatApiErrors(error.response?.data));
       } else {
-        setError('An unknown error occurred');
+        setError('Unexpected error occurred');
       }
     } finally {
       setSubmitting(false);
@@ -302,7 +223,7 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
       </div>
     );
   }
-  
+
   if (status === 'unauthenticated') {
     return (
       <div className="text-center p-6 space-y-4">
@@ -311,7 +232,7 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
       </div>
     );
   }
-  
+
   if (!selectedProperty) {
     return (
       <div className="w-full max-w-2xl mx-auto bg-white rounded-lg shadow-sm p-4 sm:p-6 border">
@@ -329,24 +250,19 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
       <p className="text-sm text-gray-600 mb-6">
         For property: {getPropertyName(selectedProperty)}
       </p>
-      
+
       {error && (
         <Alert variant="destructive" className="mb-6">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      <Formik 
-        initialValues={initialValues} 
-        validationSchema={validationSchema} 
-        onSubmit={handleSubmit} 
-        enableReinitialize
-      >
+
+      <Formik initialValues={initialValues} validationSchema={validationSchema} onSubmit={handleSubmit} enableReinitialize>
         {({ values, errors, touched, setFieldValue, isSubmitting }) => (
           <Form className="space-y-6">
+            {/* Description */}
             <div className="space-y-1">
-              <Label htmlFor="description" className="font-medium">
-                Description *
-              </Label>
+              <Label htmlFor="description" className="font-medium">Description *</Label>
               <Field
                 as={Textarea}
                 id="description"
@@ -355,12 +271,12 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
                 disabled={isSubmitting}
                 className={`w-full min-h-[90px] ${touched.description && errors.description ? 'border-red-500' : 'border-gray-300'}`}
               />
-              {touched.description && errors.description && (
-                <p className="text-xs text-red-600 mt-1">{errors.description}</p>
-              )}
+              {touched.description && errors.description && <p className="text-xs text-red-600 mt-1">{errors.description}</p>}
             </div>
 
+            {/* Status & Priority */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Status */}
               <div className="space-y-1">
                 <Label className="font-medium">Status *</Label>
                 <Select
@@ -379,6 +295,8 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
                 </Select>
                 {touched.status && errors.status && <p className="text-xs text-red-600 mt-1">{errors.status}</p>}
               </div>
+
+              {/* Priority */}
               <div className="space-y-1">
                 <Label className="font-medium">Priority *</Label>
                 <Select
@@ -399,6 +317,7 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
               </div>
             </div>
 
+            {/* Room */}
             <div className="space-y-1">
               <Label className="font-medium">Room *</Label>
               <RoomAutocomplete
@@ -414,135 +333,77 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
               )}
             </div>
 
+            {/* Topic */}
             <div className="space-y-1">
               <Label className="font-medium">Topic *</Label>
               <Select
                 value={values.topic.title}
                 onValueChange={(value) => {
-                  const topic = topics.find((t) => t.title === value);
+                  const topic = topics.find(t => t.title === value);
                   if (topic) setFieldValue('topic', { title: topic.title, description: topic.description || '' });
                 }}
-                disabled={isSubmitting || topics.length === 0}
+                disabled={isSubmitting}
               >
-                <SelectTrigger
-                  className={touched.topic?.title && errors.topic?.title ? 'border-red-500' : 'border-gray-300'}
-                >
+                <SelectTrigger className={touched.topic?.title && errors.topic?.title ? 'border-red-500' : 'border-gray-300'}>
                   <SelectValue placeholder="Select Topic" />
                 </SelectTrigger>
                 <SelectContent>
-                  {topics.length > 0 ? (
-                    topics.map((topic) => (
-                      <SelectItem key={topic.id} value={topic.title}>
-                        {topic.title}
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem value="loading" disabled>
-                      Loading topics...
+                  {topics.length ? topics.map(topic => (
+                    <SelectItem key={topic.id} value={topic.title}>
+                      {topic.title}
                     </SelectItem>
+                  )) : (
+                    <SelectItem value="loading" disabled>Loading...</SelectItem>
                   )}
                 </SelectContent>
               </Select>
-              {touched.topic?.title && errors.topic?.title && (
-                <p className="text-xs text-red-600 mt-1">{errors.topic.title}</p>
-              )}
+              {touched.topic?.title && errors.topic?.title && <p className="text-xs text-red-600 mt-1">{errors.topic.title}</p>}
             </div>
 
+            {/* Remarks - Added the remarks field */}
+            <div className="space-y-1">
+              <Label htmlFor="remarks" className="font-medium">Remarks</Label>
+              <Field
+                as={Textarea}
+                id="remarks"
+                name="remarks"
+                placeholder="Enter additional remarks (optional)..."
+                disabled={isSubmitting}
+                className={`w-full min-h-[80px] ${touched.remarks && errors.remarks ? 'border-red-500' : 'border-gray-300'}`}
+              />
+              {touched.remarks && errors.remarks && <p className="text-xs text-red-600 mt-1">{errors.remarks}</p>}
+            </div>
+
+            {/* Files */}
             <div className="space-y-1">
               <Label className="font-medium">Images *</Label>
               <FileUpload
                 onFileSelect={(selectedFiles) => setFieldValue('files', selectedFiles)}
                 error={touched.files && typeof errors.files === 'string' ? errors.files : undefined}
-                touched={!!touched.files}
-                maxFiles={5}
-                maxSize={MAX_FILE_SIZE / 1024 / 1024}
                 disabled={isSubmitting}
               />
-              {touched.files && typeof errors.files === 'string' && (
-                <p className="text-xs text-red-600 mt-1">{errors.files}</p>
-              )}
             </div>
 
-            <div className="space-y-3 pt-2">
-              <div className="flex items-start space-x-3">
-                <Field
-                  as={Checkbox}
-                  name="is_defective"
-                  id="is_defective"
-                  disabled={isSubmitting}
-                  className="mt-0.5"
-                />
-                <div className="grid gap-0.5">
-                  <Label htmlFor="is_defective" className="text-sm font-medium">
-                    Defective Item
-                  </Label>
-                  <p className="text-xs text-gray-500">Mark if defective or needs contractor repair.</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <Field
-                  as={Checkbox}
-                  name="is_preventivemaintenance"
-                  id="is_preventivemaintenance"
-                  disabled={isSubmitting}
-                  className="mt-0.5"
-                />
-                <div className="grid gap-0.5">
-                  <Label htmlFor="is_preventivemaintenance" className="text-sm font-medium">
-                    Preventive Maintenance
-                  </Label>
-                  <p className="text-xs text-gray-500">Mark if this is a scheduled preventive job.</p>
-                </div>
-              </div>
+            {/* Checkboxes */}
+            <div className="flex items-center gap-4">
+              <Checkbox
+                checked={values.is_defective}
+                onCheckedChange={(checked) => setFieldValue('is_defective', checked)}
+                disabled={isSubmitting}
+              />
+              <Label>Is Defective?</Label>
+
+              <Checkbox
+                checked={values.is_preventivemaintenance}
+                onCheckedChange={(checked) => setFieldValue('is_preventivemaintenance', checked)}
+                disabled={isSubmitting}
+              />
+              <Label>Is Preventive Maintenance?</Label>
             </div>
 
-            <div className="space-y-1 border-t pt-4">
-              <div
-                className="flex items-center justify-between cursor-pointer"
-                onClick={() => setShowRemarks(!showRemarks)}
-                role="button"
-                aria-expanded={showRemarks}
-                aria-controls="remarks-textarea"
-              >
-                <Label className="font-medium flex items-center gap-1 cursor-pointer">
-                  Remarks <span className="text-xs text-gray-500">(Optional)</span>
-                </Label>
-                {showRemarks ? (
-                  <ChevronUp size={16} className="text-gray-600" />
-                ) : (
-                  <ChevronDown size={16} className="text-gray-600" />
-                )}
-              </div>
-              <div
-                className={`transition-all duration-300 ease-in-out overflow-hidden ${
-                  showRemarks ? 'max-h-60 opacity-100 pt-2' : 'max-h-0 opacity-0'
-                }`}
-              >
-                <Field
-                  as={Textarea}
-                  id="remarks-textarea"
-                  name="remarks"
-                  placeholder="Add any additional notes..."
-                  disabled={isSubmitting}
-                  className="w-full min-h-[70px]"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4">
-              <Button type="button" variant="outline" onClick={() => router.back()} disabled={isSubmitting}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting || !session}>
-                {isSubmitting ? (
-                  <>
-                    <Loader className="mr-2 h-4 w-4 animate-spin" /> Creating...
-                  </>
-                ) : (
-                  'Create Job'
-                )}
-              </Button>
-            </div>
+            <Button type="submit" disabled={isSubmitting} className="w-full">
+              {isSubmitting ? 'Creating...' : 'Create Job'}
+            </Button>
           </Form>
         )}
       </Formik>
