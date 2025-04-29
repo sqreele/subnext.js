@@ -12,9 +12,6 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/app/components/ui/table";
 import {
-  Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious,
-} from "@/app/components/ui/pagination";
-import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/app/components/ui/dialog";
 import {
@@ -37,12 +34,10 @@ import { Job, JobStatus, JobPriority } from "@/app/lib/types"; // Ensure path is
 // --- Component Imports ---
 import CreateJobButton from "@/app/components/jobs/CreateJobButton";
 import JobFilters, { FilterState } from "@/app/components/jobs/JobFilters";
+import Pagination from "@/app/components/jobs/Pagination"; // Import the new pagination component
 
-// Constants, Styles, Types, JobTableRow, EditDialog, DeleteDialog remain the same...
-// ... (Paste the PRIORITY_STYLES, STATUS_STYLES, Interfaces, JobTableRow, EditDialog, DeleteDialog code here) ...
 // Constants
 const ITEMS_PER_PAGE = 5;
-const MAX_VISIBLE_PAGES = 5;
 
 // Tailwind-based styles (Keep as they are)
 const PRIORITY_STYLES: Record<JobPriority | 'default', string> = {
@@ -61,10 +56,6 @@ const STATUS_STYLES: Record<JobStatus | "default", string> = {
 };
 
 // Types
-interface JobTableRowProps { /* ... */ }
-interface EditDialogProps { /* ... */ }
-interface DeleteDialogProps { /* ... */ }
-// ... (Interface definitions remain the same)
 interface JobTableRowProps {
     job: Job;
     onEdit: (job: Job) => void;
@@ -88,7 +79,6 @@ interface DeleteDialogProps {
 
 // JobTableRow component
 const JobTableRow: React.FC<JobTableRowProps> = React.memo(
-     // ... Paste JobTableRow JSX here ...
      ({ job, onEdit, onDelete }) => (
       <>
             {/* Desktop View */}
@@ -170,7 +160,6 @@ const JobTableRow: React.FC<JobTableRowProps> = React.memo(
 
             {/* Mobile View */}
             <div className="md:hidden border rounded-lg p-4 mb-4 bg-white shadow-sm">
-                 {/* ... paste Mobile View JSX from previous answer ... */}
                  <div className="space-y-3">
                     <div className="flex justify-between items-start">
                         <div className="space-y-1">
@@ -252,87 +241,97 @@ JobTableRow.displayName = 'JobTableRow';
 
 // EditDialog component
 const EditDialog: React.FC<EditDialogProps> = ({ isOpen, onClose, job, onSubmit, isSubmitting }) => (
-     // ... Paste EditDialog JSX here ...
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-[425px]">
-            <form onSubmit={onSubmit}>
-                <DialogHeader>
-                    <DialogTitle>Edit Job #{job?.job_id}</DialogTitle>
-                    <DialogDescription>
-                        Update the details for this maintenance job. Click save when you're done.
-                    </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-4 items-center gap-4">
-                         <label htmlFor="description" className="text-right col-span-1 text-sm font-medium">
-                            Description
-                         </label>
-                         <Textarea
-                            id="description"
-                            name="description"
-                            defaultValue={job?.description}
-                            className="col-span-3"
-                            rows={3}
-                            required
-                         />
-                    </div>
-                     <div className="grid grid-cols-4 items-center gap-4">
-                        <label htmlFor="priority" className="text-right col-span-1 text-sm font-medium">
-                            Priority
-                        </label>
-                        <Select name="priority" defaultValue={job?.priority}>
-                            <SelectTrigger className="col-span-3">
-                                <SelectValue placeholder="Select priority" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="low">Low</SelectItem>
-                                <SelectItem value="medium">Medium</SelectItem>
-                                <SelectItem value="high">High</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                     <div className="grid grid-cols-4 items-center gap-4">
-                         <label htmlFor="remarks" className="text-right col-span-1 text-sm font-medium">
-                            Remarks
-                         </label>
-                         <Textarea
-                            id="remarks"
-                            name="remarks"
-                            defaultValue={job?.remarks || ''}
-                            className="col-span-3"
-                            rows={2}
-                         />
-                    </div>
-                     <div className="grid grid-cols-4 items-center gap-4">
-                         <label htmlFor="is_defective" className="text-right col-span-1 text-sm font-medium">
-                            Defective?
-                         </label>
-                         <Checkbox
-                             id="is_defective"
-                             name="is_defective"
-                             defaultChecked={job?.is_defective}
-                             className="col-span-3 justify-self-start"
-                         />
-                    </div>
-                </div>
-                <DialogFooter>
-                    <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
-                        Cancel
-                    </Button>
-                    <Button type="submit" disabled={isSubmitting}>
-                        {isSubmitting && <Loader className="mr-2 h-4 w-4 animate-spin" />}
-                        Save Changes
-                    </Button>
-                </DialogFooter>
-            </form>
-        </DialogContent>
-    </Dialog>
+  <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[425px]">
+          <form onSubmit={onSubmit}>
+              <DialogHeader>
+                  <DialogTitle>Edit Job #{job?.job_id}</DialogTitle>
+                  <DialogDescription>
+                      Update the details for this maintenance job. Click save when you're done.
+                  </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                      <label htmlFor="description" className="text-right col-span-1 text-sm font-medium">
+                          Description
+                      </label>
+                      <Textarea
+                          id="description"
+                          name="description"
+                          defaultValue={job?.description}
+                          className="col-span-3"
+                          rows={3}
+                          required
+                      />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                      <label htmlFor="priority" className="text-right col-span-1 text-sm font-medium">
+                          Priority
+                      </label>
+                      <Select name="priority" defaultValue={job?.priority}>
+                          <SelectTrigger className="col-span-3">
+                              <SelectValue placeholder="Select priority" />
+                          </SelectTrigger>
+                          <SelectContent>
+                              <SelectItem value="low">Low</SelectItem>
+                              <SelectItem value="medium">Medium</SelectItem>
+                              <SelectItem value="high">High</SelectItem>
+                          </SelectContent>
+                      </Select>
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                      <label htmlFor="remarks" className="text-right col-span-1 text-sm font-medium">
+                          Remarks
+                      </label>
+                      <Textarea
+                          id="remarks"
+                          name="remarks"
+                          defaultValue={job?.remarks || ''}
+                          className="col-span-3"
+                          rows={2}
+                      />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                      <label htmlFor="is_defective" className="text-right col-span-1 text-sm font-medium">
+                          Defective?
+                      </label>
+                      <Checkbox
+                          id="is_defective"
+                          name="is_defective"
+                          defaultChecked={job?.is_defective}
+                          className="col-span-3 justify-self-start"
+                      />
+                  </div>
+                  {/* New field for Preventive Maintenance */}
+                  <div className="grid grid-cols-4 items-center gap-4">
+                      <label htmlFor="is_preventivemaintenance" className="text-right col-span-1 text-sm font-medium">
+                          Preventive?
+                      </label>
+                      <Checkbox
+                          id="is_preventivemaintenance"
+                          name="is_preventivemaintenance"
+                          defaultChecked={job?.is_preventivemaintenance}
+                          className="col-span-3 justify-self-start"
+                      />
+                  </div>
+              </div>
+              <DialogFooter>
+                  <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
+                      Cancel
+                  </Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                      {isSubmitting && <Loader className="mr-2 h-4 w-4 animate-spin" />}
+                      Save Changes
+                  </Button>
+              </DialogFooter>
+          </form>
+      </DialogContent>
+  </Dialog>
 );
 EditDialog.displayName = 'EditDialog';
 
 // DeleteDialog component
 const DeleteDialog: React.FC<DeleteDialogProps> = ({ isOpen, onClose, onConfirm, isSubmitting }) => (
-     // ... Paste DeleteDialog JSX here ...
       <AlertDialog open={isOpen} onOpenChange={onClose}>
         <AlertDialogContent>
             <AlertDialogHeader>
@@ -381,9 +380,7 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false); // For dialogs
 
-  // Memos & Effects (Filtering, Pagination, Auth Redirect)...
-  // ... (Paste filtering memo, pagination calculations, useEffects here) ...
-    // Filter jobs based on local state
+  // Filter jobs based on local state
   const filteredJobs = React.useMemo(() => {
      if (!Array.isArray(jobs)) return [];
     return jobs.filter((job) => {
@@ -397,12 +394,7 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
       const matchesStatus = filters.status === "all" || job.status === filters.status;
       const matchesPriority = filters.priority === "all" || job.priority === filters.priority;
 
-      // Add checks for other filter criteria if present in FilterState
-      // const matchesTopic = !filters.topic || job.topics?.some(t => String(t.id) === filters.topic);
-      // const matchesRoom = !filters.room || job.rooms?.some(r => String(r.room_id) === filters.room);
-      // const matchesDate = //... date range logic ...
-
-      return matchesSearch && matchesStatus && matchesPriority /* && matchesTopic etc. */;
+      return matchesSearch && matchesStatus && matchesPriority;
     });
   }, [jobs, filters]);
 
@@ -428,16 +420,16 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
   // --- Event Handlers ---
   const handleFilterChange = (newFilters: FilterState) => setFilters(newFilters);
   const handleClearFilters = () => setFilters({ search: "", status: "all", priority: "all" });
-  const handlePageChange = (page: number) => { /* ... */
-        if (page >= 1 && page <= totalPages) {
-        setCurrentPage(page);
-        window.scrollTo(0, 0);
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      window.scrollTo(0, 0);
     }
   };
-  const handleEdit = (job: Job) => { /* ... */ setSelectedJob(job); setIsEditDialogOpen(true); };
-  const handleDelete = (job: Job) => { /* ... */ setSelectedJob(job); setIsDeleteDialogOpen(true); };
+  const handleEdit = (job: Job) => { setSelectedJob(job); setIsEditDialogOpen(true); };
+  const handleDelete = (job: Job) => { setSelectedJob(job); setIsDeleteDialogOpen(true); };
 
-  // --- UPDATED Submit Handlers (No Session needed for API calls) ---
+  // --- UPDATED Submit Handler ---
   const handleEditSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedJob) return; // Basic check
@@ -445,17 +437,32 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
     setIsSubmitting(true);
     try {
       const formData = new FormData(event.currentTarget);
-      const updatedJobData: Partial<Job> = { /* ... extract form data ... */
+      
+      // Create update data that includes the required fields from the original job
+      const updatedJobData: Partial<Job> = {
+        // Include form-updated fields
         description: formData.get("description") as string,
         priority: formData.get("priority") as JobPriority,
         remarks: (formData.get("remarks") as string) || undefined,
         is_defective: formData.get("is_defective") === "on",
+        is_preventivemaintenance: formData.get("is_preventivemaintenance") === "on",
+        
+        // Preserve original topics
+        topics: selectedJob.topics || [],
+      };
+      
+      // For the API request, we need to prepare a data object that matches API expectations
+      // This might include fields not in the Job type
+      const apiRequestData = {
+        ...updatedJobData,
+        topic_data: selectedJob.topics || [], // Convert for API request
+        room_id: selectedJob.rooms?.[0]?.room_id, // Get the first room's ID
       };
 
-      // 1. Call API function (NO session argument needed if api-client handles auth)
-      const updatedJobResult = await apiUpdateJob(String(selectedJob.job_id), updatedJobData);
+      // Call API function with the data formatted for the API
+      const updatedJobResult = await apiUpdateJob(String(selectedJob.job_id), apiRequestData);
 
-      // 2. Update local state using the hook's function
+      // Update local state using the hook's function
       updateJob(updatedJobResult);
 
       toast({ title: "Success", description: "Job updated successfully." });
@@ -521,7 +528,6 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
 
   // --- Render Logic ---
   if (sessionStatus === "loading" || (isLoading && !error && jobs.length === 0)) {
-     // ... Loading UI ...
       return (
             <div className="flex justify-center items-center h-64">
                 <Loader className="h-8 w-8 animate-spin text-gray-500" />
@@ -533,13 +539,11 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
     return null; // Redirect handled by useEffect
   }
 
-  // Main Render Output...
-  // ... (Paste the main return JSX here - ensure it uses `jobs`, `isLoading`, `error` from hook) ...
+  // Main Render Output
    return (
      <div className="space-y-6 p-4 md:p-6">
        {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          {/* ... Header content ... */}
             <div>
                 <h1 className="text-2xl font-semibold text-gray-800">My Maintenance Jobs</h1>
                 <p className="text-sm text-gray-600 mt-1">
@@ -571,12 +575,10 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
         filters={filters}
         onFilterChange={handleFilterChange}
         onClearFilters={handleClearFilters}
-        // Pass any additional props needed by JobFilters (e.g., topics, rooms for dropdowns)
       />
 
        {/* Error Display */}
        {error && (
-          // ... Error display JSX using `error` from hook ...
             <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg mb-6 flex items-start gap-3">
               <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-500 mt-0.5"/>
               <div>
@@ -601,7 +603,6 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
              <>
                {/* Table for Desktop */}
                <div className="border rounded-lg overflow-x-auto hidden md:block">
-                 {/* ... Table JSX ... */}
                     <Table className="w-full">
                        <TableHeader>
                          <TableRow className="bg-gray-50 hover:bg-gray-50">
@@ -622,80 +623,27 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
                </div>
                 {/* Cards for Mobile */}
                <div className="md:hidden space-y-4">
-                    {/* ... Mobile cards mapping currentJobs to JobTableRow ... */}
                      {currentJobs.map((job) => (
                          <JobTableRow key={job.job_id} job={job} onEdit={handleEdit} onDelete={handleDelete} />
                      ))}
                </div>
-                {/* Pagination */}
+                
+               {/* New Pagination Component */}
                {totalPages > 1 && (
-                 // ... Pagination JSX ...
-                  <div className="mt-6 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-                    <div className="text-sm text-gray-600">
+                 <div className="mt-6">
+                   <div className="text-sm text-gray-600 mb-2 text-center">
                       Showing {startIndex + 1} to {endIndex} of {filteredJobs.length} results
-                    </div>
-                    <Pagination>
-                      <PaginationContent>
-                          {/* ... Pagination items ... */}
-                            <PaginationItem>
-                                <PaginationPrevious
-  onClick={(e) => {
-    e.preventDefault();
-    handlePageChange(currentPage - 1);
-  }}
-  aria-disabled={currentPage === 1}
-  className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
-/>
-                            </PaginationItem>
-                            {[...Array(totalPages)].map((_, i) => {
-                                const pageNum = i + 1;
-                                const showPage = pageNum === 1 || pageNum === totalPages || Math.abs(pageNum - currentPage) <= 1 || (currentPage <= 3 && pageNum <= MAX_VISIBLE_PAGES) || (currentPage >= totalPages - 2 && pageNum >= totalPages - MAX_VISIBLE_PAGES + 1);
-                                const showEllipsisBefore = (currentPage > 3 && pageNum === 2 && MAX_VISIBLE_PAGES < totalPages && totalPages > MAX_VISIBLE_PAGES);
-                                const showEllipsisAfter = (currentPage < totalPages - 2 && pageNum === totalPages -1 && MAX_VISIBLE_PAGES < totalPages && totalPages > MAX_VISIBLE_PAGES);
-
-                                if (showEllipsisBefore && pageNum < currentPage -1 ) {
-                                    return <PaginationEllipsis key={`ellipsis-start`} />;
-                                }
-                                if (showEllipsisAfter && pageNum > currentPage + 1) {
-                                     return <PaginationEllipsis key={`ellipsis-end`} />;
-                                }
-
-                                if (showPage) {
-                                    return (
-                                        <PaginationItem key={pageNum}>
-                                            <PaginationLink
-  onClick={(e) => {
-    e.preventDefault();
-    handlePageChange(pageNum);
-  }}
-  isActive={currentPage === pageNum}
-  aria-current={currentPage === pageNum ? "page" : undefined}
->
-  {pageNum}
-</PaginationLink>
-                                        </PaginationItem>
-                                    );
-                                }
-                                return null;
-                            })}
-                            <PaginationItem>
-                                <PaginationPrevious
-  onClick={(e) => {
-    e.preventDefault();
-    handlePageChange(currentPage - 1);
-  }}
-  aria-disabled={currentPage === 1}
-  className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
-/>
-                            </PaginationItem>
-                      </PaginationContent>
-                    </Pagination>
-                </div>
+                   </div>
+                   <Pagination 
+                     totalPages={totalPages} 
+                     currentPage={currentPage} 
+                     onPageChange={handlePageChange} 
+                   />
+                 </div>
                )}
              </>
            ) : (
              // Empty State
-              // ... Empty State JSX ...
                 <div className="text-center p-12 border rounded-lg bg-white shadow-sm">
                     <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-gray-900">
@@ -733,9 +681,7 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
    // Helper function to check if any filters are active
     function filtersApplied() {
         return filters.search !== "" || filters.status !== "all" || filters.priority !== "all";
-        // Add other filter checks if needed: || filters.topic || filters.room || filters.dateRange
     }
-
 }; // End MyJobs component
 
 export default MyJobs;

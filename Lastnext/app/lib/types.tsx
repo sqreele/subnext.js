@@ -292,3 +292,8 @@ export type PageProps<TParams = { jobId: string }, TSearchParams = { [key: strin
   params: TParams;
   searchParams: TSearchParams;
 };
+export interface PaginationProps {
+  totalPages: number;
+  currentPage: number;
+  onPageChange: (page: number) => void;
+}

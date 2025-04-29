@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from '@/app/components/ui/button'
-import { PaginationProps } from '@/app/lib/types'
+import { Button } from '@/app/components/ui/button';
+import { PaginationProps } from '@/app/lib/types';
 
 export default function Pagination({ totalPages, currentPage, onPageChange }: PaginationProps) {
   return (
@@ -19,7 +19,7 @@ export default function Pagination({ totalPages, currentPage, onPageChange }: Pa
         {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
           <Button
             key={page}
-            onClick={() => onPageChange(page)} 
+            onClick={() => onPageChange(page)}
             variant={currentPage === page ? "default" : "outline"}
             className="flex items-center justify-center min-w-[2.5rem]"
           >
@@ -30,12 +30,12 @@ export default function Pagination({ totalPages, currentPage, onPageChange }: Pa
       
       <Button
         onClick={() => onPageChange(currentPage + 1)}
-        disabled={currentPage === totalPages} 
+        disabled={currentPage === totalPages}
         variant="outline"
         className="flex items-center gap-1"
       >
         Next
       </Button>
     </div>
-  )
+  );
 }

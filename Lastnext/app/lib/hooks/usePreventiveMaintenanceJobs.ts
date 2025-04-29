@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Job, JobStatus } from '@/app/lib/types';
-import { fetchJobsForProperty, fetchPreventiveMaintenanceJobs } from '@/app/lib/data';
+import { fetchData } from '@/app/lib/api-client';
 
 interface UsePreventiveMaintenanceJobsOptions {
   propertyId?: string;
   limit?: number;
   autoLoad?: boolean;
   initialJobs?: Job[];
+  isPM?: boolean; // New option to filter by is_preventivemaintenance
 }
 
 interface PMJobsStats {
@@ -22,14 +23,14 @@ export function usePreventiveMaintenanceJobs({
   propertyId,
   limit = 10,
   autoLoad = true,
-  initialJobs = []
+  initialJobs = [],
+  isPM = true // Default to true since this is specifically for PM jobs
 }: UsePreventiveMaintenanceJobsOptions) {
   const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [isLoading, setIsLoading] = useState<boolean>(autoLoad && initialJobs.length === 0);
   const [error, setError] = useState<string | null>(null);
 
   const loadJobs = useCallback(async () => {
-    // If we have initial jobs and don't need to auto-load, just use those
     if (!autoLoad && initialJobs.length > 0) {
       setJobs(initialJobs);
       return;
@@ -39,32 +40,36 @@ export function usePreventiveMaintenanceJobs({
       setIsLoading(true);
       setError(null);
       
-      let fetchedJobs: Job[] = [];
+      // Build query parameters
+      const params = new URLSearchParams();
       
+      // Add is_preventivemaintenance filter - this is the key change
+      params.append('is_preventivemaintenance', isPM ? 'true' : 'false');
+      
+      // Add other filters if provided
       if (propertyId) {
-        try {
-          // Use the fetchPreventiveMaintenanceJobs function from data.ts
-          fetchedJobs = await fetchPreventiveMaintenanceJobs({
-            propertyId,
-            limit
-          });
-        } catch (fetchError) {
-          console.error('Error with preventive maintenance fetch, falling back to standard fetch:', fetchError);
-          // Fall back to general job fetching
-          fetchedJobs = await fetchJobsForProperty(propertyId);
-        }
-      } else {
-        console.warn('No propertyId provided for fetching preventive maintenance jobs');
+        params.append('property', propertyId);
       }
       
-      setJobs(fetchedJobs);
+      if (limit) {
+        params.append('limit', limit.toString());
+      }
+      
+      // Use the fetchData function from api-client
+      const apiUrl = `/api/jobs/?${params.toString()}`;
+      const fetchedJobs = await fetchData<Job[]>(apiUrl);
+      
+      // Extra safety check in case the API doesn't filter correctly
+      const filteredJobs = fetchedJobs.filter(job => job.is_preventivemaintenance === true);
+      
+      setJobs(filteredJobs);
     } catch (err) {
-      console.error('Error loading jobs:', err);
-      setError('Failed to load jobs. Please try again.');
+      console.error('Error loading preventive maintenance jobs:', err);
+      setError(typeof err === 'string' ? err : (err instanceof Error ? err.message : 'Failed to load jobs. Please try again.'));
     } finally {
       setIsLoading(false);
     }
-  }, [propertyId, limit, autoLoad, initialJobs]);
+  }, [propertyId, limit, autoLoad, initialJobs, isPM]);
 
   useEffect(() => {
     if (autoLoad) {
