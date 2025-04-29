@@ -70,7 +70,7 @@ class Property(models.Model):
 
 
 class Room(models.Model):
-    id = models.AutoField(primary_key=True)
+
     room_id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100, unique=True)
     room_type = models.CharField(max_length=50, db_index=True)
@@ -231,6 +231,7 @@ class JobImage(models.Model):
         super().delete(*args, **kwargs)
 
 class Job(models.Model):
+    is_preventivemaintenance = models.BooleanField(default=False)
     STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('in_progress', 'In Progress'),
@@ -270,6 +271,7 @@ class Job(models.Model):
         blank=True
     )
     is_defective = models.BooleanField(default=False)
+    is_preventivemaintenance=models.BooleanField(default=False)
     images = models.ManyToManyField(
         'JobImage', 
         related_name='jobs', 

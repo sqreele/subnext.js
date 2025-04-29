@@ -24,6 +24,12 @@ interface CachedData {
   timestamp: string;
 }
 
+// Define the expected response type from the preventive maintenance API
+interface PreventiveMaintenanceResponse {
+  jobs: Job[];
+  count: number;
+}
+
 export function usePreventiveMaintenanceJobs({
   propertyId,
   limit = 10,
@@ -82,61 +88,61 @@ export function usePreventiveMaintenanceJobs({
         }
       }
       
-      // Build query parameters
-      const params = new URLSearchParams();
+      // Decide which endpoint to use based on availability
+      let apiUrl = '/api/preventive-maintenance/jobs/';
+      const params: Record<string, string> = {};
       
-      // Add is_preventivemaintenance filter
-      params.append('is_preventivemaintenance', isPM ? 'true' : 'false');
-      
-      // Add other filters if provided
       if (propertyId) {
-        params.append('property', propertyId);
+        params.property = propertyId;
       }
       
       if (limit) {
-        params.append('limit', limit.toString());
+        params.limit = limit.toString();
       }
       
-      // Use the fetchData function with timeout and retry logic
-      const apiUrl = `/api/jobs/?${params.toString()}`;
-      let fetchedJobs: Job[] = [];
-      
-      // Add retry logic with exponential backoff
-      let retries = 0;
-      const MAX_RETRIES = 2;
-      
-      while (retries <= MAX_RETRIES) {
-        try {
-          fetchedJobs = await fetchData<Job[]>(apiUrl);
-          break; // Success, exit retry loop
-        } catch (err) {
-          retries++;
-          console.warn(`API request failed (attempt ${retries}/${MAX_RETRIES + 1}):`, err);
+      // New endpoint specific implementation
+      try {
+        const response = await fetchData<PreventiveMaintenanceResponse>(apiUrl, { params });
+        
+        // Ensure we have a valid response with jobs property
+        if (response && 'jobs' in response) {
+          const fetchedJobs = response.jobs || [];
           
-          if (retries > MAX_RETRIES) {
-            throw err; // Re-throw if we've exhausted retries
-          }
+          // Cache the successful result
+          localStorage.setItem(cacheKey, JSON.stringify({
+            data: fetchedJobs,
+            timestamp: now.toISOString()
+          }));
           
-          // Exponential backoff with jitter
-          const delay = Math.min(1000 * Math.pow(2, retries) + Math.random() * 1000, 8000);
-          await new Promise(resolve => setTimeout(resolve, delay));
+          setJobs(fetchedJobs);
+          setLastLoadTime(now);
+          setRetryCount(0);
+          return;
+        } else {
+          console.warn('[usePreventiveMaintenanceJobs] Unexpected response format:', response);
+          throw new Error('Unexpected API response format');
         }
+      } catch (newEndpointError) {
+        console.warn('[usePreventiveMaintenanceJobs] New endpoint failed, falling back to legacy endpoint:', newEndpointError);
+        
+        // Fallback to legacy endpoint if the new one fails
+        apiUrl = '/api/jobs/';
+        params.is_preventivemaintenance = isPM ? 'true' : 'false';
+        
+        const legacyResponse = await fetchData<Job[]>(apiUrl, { params });
+        const fetchedJobs = Array.isArray(legacyResponse) ? legacyResponse : [];
+        
+        // Cache the successful result
+        localStorage.setItem(cacheKey, JSON.stringify({
+          data: fetchedJobs,
+          timestamp: now.toISOString()
+        }));
+        
+        setJobs(fetchedJobs);
+        setLastLoadTime(now);
+        setRetryCount(0);
       }
       
-      // Extra safety check in case the API doesn't filter correctly
-      const filteredJobs = isPM 
-        ? fetchedJobs.filter(job => job.is_preventivemaintenance === true)
-        : fetchedJobs;
-      
-      // Cache the successful result
-      localStorage.setItem(cacheKey, JSON.stringify({
-        data: filteredJobs,
-        timestamp: now.toISOString()
-      }));
-      
-      setJobs(filteredJobs);
-      setLastLoadTime(now);
-      setRetryCount(0); // Reset retry count on success
     } catch (err) {
       console.error('Error loading preventive maintenance jobs:', err);
       setRetryCount(prev => prev + 1);
@@ -147,7 +153,14 @@ export function usePreventiveMaintenanceJobs({
         try {
           const cachedData: CachedData = JSON.parse(cachedDataString);
           setJobs(cachedData.data);
-          setError(`Using cached data. Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          
+          // Get a user-friendly error message
+          let errorMessage = 'Failed to load jobs. Using cached data.';
+          if (err instanceof Error) {
+            errorMessage += ` Error: ${err.message}`;
+          }
+          
+          setError(errorMessage);
         } catch (e) {
           setError(typeof err === 'string' ? err : (err instanceof Error ? err.message : 'Failed to load jobs. Please try again.'));
         }

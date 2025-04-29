@@ -1,16 +1,48 @@
-// app/dashboard/Preventive_maintenance/PreventiveMaintenanceDashboard.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { usePreventiveMaintenanceJobs } from '@/app/lib/hooks/usePreventiveMaintenanceJobs';
 import { Job } from '@/app/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
-import { Calendar, CheckCircle2, Clock, AlertTriangle, BarChart, Wrench, FileText, ArrowUpRight } from 'lucide-react';
+import { 
+  Calendar, 
+  CheckCircle2, 
+  Clock, 
+  AlertTriangle, 
+  BarChart, 
+  Wrench, 
+  FileText, 
+  ArrowUpRight,
+  Filter,
+  RefreshCw,
+  ChevronDown,
+  CalendarIcon
+} from 'lucide-react';
 import { cn } from '@/app/lib/utils';
 import Link from 'next/link';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from '@/app/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/app/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/app/components/ui/tooltip";
 
 interface PreventiveMaintenanceDashboardProps {
   propertyId: string;
@@ -21,13 +53,21 @@ export default function PreventiveMaintenanceDashboard({
   propertyId,
   limit = 10
 }: PreventiveMaintenanceDashboardProps) {
+  // State for the active tab and filters
   const [activeTab, setActiveTab] = useState('overview');
+  const [showFilters, setShowFilters] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [timeRangeFilter, setTimeRangeFilter] = useState('all');
+  
+  // Get jobs using the updated hook
   const { 
     jobs, 
     isLoading, 
     error, 
     loadJobs, 
-    getStats 
+    getStats,
+    lastLoadTime
   } = usePreventiveMaintenanceJobs({
     propertyId,
     limit,
@@ -41,16 +81,73 @@ export default function PreventiveMaintenanceDashboard({
   const currentDate = new Date();
   const currentMonth = currentDate.toLocaleString('default', { month: 'long' });
   const currentYear = currentDate.getFullYear();
+  
+  // Apply filters to the jobs
+  const filteredJobs = useMemo(() => {
+    return jobs.filter(job => {
+      // Filter by status
+      if (statusFilter !== 'all' && job.status !== statusFilter) {
+        return false;
+      }
+      
+      // Filter by priority
+      if (priorityFilter !== 'all' && job.priority !== priorityFilter) {
+        return false;
+      }
+      
+      // Filter by time range
+      if (timeRangeFilter !== 'all') {
+        const jobDate = new Date(job.created_at);
+        const now = new Date();
+        
+        switch (timeRangeFilter) {
+          case 'today':
+            return jobDate.toDateString() === now.toDateString();
+          case 'week':
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(now.getDate() - 7);
+            return jobDate >= oneWeekAgo;
+          case 'month':
+            const oneMonthAgo = new Date();
+            oneMonthAgo.setMonth(now.getMonth() - 1);
+            return jobDate >= oneMonthAgo;
+          default:
+            return true;
+        }
+      }
+      
+      return true;
+    });
+  }, [jobs, statusFilter, priorityFilter, timeRangeFilter]);
 
-  // Group jobs by status for easier filtering
-  const jobsByStatus = {
-    pending: jobs.filter(job => job.status === 'pending'),
-    in_progress: jobs.filter(job => job.status === 'in_progress'),
-    completed: jobs.filter(job => job.status === 'completed'),
-    waiting_sparepart: jobs.filter(job => job.status === 'waiting_sparepart'),
-    cancelled: jobs.filter(job => job.status === 'cancelled')
+  // Group jobs by status for tab filtering
+  const jobsByStatus = useMemo(() => ({
+    pending: filteredJobs.filter(job => job.status === 'pending'),
+    in_progress: filteredJobs.filter(job => job.status === 'in_progress'),
+    completed: filteredJobs.filter(job => job.status === 'completed'),
+    waiting_sparepart: filteredJobs.filter(job => job.status === 'waiting_sparepart'),
+    cancelled: filteredJobs.filter(job => job.status === 'cancelled')
+  }), [filteredJobs]);
+
+  // Reset filters function
+  const resetFilters = () => {
+    setStatusFilter('all');
+    setPriorityFilter('all');
+    setTimeRangeFilter('all');
   };
 
+  // Get available statuses and priorities from jobs
+  const availableStatuses = useMemo(() => 
+    Array.from(new Set(jobs.map(job => job.status))),
+    [jobs]
+  );
+  
+  const availablePriorities = useMemo(() => 
+    Array.from(new Set(jobs.filter(job => job.priority).map(job => job.priority))),
+    [jobs]
+  );
+
+  // Loading state
   if (isLoading) {
     return (
       <Card className="w-full">
@@ -64,6 +161,7 @@ export default function PreventiveMaintenanceDashboard({
     );
   }
 
+  // Error state
   if (error) {
     return (
       <Card className="w-full border-red-200 bg-red-50">
@@ -78,7 +176,7 @@ export default function PreventiveMaintenanceDashboard({
         </CardContent>
         <CardFooter>
           <Button 
-            onClick={() => loadJobs()}
+            onClick={() => loadJobs(true)} // Force refresh
             variant="outline"
             className="border-red-300 text-red-700 hover:bg-red-100"
           >
@@ -89,6 +187,7 @@ export default function PreventiveMaintenanceDashboard({
     );
   }
 
+  // Empty state
   if (jobs.length === 0) {
     return (
       <Card className="w-full border-blue-200 bg-blue-50">
@@ -116,20 +215,140 @@ export default function PreventiveMaintenanceDashboard({
       </Card>
     );
   }
+  
+  // Get jobs to display based on active tab
+  const displayJobs = activeTab === 'overview' 
+    ? filteredJobs 
+    : jobsByStatus[activeTab as keyof typeof jobsByStatus] || [];
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl md:text-2xl">Preventive Maintenance Dashboard</CardTitle>
-          <CardDescription>
-            Maintenance overview for {currentMonth} {currentYear}
-          </CardDescription>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <CardTitle className="text-xl md:text-2xl">Preventive Maintenance Dashboard</CardTitle>
+              <CardDescription>
+                Maintenance overview for {currentMonth} {currentYear}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      onClick={() => loadJobs(true)}
+                      className="flex items-center gap-1"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      <span className="hidden md:inline">Refresh</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Last refreshed: {lastLoadTime ? formatTime(lastLoadTime) : 'Never'}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              
+              <Button 
+                size="sm" 
+                variant={showFilters ? "secondary" : "outline"}
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center gap-1"
+              >
+                <Filter className="h-4 w-4" />
+                <span className="hidden md:inline">Filters</span>
+                <ChevronDown className={`h-4 w-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+              </Button>
+              
+              <Button asChild size="sm">
+                <Link href="/dashboard/createJob">
+                  Create Job
+                </Link>
+              </Button>
+            </div>
+          </div>
           <p className="text-sm text-gray-500 mt-2">
             Preventive maintenance tasks are scheduled activities performed to prevent equipment failures 
-            and extend the lifespan of property assets. Only jobs with <code>is_preventivemaintenance=true</code> are shown here.
+            and extend the lifespan of property assets.
           </p>
+          
+          {/* Filters panel */}
+          {showFilters && (
+            <div className="mt-4 p-4 bg-gray-50 rounded-lg border grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">Status</label>
+                <Select 
+                  value={statusFilter} 
+                  onValueChange={setStatusFilter}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    {availableStatuses.map(status => (
+                      <SelectItem key={status} value={status}>
+                        {status.replace('_', ' ')}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">Priority</label>
+                <Select 
+                  value={priorityFilter} 
+                  onValueChange={setPriorityFilter}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Priorities</SelectItem>
+                    {availablePriorities.map(priority => (
+                      <SelectItem key={priority} value={priority}>
+                        {priority}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">Time Range</label>
+                <Select 
+                  value={timeRangeFilter} 
+                  onValueChange={setTimeRangeFilter}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select time range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Time</SelectItem>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="week">Last 7 Days</SelectItem>
+                    <SelectItem value="month">Last 30 Days</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="md:col-span-3 flex justify-end">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={resetFilters}
+                >
+                  Reset Filters
+                </Button>
+              </div>
+            </div>
+          )}
         </CardHeader>
+        
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <Card className="bg-gray-50 border">
@@ -188,52 +407,63 @@ export default function PreventiveMaintenanceDashboard({
               <TabsTrigger value="completed">{`Completed (${jobsByStatus.completed.length})`}</TabsTrigger>
             </TabsList>
             
-            <TabsContent value="overview" className="space-y-4">
-              <h3 className="text-lg font-medium mb-2">All Preventive Maintenance Jobs</h3>
-              {jobs.map((job) => (
-                <JobCard key={job.job_id} job={job} />
-              ))}
-            </TabsContent>
-            
-            <TabsContent value="pending" className="space-y-4">
-              <h3 className="text-lg font-medium mb-2">Pending Maintenance Tasks</h3>
-              {jobsByStatus.pending.length > 0 ? (
-                jobsByStatus.pending.map((job) => (
+            <TabsContent value={activeTab} className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-medium">
+                  {activeTab === 'overview' 
+                    ? 'All Preventive Maintenance Jobs' 
+                    : `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1).replace('_', ' ')} Maintenance Tasks`}
+                </h3>
+                {filteredJobs.length !== jobs.length && (
+                  <div className="text-sm text-gray-500">
+                    Showing {filteredJobs.length} of {jobs.length} jobs
+                  </div>
+                )}
+              </div>
+              
+              {displayJobs.length > 0 ? (
+                displayJobs.map((job) => (
                   <JobCard key={job.job_id} job={job} />
                 ))
               ) : (
-                <p className="text-center py-4 text-gray-500">No pending maintenance tasks</p>
-              )}
-            </TabsContent>
-            
-            <TabsContent value="completed" className="space-y-4">
-              <h3 className="text-lg font-medium mb-2">Completed Maintenance Tasks</h3>
-              {jobsByStatus.completed.length > 0 ? (
-                jobsByStatus.completed.map((job) => (
-                  <JobCard key={job.job_id} job={job} />
-                ))
-              ) : (
-                <p className="text-center py-4 text-gray-500">No completed maintenance tasks</p>
+                <div className="text-center py-8 bg-gray-50 rounded-lg border">
+                  <AlertTriangle className="h-12 w-12 mx-auto text-gray-300 mb-3" />
+                  <p className="text-gray-500 mb-2">No jobs match the current filters</p>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={resetFilters}
+                  >
+                    Reset Filters
+                  </Button>
+                </div>
               )}
             </TabsContent>
           </Tabs>
         </CardContent>
-        <CardFooter className="border-t pt-6">
-          <Button variant="outline" className="mr-2" onClick={() => loadJobs()}>
-            Refresh Data
-          </Button>
-          <Button asChild>
-            <Link href="/dashboard/createJob">
-              Create Maintenance Job
-            </Link>
-          </Button>
+        
+        <CardFooter className="border-t pt-6 flex justify-between flex-wrap gap-2">
+          <div className="text-sm text-gray-500">
+            {filteredJobs.length} {filteredJobs.length === 1 ? 'job' : 'jobs'} found
+          </div>
+          <div>
+            <Button variant="outline" className="mr-2" onClick={() => loadJobs(true)}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh Data
+            </Button>
+            <Button asChild>
+              <Link href="/dashboard/createJob">
+                Create Maintenance Job
+              </Link>
+            </Button>
+          </div>
         </CardFooter>
       </Card>
     </div>
   );
 }
 
-// Job Card Component for displaying individual maintenance jobs
+// Enhanced Job Card Component
 function JobCard({ job }: { job: Job }) {
   const getStatusColor = (status: string) => {
     switch(status) {
@@ -246,21 +476,43 @@ function JobCard({ job }: { job: Job }) {
     }
   };
   
+  const getPriorityColor = (priority: string) => {
+    switch(priority) {
+      case 'high': return 'text-red-600';
+      case 'medium': return 'text-amber-600';
+      case 'low': return 'text-green-600';
+      default: return 'text-gray-600';
+    }
+  };
+  
+  // Format room names if available
+  const roomNames = job.rooms && job.rooms.length > 0
+    ? job.rooms.map(room => room.name).join(', ')
+    : 'No room specified';
+  
   return (
-    <Card className="mb-3 hover:shadow-md transition-shadow">
+    <Card className="mb-3 hover:shadow-md transition-shadow overflow-hidden">
+      {/* Status indicator bar */}
+      <div className={cn("h-1", 
+        job.status === 'completed' ? 'bg-green-500' : 
+        job.status === 'in_progress' ? 'bg-blue-500' : 
+        job.status === 'pending' ? 'bg-yellow-500' :
+        job.status === 'waiting_sparepart' ? 'bg-purple-500' :
+        job.status === 'cancelled' ? 'bg-red-500' : 'bg-gray-500'
+      )} />
+      
       <CardContent className="p-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <h4 className="font-medium">Job #{job.job_id}</h4>
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <h4 className="font-medium">
+                Job #{job.job_id.substring(0, 8)}...
+              </h4>
               <Badge className={cn("capitalize", getStatusColor(job.status))}>
                 {job.status.replace('_', ' ')}
               </Badge>
               {job.priority && (
-                <Badge variant="outline" className={cn(
-                  job.priority === 'high' ? 'text-red-600' : 
-                  job.priority === 'medium' ? 'text-amber-600' : 'text-green-600'
-                )}>
+                <Badge variant="outline" className={cn(getPriorityColor(job.priority))}>
                   {job.priority}
                 </Badge>
               )}
@@ -270,28 +522,87 @@ function JobCard({ job }: { job: Job }) {
                 </Badge>
               )}
             </div>
-            <p className="text-sm text-gray-700">{job.description}</p>
-            <div className="mt-2 flex items-center text-xs text-gray-500">
-              <Calendar className="mr-1 h-3.5 w-3.5" />
-              <span>Created: {new Date(job.created_at).toLocaleDateString()}</span>
+            
+            <p className="text-sm text-gray-700 line-clamp-2">
+              {job.description || "No description provided"}
+            </p>
+            
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+              <span className="flex items-center">
+                <Calendar className="mr-1 h-3.5 w-3.5" />
+                Created: {formatDate(job.created_at)}
+              </span>
+              
               {job.completed_at && (
-                <>
-                  <span className="mx-2">•</span>
+                <span className="flex items-center">
                   <CheckCircle2 className="mr-1 h-3.5 w-3.5 text-green-500" />
-                  <span>Completed: {new Date(job.completed_at).toLocaleDateString()}</span>
-                </>
+                  Completed: {formatDate(job.completed_at)}
+                </span>
               )}
+              
+              <span className="flex items-center truncate max-w-[180px]" title={roomNames}>
+                <Wrench className="mr-1 h-3.5 w-3.5" />
+                {roomNames}
+              </span>
             </div>
           </div>
-          <Button asChild variant="ghost" size="sm" className="sm:self-start mt-2 sm:mt-0 shrink-0">
-            <Link href={`/dashboard/jobs/${job.job_id}`}>
-              <FileText className="mr-1 h-4 w-4" />
-              <span className="hidden sm:inline">Details</span>
-              <ArrowUpRight className="ml-1 h-3 w-3" />
-            </Link>
-          </Button>
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="sm:self-start mt-2 sm:mt-0 shrink-0">
+                <FileText className="mr-1 h-4 w-4" />
+                <span className="hidden sm:inline">Actions</span>
+                <ChevronDown className="ml-1 h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link href={`/dashboard/jobs/${job.job_id}`} className="flex items-center">
+                  <FileText className="mr-2 h-4 w-4" />
+                  View Details
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href={`/dashboard/jobs/${job.job_id}/edit`} className="flex items-center">
+                  <FileText className="mr-2 h-4 w-4" />
+                  Edit Job
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link 
+                  href={`/dashboard/jobs/new?duplicate=${job.job_id}`}
+                  className="flex items-center"
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  Duplicate Job
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </CardContent>
     </Card>
   );
+}
+
+// Helper function to format dates
+function formatDate(dateString: string): string {
+  if (!dateString) return 'Unknown';
+  
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+}
+
+// Helper function to format times
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
 }
