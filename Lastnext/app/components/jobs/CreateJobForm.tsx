@@ -291,6 +291,7 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
                     <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="in_progress">In Progress</SelectItem>
                     <SelectItem value="waiting_sparepart">Waiting Sparepart</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
                   </SelectContent>
                 </Select>
                 {touched.status && errors.status && <p className="text-xs text-red-600 mt-1">{errors.status}</p>}

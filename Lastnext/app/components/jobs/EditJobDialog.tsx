@@ -31,6 +31,14 @@ const JOB_PRIORITY = {
   HIGH: "high"
 };
 
+// Define status constants to use as values
+const JOB_STATUS = {
+  PENDING: "pending",
+  IN_PROGRESS: "in_progress",
+  WAITING_SPAREPART: "waiting_sparepart",
+  COMPLETED: "completed"
+};
+
 // Props interface (keep as is)
 interface EditDialogProps {
   isOpen: boolean;
@@ -78,6 +86,30 @@ const EditJobDialog: FC<EditDialogProps> = ({
               aria-required="true"
               disabled={isSubmitting} // Disable when submitting
             />
+          </div>
+
+          {/* Status Field */}
+          <div className="space-y-2">
+            <Label htmlFor="status" className="text-sm font-medium">
+              Status
+            </Label>
+            <Select
+              name="status"
+              defaultValue={job.status}
+              required
+              aria-required="true"
+              disabled={isSubmitting}
+            >
+              <SelectTrigger id="status" className="text-sm">
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={JOB_STATUS.PENDING} className="text-sm">Pending</SelectItem>
+                <SelectItem value={JOB_STATUS.IN_PROGRESS} className="text-sm">In Progress</SelectItem>
+                <SelectItem value={JOB_STATUS.WAITING_SPAREPART} className="text-sm">Waiting Sparepart</SelectItem>
+                <SelectItem value={JOB_STATUS.COMPLETED} className="text-sm">Completed</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Priority Field */}
