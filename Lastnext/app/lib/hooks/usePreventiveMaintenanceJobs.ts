@@ -30,6 +30,12 @@ interface PreventiveMaintenanceResponse {
   count: number;
 }
 
+// New interface for the property PM status
+interface PropertyPMStatus {
+  property_id: string;
+  is_preventivemaintenance: boolean;
+}
+
 export function usePreventiveMaintenanceJobs({
   propertyId,
   limit = 10,
@@ -42,12 +48,35 @@ export function usePreventiveMaintenanceJobs({
   const [error, setError] = useState<string | null>(null);
   const [lastLoadTime, setLastLoadTime] = useState<Date | null>(null);
   const [retryCount, setRetryCount] = useState<number>(0);
+  const [isPMProperty, setIsPMProperty] = useState<boolean | null>(null);
   
   // Create a cache key based on query parameters
   const cacheKey = useMemo(() => 
     `pm_jobs_${propertyId || 'all'}_${limit}_${isPM ? 'true' : 'false'}`,
     [propertyId, limit, isPM]
   );
+
+  // New function to check if property has preventive maintenance
+  const checkPropertyPMStatus = useCallback(async () => {
+    if (!propertyId) return false;
+    
+    try {
+      // Use the new API endpoint
+      const pmStatusUrl = `/api/properties/${propertyId}/is_preventivemaintenance/`;
+      const response = await fetchData<PropertyPMStatus>(pmStatusUrl);
+      
+      // Check if response has the expected structure
+      if (response && 'is_preventivemaintenance' in response) {
+        setIsPMProperty(response.is_preventivemaintenance);
+        return response.is_preventivemaintenance;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Error checking PM status:', error);
+      return false;
+    }
+  }, [propertyId]);
 
   const loadJobs = useCallback(async (forceRefresh: boolean = false) => {
     // Use cached data if we loaded recently and not forcing refresh
@@ -65,6 +94,19 @@ export function usePreventiveMaintenanceJobs({
     try {
       setIsLoading(true);
       setError(null);
+      
+      // Check if this property has PM enabled
+      if (propertyId) {
+        const hasPM = await checkPropertyPMStatus();
+        
+        // If PM is required but property doesn't have it, return empty
+        if (isPM && !hasPM) {
+          setJobs([]);
+          setLastLoadTime(now);
+          setIsLoading(false);
+          return;
+        }
+      }
       
       // Try to use cached data if not forcing refresh
       if (!forceRefresh) {
@@ -170,7 +212,7 @@ export function usePreventiveMaintenanceJobs({
     } finally {
       setIsLoading(false);
     }
-  }, [propertyId, limit, autoLoad, initialJobs, isPM, cacheKey, lastLoadTime, retryCount]);
+  }, [propertyId, limit, autoLoad, initialJobs, isPM, cacheKey, lastLoadTime, retryCount, checkPropertyPMStatus]);
 
   useEffect(() => {
     if (autoLoad) {
@@ -236,6 +278,7 @@ export function usePreventiveMaintenanceJobs({
     getStats,
     retryCount,
     lastLoadTime,
+    isPMProperty,
     clearCache  // Expose this for debugging/testing
   };
 }
