@@ -1,7 +1,7 @@
 // ./components/jobs/EditJobDialog.tsx
 "use client";
 
-import React, { FC } from "react";
+import React, { FC, useEffect } from "react";
 import { Loader } from "lucide-react";
 import { Job } from "@/app/lib/types"; // Adjusted path
 import { Button } from "@/app/components/ui/button"; // Adjusted path
@@ -55,6 +55,14 @@ const EditJobDialog: FC<EditDialogProps> = ({
   onSubmit,
   isSubmitting,
 }) => {
+  // For debugging
+  useEffect(() => {
+    if (job) {
+      console.log('Edit dialog job:', job);
+      console.log('Job status:', job.status);
+    }
+  }, [job]);
+
   if (!isOpen || !job) {
     return null;
   }
@@ -95,7 +103,7 @@ const EditJobDialog: FC<EditDialogProps> = ({
             </Label>
             <Select
               name="status"
-              defaultValue={job.status}
+              defaultValue={job.status || JOB_STATUS.PENDING}
               required
               aria-required="true"
               disabled={isSubmitting}
@@ -164,6 +172,22 @@ const EditJobDialog: FC<EditDialogProps> = ({
              >
                 Mark as defective
              </Label>
+          </div>
+
+          {/* Preventive Maintenance Checkbox */}
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="is_preventivemaintenance"
+              name="is_preventivemaintenance"
+              defaultChecked={job.is_preventivemaintenance}
+              disabled={isSubmitting}
+            />
+            <Label
+              htmlFor="is_preventivemaintenance"
+              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+            >
+              Preventive maintenance
+            </Label>
           </div>
 
           {/* Form Actions */}
