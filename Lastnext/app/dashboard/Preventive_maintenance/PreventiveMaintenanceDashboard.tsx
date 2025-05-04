@@ -9,17 +9,17 @@ import { Badge } from '@/app/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { 
   Calendar, 
-  CheckCircle2, 
+  CheckCircle, 
   Clock, 
   AlertTriangle, 
-  BarChart, 
+  BarChart4, 
   Wrench, 
   FileText, 
   ArrowUpRight,
   Filter,
   RefreshCw,
   ChevronDown,
-  CalendarIcon
+  Bell
 } from 'lucide-react';
 import { cn } from '@/app/lib/utils';
 import Link from 'next/link';
@@ -43,6 +43,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/app/components/ui/tooltip";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/app/components/ui/pagination";
 
 interface PreventiveMaintenanceDashboardProps {
   propertyId: string;
@@ -59,8 +67,10 @@ export default function PreventiveMaintenanceDashboard({
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [timeRangeFilter, setTimeRangeFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
   
-  // Get jobs using the updated hook
+  // Get jobs using the hook
   const { 
     jobs, 
     isLoading, 
@@ -74,6 +84,11 @@ export default function PreventiveMaintenanceDashboard({
     autoLoad: true,
     isPM: true // Filter for preventive maintenance jobs
   });
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, priorityFilter, timeRangeFilter, activeTab]);
 
   const stats = getStats();
 
@@ -129,6 +144,12 @@ export default function PreventiveMaintenanceDashboard({
     cancelled: filteredJobs.filter(job => job.status === 'cancelled')
   }), [filteredJobs]);
 
+  // Calculate upcoming maintenance in the next 30 days
+  const upcomingMaintenance = useMemo(() => {
+    // Filter jobs in pending state - these are considered "upcoming"
+    return jobs.filter(job => job.status === 'pending');
+  }, [jobs]);
+
   // Reset filters function
   const resetFilters = () => {
     setStatusFilter('all');
@@ -145,6 +166,18 @@ export default function PreventiveMaintenanceDashboard({
   const availablePriorities = useMemo(() => 
     Array.from(new Set(jobs.filter(job => job.priority).map(job => job.priority))),
     [jobs]
+  );
+
+  // Get jobs to display based on active tab
+  const displayJobs = activeTab === 'overview' 
+    ? filteredJobs 
+    : jobsByStatus[activeTab as keyof typeof jobsByStatus] || [];
+  
+  // Pagination logic
+  const totalPages = Math.ceil(displayJobs.length / itemsPerPage);
+  const paginatedJobs = displayJobs.slice(
+    (currentPage - 1) * itemsPerPage, 
+    currentPage * itemsPerPage
   );
 
   // Loading state
@@ -215,11 +248,6 @@ export default function PreventiveMaintenanceDashboard({
       </Card>
     );
   }
-  
-  // Get jobs to display based on active tab
-  const displayJobs = activeTab === 'overview' 
-    ? filteredJobs 
-    : jobsByStatus[activeTab as keyof typeof jobsByStatus] || [];
 
   return (
     <div className="space-y-6">
@@ -270,10 +298,6 @@ export default function PreventiveMaintenanceDashboard({
               </Button>
             </div>
           </div>
-          <p className="text-sm text-gray-500 mt-2">
-            Preventive maintenance tasks are scheduled activities performed to prevent equipment failures 
-            and extend the lifespan of property assets.
-          </p>
           
           {/* Filters panel */}
           {showFilters && (
@@ -350,6 +374,7 @@ export default function PreventiveMaintenanceDashboard({
         </CardHeader>
         
         <CardContent>
+          {/* Stats cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <Card className="bg-gray-50 border">
               <CardContent className="p-4">
@@ -382,7 +407,7 @@ export default function PreventiveMaintenanceDashboard({
                     <p className="text-sm text-green-500">Completed</p>
                     <p className="text-2xl font-bold text-green-700">{stats.completed}</p>
                   </div>
-                  <CheckCircle2 className="h-8 w-8 text-green-400" />
+                  <CheckCircle className="h-8 w-8 text-green-400" />
                 </div>
               </CardContent>
             </Card>
@@ -394,17 +419,44 @@ export default function PreventiveMaintenanceDashboard({
                     <p className="text-sm text-purple-500">Completion Rate</p>
                     <p className="text-2xl font-bold text-purple-700">{stats.completionRate.toFixed(1)}%</p>
                   </div>
-                  <BarChart className="h-8 w-8 text-purple-400" />
+                  <BarChart4 className="h-8 w-8 text-purple-400" />
                 </div>
               </CardContent>
             </Card>
           </div>
           
+          {/* Upcoming maintenance alert - show only if there are pending tasks */}
+          {upcomingMaintenance.length > 0 && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start">
+              <Bell className="h-5 w-5 text-amber-500 mt-0.5 mr-3 flex-shrink-0" />
+              <div>
+                <h3 className="font-medium text-amber-700">Pending Preventive Maintenance</h3>
+                <p className="text-sm text-amber-600 mb-2">
+                  You have {upcomingMaintenance.length} pending maintenance {upcomingMaintenance.length === 1 ? 'task' : 'tasks'} that require attention.
+                </p>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="bg-amber-100 border-amber-200 text-amber-700 hover:bg-amber-200"
+                  onClick={() => {
+                    setStatusFilter('pending');
+                    setActiveTab('pending');
+                  }}
+                >
+                  View Pending Tasks
+                </Button>
+              </div>
+            </div>
+          )}
+          
+          {/* Tabs section */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3 mb-6">
+            <TabsList className="grid w-full grid-cols-4 md:grid-cols-5 mb-6">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="pending">{`Pending (${jobsByStatus.pending.length})`}</TabsTrigger>
+              <TabsTrigger value="in_progress">{`In Progress (${jobsByStatus.in_progress.length})`}</TabsTrigger>
               <TabsTrigger value="completed">{`Completed (${jobsByStatus.completed.length})`}</TabsTrigger>
+              <TabsTrigger value="waiting_sparepart" className="hidden md:block">{`Waiting Parts (${jobsByStatus.waiting_sparepart.length})`}</TabsTrigger>
             </TabsList>
             
             <TabsContent value={activeTab} className="space-y-4">
@@ -421,10 +473,63 @@ export default function PreventiveMaintenanceDashboard({
                 )}
               </div>
               
-              {displayJobs.length > 0 ? (
-                displayJobs.map((job) => (
-                  <JobCard key={job.job_id} job={job} />
-                ))
+              {/* Job cards or empty state */}
+              {paginatedJobs.length > 0 ? (
+                <div className="space-y-4">
+                  {paginatedJobs.map((job) => (
+                    <JobCard key={job.job_id} job={job} />
+                  ))}
+                  
+                  {/* Pagination */}
+                  {totalPages > 1 && (
+                    <Pagination className="mt-6">
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious 
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                          />
+                        </PaginationItem>
+                        
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                          let pageNumber;
+                          
+                          // Logic to show appropriate page numbers
+                          if (totalPages <= 5) {
+                            pageNumber = i + 1;
+                          } else if (currentPage <= 3) {
+                            pageNumber = i + 1;
+                          } else if (currentPage >= totalPages - 2) {
+                            pageNumber = totalPages - 4 + i;
+                          } else {
+                            pageNumber = currentPage - 2 + i;
+                          }
+                          
+                          if (pageNumber > 0 && pageNumber <= totalPages) {
+                            return (
+                              <PaginationItem key={pageNumber}>
+                                <PaginationLink
+                                  onClick={() => setCurrentPage(pageNumber)}
+                                  isActive={currentPage === pageNumber}
+                                >
+                                  {pageNumber}
+                                </PaginationLink>
+                              </PaginationItem>
+                            );
+                          }
+                          return null;
+                        })}
+                        
+                        <PaginationItem>
+                          <PaginationNext 
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  )}
+                </div>
               ) : (
                 <div className="text-center py-8 bg-gray-50 rounded-lg border">
                   <AlertTriangle className="h-12 w-12 mx-auto text-gray-300 mb-3" />
@@ -491,7 +596,7 @@ function JobCard({ job }: { job: Job }) {
     : 'No room specified';
   
   return (
-    <Card className="mb-3 hover:shadow-md transition-shadow overflow-hidden">
+    <Card className="hover:shadow-md transition-shadow overflow-hidden">
       {/* Status indicator bar */}
       <div className={cn("h-1", 
         job.status === 'completed' ? 'bg-green-500' : 
@@ -533,9 +638,11 @@ function JobCard({ job }: { job: Job }) {
                 Created: {formatDate(job.created_at)}
               </span>
               
+
+              
               {job.completed_at && (
                 <span className="flex items-center">
-                  <CheckCircle2 className="mr-1 h-3.5 w-3.5 text-green-500" />
+                  <CheckCircle className="mr-1 h-3.5 w-3.5 text-green-500" />
                   Completed: {formatDate(job.completed_at)}
                 </span>
               )}

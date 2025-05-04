@@ -396,6 +396,7 @@ export function usePreventiveMaintenanceJobs({
     isPMProperty,
     clearCache,
     debugInfo,
-    toggleDebugMode
+    toggleDebugMode,
+    isPM  // Fixed: Added the comma before this line
   };
 }
