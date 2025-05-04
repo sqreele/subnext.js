@@ -7,14 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
-import { 
-  Calendar, 
-  CheckCircle, 
-  Clock, 
-  AlertTriangle, 
-  BarChart4, 
-  Wrench, 
-  FileText, 
+import {
+  Calendar,
+  CheckCircle,
+  Clock,
+  AlertTriangle,
+  BarChart4,
+  Wrench,
+  FileText,
   ArrowUpRight,
   Filter,
   RefreshCw,
@@ -57,7 +57,7 @@ interface PreventiveMaintenanceDashboardProps {
   limit?: number;
 }
 
-export default function PreventiveMaintenanceDashboard({ 
+export default function PreventiveMaintenanceDashboard({
   propertyId,
   limit = 10
 }: PreventiveMaintenanceDashboardProps) {
@@ -69,13 +69,13 @@ export default function PreventiveMaintenanceDashboard({
   const [timeRangeFilter, setTimeRangeFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
-  
+
   // Get jobs using the hook
-  const { 
-    jobs, 
-    isLoading, 
-    error, 
-    loadJobs, 
+  const {
+    jobs,
+    isLoading,
+    error,
+    loadJobs,
     getStats,
     lastLoadTime
   } = usePreventiveMaintenanceJobs({
@@ -96,7 +96,7 @@ export default function PreventiveMaintenanceDashboard({
   const currentDate = new Date();
   const currentMonth = currentDate.toLocaleString('default', { month: 'long' });
   const currentYear = currentDate.getFullYear();
-  
+
   // Apply filters to the jobs
   const filteredJobs = useMemo(() => {
     return jobs.filter(job => {
@@ -104,7 +104,7 @@ export default function PreventiveMaintenanceDashboard({
       if (statusFilter !== 'all' && job.status !== statusFilter) {
         return false;
       }
-      
+
       // Filter by priority
       if (priorityFilter !== 'all' && job.priority !== priorityFilter) {
         return false;
@@ -141,7 +141,8 @@ export default function PreventiveMaintenanceDashboard({
     in_progress: filteredJobs.filter(job => job.status === 'in_progress'),
     completed: filteredJobs.filter(job => job.status === 'completed'),
     waiting_sparepart: filteredJobs.filter(job => job.status === 'waiting_sparepart'),
-    cancelled: filteredJobs.filter(job => job.status === 'cancelled')
+    cancelled: filteredJobs.filter(job => job.status === 'cancelled'),
+    is_PM: filteredJobs.filter(job => job.is_preventivemaintenance === true)
   }), [filteredJobs]);
 
   // Calculate upcoming maintenance in the next 30 days
@@ -158,25 +159,25 @@ export default function PreventiveMaintenanceDashboard({
   };
 
   // Get available statuses and priorities from jobs
-  const availableStatuses = useMemo(() => 
+  const availableStatuses = useMemo(() =>
     Array.from(new Set(jobs.map(job => job.status))),
     [jobs]
   );
-  
-  const availablePriorities = useMemo(() => 
+
+  const availablePriorities = useMemo(() =>
     Array.from(new Set(jobs.filter(job => job.priority).map(job => job.priority))),
     [jobs]
   );
 
   // Get jobs to display based on active tab
-  const displayJobs = activeTab === 'overview' 
-    ? filteredJobs 
+  const displayJobs = activeTab === 'overview'
+    ? filteredJobs
     : jobsByStatus[activeTab as keyof typeof jobsByStatus] || [];
-  
+
   // Pagination logic
   const totalPages = Math.ceil(displayJobs.length / itemsPerPage);
   const paginatedJobs = displayJobs.slice(
-    (currentPage - 1) * itemsPerPage, 
+    (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
 
@@ -208,7 +209,7 @@ export default function PreventiveMaintenanceDashboard({
           <p className="text-red-600">{error}</p>
         </CardContent>
         <CardFooter>
-          <Button 
+          <Button
             onClick={() => loadJobs(true)} // Force refresh
             variant="outline"
             className="border-red-300 text-red-700 hover:bg-red-100"
@@ -264,9 +265,9 @@ export default function PreventiveMaintenanceDashboard({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
+                    <Button
+                      size="sm"
+                      variant="outline"
                       onClick={() => loadJobs(true)}
                       className="flex items-center gap-1"
                     >
@@ -279,7 +280,7 @@ export default function PreventiveMaintenanceDashboard({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              
+
               <Button 
                 size="sm" 
                 variant={showFilters ? "secondary" : "outline"}
@@ -451,8 +452,9 @@ export default function PreventiveMaintenanceDashboard({
           
           {/* Tabs section */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-4 md:grid-cols-5 mb-6">
+            <TabsList className="grid w-full grid-cols-4 md:grid-cols-6 mb-6">
               <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="is_PM">{`PM (${jobsByStatus.is_PM.length})`}</TabsTrigger>
               <TabsTrigger value="pending">{`Pending (${jobsByStatus.pending.length})`}</TabsTrigger>
               <TabsTrigger value="in_progress">{`In Progress (${jobsByStatus.in_progress.length})`}</TabsTrigger>
               <TabsTrigger value="completed">{`Completed (${jobsByStatus.completed.length})`}</TabsTrigger>
@@ -464,7 +466,9 @@ export default function PreventiveMaintenanceDashboard({
                 <h3 className="text-lg font-medium">
                   {activeTab === 'overview' 
                     ? 'All Preventive Maintenance Jobs' 
-                    : `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1).replace('_', ' ')} Maintenance Tasks`}
+                    : activeTab === 'is_PM'
+                      ? 'Preventive Maintenance Tasks'
+                      : `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1).replace('_', ' ')} Maintenance Tasks`}
                 </h3>
                 {filteredJobs.length !== jobs.length && (
                   <div className="text-sm text-gray-500">
@@ -580,7 +584,7 @@ function JobCard({ job }: { job: Job }) {
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
-  
+
   const getPriorityColor = (priority: string) => {
     switch(priority) {
       case 'high': return 'text-red-600';
@@ -589,23 +593,23 @@ function JobCard({ job }: { job: Job }) {
       default: return 'text-gray-600';
     }
   };
-  
+
   // Format room names if available
   const roomNames = job.rooms && job.rooms.length > 0
     ? job.rooms.map(room => room.name).join(', ')
     : 'No room specified';
-  
+
   return (
     <Card className="hover:shadow-md transition-shadow overflow-hidden">
       {/* Status indicator bar */}
-      <div className={cn("h-1", 
-        job.status === 'completed' ? 'bg-green-500' : 
-        job.status === 'in_progress' ? 'bg-blue-500' : 
+      <div className={cn("h-1",
+        job.status === 'completed' ? 'bg-green-500' :
+        job.status === 'in_progress' ? 'bg-blue-500' :
         job.status === 'pending' ? 'bg-yellow-500' :
         job.status === 'waiting_sparepart' ? 'bg-purple-500' :
         job.status === 'cancelled' ? 'bg-red-500' : 'bg-gray-500'
       )} />
-      
+
       <CardContent className="p-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex-1">
@@ -637,8 +641,6 @@ function JobCard({ job }: { job: Job }) {
                 <Calendar className="mr-1 h-3.5 w-3.5" />
                 Created: {formatDate(job.created_at)}
               </span>
-              
-
               
               {job.completed_at && (
                 <span className="flex items-center">
@@ -696,7 +698,7 @@ function JobCard({ job }: { job: Job }) {
 // Helper function to format dates
 function formatDate(dateString: string): string {
   if (!dateString) return 'Unknown';
-  
+
   const date = new Date(dateString);
   return date.toLocaleDateString('en-US', {
     year: 'numeric',
