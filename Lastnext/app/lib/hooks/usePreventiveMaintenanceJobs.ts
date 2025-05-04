@@ -85,14 +85,14 @@ export function usePreventiveMaintenanceJobs({
     [propertyId, limit, isPM]
   );
 
-  // New function to check if property has preventive maintenance
+  // Modified function to safely check if property has preventive maintenance
   const checkPropertyPMStatus = useCallback(async () => {
-    if (!propertyId) return false;
+    if (!propertyId) return true; // Default to true if no property ID
     
     debug(`Checking PM status for property ${propertyId}`);
     
     try {
-      // Use the new API endpoint
+      // Try the API endpoint but handle errors gracefully
       const pmStatusUrl = `/api/properties/${propertyId}/is_preventivemaintenance/`;
       debug(`PM status API call to: ${pmStatusUrl}`);
       
@@ -106,12 +106,12 @@ export function usePreventiveMaintenanceJobs({
         return response.is_preventivemaintenance;
       }
       
-      debug(`Unexpected PM status response format`);
-      return false;
+      debug(`Unexpected PM status response format - assuming PM is enabled`);
+      return true; // Default to true if response format is unexpected
     } catch (error) {
-      debug(`Error checking PM status:`, error);
-      console.error('Error checking PM status:', error);
-      return false;
+      debug(`Error checking PM status - assuming PM is enabled:`, error);
+      console.warn('Error checking PM status (this is expected if the column does not exist yet):', error);
+      return true; // Default to true if there's an error (missing column)
     }
   }, [propertyId]);
 
@@ -135,18 +135,15 @@ export function usePreventiveMaintenanceJobs({
       setError(null);
       debug(`Loading jobs: propertyId=${propertyId}, limit=${limit}, isPM=${isPM}`);
       
-      // Check if this property has PM enabled
+      // Check if this property has PM enabled, but don't fail if it doesn't
+      let hasPM = true;
       if (propertyId) {
-        const hasPM = await checkPropertyPMStatus();
-        debug(`Property ${propertyId} PM check result: ${hasPM}`);
-        
-        // If PM is required but property doesn't have it, return empty
-        if (isPM && !hasPM) {
-          debug(`Property doesn't have PM jobs, returning empty result`);
-          setJobs([]);
-          setLastLoadTime(now);
-          setIsLoading(false);
-          return;
+        try {
+          hasPM = await checkPropertyPMStatus();
+          debug(`Property ${propertyId} PM check result: ${hasPM}`);
+        } catch (e) {
+          debug(`Error checking PM status, assuming true:`, e);
+          hasPM = true; // Default to true if there's an error
         }
       }
       
@@ -174,12 +171,16 @@ export function usePreventiveMaintenanceJobs({
         }
       }
       
-      // Decide which endpoint to use based on availability
-      let apiUrl = '/api/preventive-maintenance/jobs/';
+      // Start with the fallback endpoint which should be more reliable
+      let apiUrl = '/api/jobs/';
       const params: Record<string, string> = {};
       
+      // We'll try to filter by is_preventivemaintenance, but handle failure gracefully
+      if (isPM) {
+        params.is_preventivemaintenance = 'true';
+      }
+      
       if (propertyId) {
-        // FIXED: Changed from property to property_id
         params.property_id = propertyId;
       }
       
@@ -195,93 +196,62 @@ export function usePreventiveMaintenanceJobs({
         isPM: isPM
       });
       
-      // New endpoint specific implementation
+      const requestStartTime = performance.now();
+      let response;
+      
       try {
-        debug(`Making API request to: ${apiUrl}`);
-        const requestStartTime = performance.now();
-        const response = await fetchData<PreventiveMaintenanceResponse>(apiUrl, { params });
-        const requestEndTime = performance.now();
+        response = await fetchData<Job[]>(apiUrl, { params });
+      } catch (e) {
+        debug(`Error with is_preventivemaintenance param, retrying without it:`, e);
         
-        debug(`API response received in ${(requestEndTime - requestStartTime).toFixed(2)}ms:`, response);
-        
-        // Store debug info
-        setDebugInfo({
-          endpoint: apiUrl,
-          params: params,
-          responseTime: `${(requestEndTime - requestStartTime).toFixed(2)}ms`,
-          responseType: typeof response,
-          responseStructure: response ? Object.keys(response) : null,
-          timestamp: new Date().toISOString()
-        });
-        
-        // Ensure we have a valid response with jobs property
-        if (response && 'jobs' in response) {
-          const fetchedJobs = response.jobs || [];
-          debug(`Found ${fetchedJobs.length} jobs from API`);
-          
-          // Cache the successful result
-          localStorage.setItem(cacheKey, JSON.stringify({
-            data: fetchedJobs,
-            timestamp: now.toISOString()
-          }));
-          
-          setJobs(fetchedJobs);
-          setLastLoadTime(now);
-          setRetryCount(0);
-          return;
-        } else {
-          debug(`Unexpected response format:`, response);
-          console.warn('[usePreventiveMaintenanceJobs] Unexpected response format:', response);
-          throw new Error('Unexpected API response format');
-        }
-      } catch (newEndpointError) {
-        debug(`New endpoint failed:`, newEndpointError);
-        console.warn('[usePreventiveMaintenanceJobs] New endpoint failed, falling back to legacy endpoint:', newEndpointError);
-        
-        // Fallback to legacy endpoint if the new one fails
-        apiUrl = '/api/jobs/';
-        params.is_preventivemaintenance = isPM ? 'true' : 'false';
-        
-        // FIXED: Ensure property_id is also set correctly here
-        if (propertyId) {
-          params.property_id = propertyId;
-        }
-        
-        // Add debug logging for fallback
-        debug(`Fallback API call details:`, {
-          url: apiUrl,
-          params: params
-        });
-        
-        const fallbackStartTime = performance.now();
-        const legacyResponse = await fetchData<Job[]>(apiUrl, { params });
-        const fallbackEndTime = performance.now();
-        
-        debug(`Fallback API response received in ${(fallbackEndTime - fallbackStartTime).toFixed(2)}ms:`, legacyResponse);
-        
-        // Update debug info with proper type
-        setDebugInfo((prev: DebugInfo | null) => ({
-          ...prev || {},
-          fallbackEndpoint: apiUrl,
-          fallbackParams: params,
-          fallbackResponseTime: `${(fallbackEndTime - fallbackStartTime).toFixed(2)}ms`,
-          fallbackResponseType: typeof legacyResponse,
-          fallbackResponseStructure: Array.isArray(legacyResponse) ? 'array' : Object.keys(legacyResponse),
-        }));
-        
-        const fetchedJobs = Array.isArray(legacyResponse) ? legacyResponse : [];
-        debug(`Found ${fetchedJobs.length} jobs from fallback API`);
-        
-        // Cache the successful result
-        localStorage.setItem(cacheKey, JSON.stringify({
-          data: fetchedJobs,
-          timestamp: now.toISOString()
-        }));
-        
-        setJobs(fetchedJobs);
-        setLastLoadTime(now);
-        setRetryCount(0);
+        // If it fails, try again without the is_preventivemaintenance parameter
+        delete params.is_preventivemaintenance;
+        response = await fetchData<Job[]>(apiUrl, { params });
       }
+      
+      const requestEndTime = performance.now();
+      
+      debug(`API response received in ${(requestEndTime - requestStartTime).toFixed(2)}ms:`, response);
+      
+      setDebugInfo({
+        endpoint: apiUrl,
+        params: params,
+        responseTime: `${(requestEndTime - requestStartTime).toFixed(2)}ms`,
+        responseType: typeof response,
+        responseStructure: response ? (Array.isArray(response) ? 'array' : Object.keys(response)) : null,
+        timestamp: new Date().toISOString()
+      });
+      
+      let fetchedJobs: Job[] = [];
+      
+      if (Array.isArray(response)) {
+        fetchedJobs = response;
+        
+        // If we couldn't filter by is_preventivemaintenance at the API level, do it client-side
+        if (isPM && !params.is_preventivemaintenance) {
+          // Filter jobs with is_preventivemaintenance=true or has preventive tasks
+          fetchedJobs = fetchedJobs.filter(job => 
+            job.is_preventivemaintenance === true || 
+          
+            (job.description && job.description.toLowerCase().includes('preventive'))
+          );
+          debug(`Filtered to ${fetchedJobs.length} jobs based on client-side PM criteria`);
+        }
+      } else {
+        debug(`Unexpected response format:`, response);
+        console.warn('[usePreventiveMaintenanceJobs] Unexpected response format:', response);
+        throw new Error('Unexpected API response format');
+      }
+      
+      // Cache the successful result
+      localStorage.setItem(cacheKey, JSON.stringify({
+        data: fetchedJobs,
+        timestamp: now.toISOString()
+      }));
+      
+      setJobs(fetchedJobs);
+      setLastLoadTime(now);
+      setRetryCount(0);
       
     } catch (err) {
       debug(`Error loading jobs:`, err);
@@ -396,7 +366,6 @@ export function usePreventiveMaintenanceJobs({
     isPMProperty,
     clearCache,
     debugInfo,
-    toggleDebugMode,
-    isPM  // Fixed: Added the comma before this line
+    toggleDebugMode
   };
 }
