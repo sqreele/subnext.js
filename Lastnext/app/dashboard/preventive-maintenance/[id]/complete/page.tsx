@@ -12,8 +12,8 @@ export const metadata: Metadata = {
   description: 'Mark preventive maintenance task as completed',
 };
 
-export default function CompletePreventiveMaintenancePage({ 
-  params 
+export default function CompletePreventiveMaintenancePage({
+  params,
 }: CompletePreventiveMaintenancePageProps) {
   return <CompletePreventiveMaintenance params={params} />;
 }
