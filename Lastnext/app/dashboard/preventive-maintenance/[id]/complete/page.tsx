@@ -1,3 +1,4 @@
+/*
 import { Metadata } from 'next';
 import CompletePreventiveMaintenance from '@/app/components/preventive/CompletePreventiveMaintenance';
 
@@ -17,3 +18,4 @@ export default function CompletePreventiveMaintenancePage({
 }: CompletePreventiveMaintenancePageProps) {
   return <CompletePreventiveMaintenance params={params} />;
 }
+*/
