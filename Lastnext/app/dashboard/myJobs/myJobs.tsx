@@ -79,6 +79,7 @@ interface DeleteDialogProps {
 }
 
 // Include the updated JobTableRow component
+// Updated JobTableRow component
 const JobTableRow: React.FC<JobTableRowProps> = React.memo(
   ({ job, onEdit, onDelete, onStatusUpdated }) => (
     <>
@@ -98,7 +99,7 @@ const JobTableRow: React.FC<JobTableRowProps> = React.memo(
           <div className="flex flex-wrap gap-1">
             {job.topics?.map((topic) => (
               <Badge
-                key={topic.id ?? topic.title}
+                key={topic.id ?? topic.title} // Use unique key
                 variant="outline"
                 className="text-xs"
               >
@@ -118,7 +119,7 @@ const JobTableRow: React.FC<JobTableRowProps> = React.memo(
           </div>
         </TableCell>
         <TableCell className="py-3">
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
             <Badge
               className={`${STATUS_STYLES[job.status] || STATUS_STYLES.default
                 } text-xs px-2 py-1`}
@@ -126,7 +127,7 @@ const JobTableRow: React.FC<JobTableRowProps> = React.memo(
               {/* Replace underscores and capitalize */}
               {job.status.replace("_", " ").charAt(0).toUpperCase() + job.status.replace("_", " ").slice(1)}
             </Badge>
-            {/* Add the Update Status button */}
+            {/* Add the Update Status button with stopPropagation */}
             <UpdateStatusButton 
               job={job} 
               onStatusUpdated={onStatusUpdated} 
@@ -134,9 +135,9 @@ const JobTableRow: React.FC<JobTableRowProps> = React.memo(
               variant="outline" 
               className="text-xs h-7" 
               buttonText="Change Status"
-              // Add onClick with stopPropagation to prevent opening the edit dialog when clicking the button
-              onClick={(e: React.MouseEvent) => {
+              onClick={(e) => {
                 e.stopPropagation();
+                e.preventDefault();
               }}
             />
           </div>
@@ -145,13 +146,13 @@ const JobTableRow: React.FC<JobTableRowProps> = React.memo(
           {new Date(job.created_at).toLocaleDateString()}
         </TableCell>
         <TableCell className="py-3">
-          <div className="flex items-center gap-1 justify-end pr-4">
+          <div className="flex items-center gap-1 justify-end pr-4"> {/* Align Actions Right */}
             <Button
               variant="ghost"
               size="icon"
               className="h-8 w-8 hover:bg-gray-100"
               onClick={(e) => {
-                e.stopPropagation();
+                e.stopPropagation(); // Prevent row click
                 onEdit(job);
               }}
               aria-label="Edit Job"
@@ -163,7 +164,7 @@ const JobTableRow: React.FC<JobTableRowProps> = React.memo(
               size="icon"
               className="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600"
               onClick={(e) => {
-                e.stopPropagation();
+                e.stopPropagation(); // Prevent row click
                 onDelete(job);
               }}
               aria-label="Delete Job"
@@ -224,7 +225,7 @@ const JobTableRow: React.FC<JobTableRowProps> = React.memo(
             <p className="text-sm font-medium text-gray-700">Created:</p>
             <p className="text-sm text-gray-600">{new Date(job.created_at).toLocaleDateString()}</p>
           </div>
-          <div className="pt-2">
+          <div className="pt-2" onClick={(e) => e.stopPropagation()}>
             {/* Add the Update Status button for mobile */}
             <UpdateStatusButton 
               job={job} 
@@ -233,6 +234,10 @@ const JobTableRow: React.FC<JobTableRowProps> = React.memo(
               variant="outline" 
               className="w-full mb-2"
               buttonText="Update Status"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+              }}
             />
           </div>
           <div className="flex gap-2 pt-2 border-t border-gray-100">
