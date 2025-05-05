@@ -41,7 +41,7 @@ const validationSchema = Yup.object().shape({
   description: Yup.string().required('Description is required'),
   status: Yup.string().required('Status is required'),
   priority: Yup.string().required('Priority is required'),
-  remarks: Yup.string().optional(), // Updated to make remarks optional
+  remarks: Yup.string().optional(),
   topic: Yup.object().shape({
     title: Yup.string().required('Topic is required'),
     description: Yup.string(),
@@ -361,7 +361,7 @@ const CreateJobForm: React.FC<{ onJobCreated?: () => void }> = ({ onJobCreated }
               {touched.topic?.title && errors.topic?.title && <p className="text-xs text-red-600 mt-1">{errors.topic.title}</p>}
             </div>
 
-            {/* Remarks - Added the remarks field */}
+            {/* Remarks */}
             <div className="space-y-1">
               <Label htmlFor="remarks" className="font-medium">Remarks</Label>
               <Field
