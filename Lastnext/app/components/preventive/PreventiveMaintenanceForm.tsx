@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, ChangeEvent, FormEvent } from 'react';
+import { useState, useEffect, ChangeEvent, FormEvent, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-// Import types from models file
+import Image from 'next/image';
 import { 
   Job, 
   JobImage, 
@@ -42,6 +42,10 @@ export default function PreventiveMaintenanceForm({
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   
+  // References to file input elements
+  const beforeImageRef = useRef<HTMLInputElement>(null);
+  const afterImageRef = useRef<HTMLInputElement>(null);
+  
   const [formData, setFormData] = useState<PreventiveMaintenanceRequest>({
     job_id: jobId || '',
     scheduled_date: '',
@@ -51,6 +55,10 @@ export default function PreventiveMaintenanceForm({
     before_image_id: null,
     after_image_id: null
   });
+  
+  // Add state for image previews
+  const [beforeImagePreview, setBeforeImagePreview] = useState<string | null>(null);
+  const [afterImagePreview, setAfterImagePreview] = useState<string | null>(null);
   
   const [availableJobs, setAvailableJobs] = useState<Job[]>([]);
   const [availableImages, setAvailableImages] = useState<JobImage[]>([]);
@@ -176,6 +184,14 @@ export default function PreventiveMaintenanceForm({
           after_image_id: response.data.after_image?.id || null
         });
         
+        // Set image previews if available
+        if (response.data.before_image?.image_url) {
+          setBeforeImagePreview(response.data.before_image.image_url);
+        }
+        if (response.data.after_image?.image_url) {
+          setAfterImagePreview(response.data.after_image.image_url);
+        }
+        
         // If we have a job_id, fetch images for that job
         if (response.data.job?.job_id) {
           fetchJobImages(response.data.job.job_id);
@@ -290,6 +306,23 @@ export default function PreventiveMaintenanceForm({
       [name]: value
     }));
   };
+  
+  // Handle file selection
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>): void => {
+    const { name, files } = e.target;
+    
+    if (files && files.length > 0) {
+      const file = files[0];
+      const previewUrl = URL.createObjectURL(file);
+      
+      // Update preview based on which image was selected
+      if (name === 'before_image_file') {
+        setBeforeImagePreview(previewUrl);
+      } else if (name === 'after_image_file') {
+        setAfterImagePreview(previewUrl);
+      }
+    }
+  };
 
   // Handle form submission
   const handleSubmit = async (e: FormEvent): Promise<void> => {
@@ -299,17 +332,24 @@ export default function PreventiveMaintenanceForm({
     setSuccessMessage(null);
 
     try {
-      // Prepare data for submission
-      const submitData = {
-        ...formData
-      };
+      // Create FormData for multipart/form-data submission
+      const formDataToSubmit = new FormData();
       
-      // Remove empty values
-      Object.keys(submitData).forEach(key => {
-        if (submitData[key as keyof typeof submitData] === '') {
-          (submitData[key as keyof typeof submitData] as any) = null;
+      // Add basic form fields
+      Object.entries(formData).forEach(([key, value]) => {
+        if (value !== null && value !== '') {
+          formDataToSubmit.append(key, String(value));
         }
       });
+      
+      // Add files if present
+      if (beforeImageRef.current?.files?.length) {
+        formDataToSubmit.append('before_image_file', beforeImageRef.current.files[0]);
+      }
+      
+      if (afterImageRef.current?.files?.length) {
+        formDataToSubmit.append('after_image_file', afterImageRef.current.files[0]);
+      }
 
       let response;
       
@@ -317,10 +357,10 @@ export default function PreventiveMaintenanceForm({
         // Update existing record
         response = await axios.put(
           `${apiBaseUrl}/preventive-maintenance/${pmId}/`, 
-          submitData,
+          formDataToSubmit,
           {
             headers: {
-              'Content-Type': 'application/json',
+              'Content-Type': 'multipart/form-data',
               ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {})
             }
           }
@@ -330,10 +370,10 @@ export default function PreventiveMaintenanceForm({
         // Create new record
         response = await axios.post(
           `${apiBaseUrl}/preventive-maintenance/`, 
-          submitData,
+          formDataToSubmit,
           {
             headers: {
-              'Content-Type': 'application/json',
+              'Content-Type': 'multipart/form-data',
               ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {})
             }
           }
@@ -351,6 +391,10 @@ export default function PreventiveMaintenanceForm({
             before_image_id: null,
             after_image_id: null
           });
+          setBeforeImagePreview(null);
+          setAfterImagePreview(null);
+          if (beforeImageRef.current) beforeImageRef.current.value = '';
+          if (afterImageRef.current) afterImageRef.current.value = '';
         }
       }
 
@@ -375,16 +419,28 @@ export default function PreventiveMaintenanceForm({
     setError(null);
     
     try {
+      // Create FormData for multipart/form-data submission
+      const formDataToSubmit = new FormData();
+      
+      // Add completion date and notes
+      formDataToSubmit.append('completed_date', new Date().toISOString());
+      if (formData.notes) {
+        formDataToSubmit.append('notes', formData.notes);
+      }
+      
+      // Add after image if present (common when completing a task)
+      if (afterImageRef.current?.files?.length) {
+        formDataToSubmit.append('after_image_file', afterImageRef.current.files[0]);
+      } else if (formData.after_image_id) {
+        formDataToSubmit.append('after_image_id', String(formData.after_image_id));
+      }
+      
       const response = await axios.post(
         `${apiBaseUrl}/preventive-maintenance/${pmId}/complete/`,
-        {
-          completed_date: new Date().toISOString(),
-          notes: formData.notes,
-          after_image_id: formData.after_image_id || null
-        },
+        formDataToSubmit,
         {
           headers: {
-            'Content-Type': 'application/json',
+            'Content-Type': 'multipart/form-data',
             ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {})
           }
         }
@@ -552,69 +608,122 @@ export default function PreventiveMaintenanceForm({
           </div>
         )}
         
-        {/* Before Image (if any images available) */}
-        {availableImages.length > 0 && (
-          <div>
-            <label htmlFor="before_image_id" className="block text-sm font-medium text-gray-700 mb-1">
-              Before Image (Optional)
-            </label>
-            <select
-              id="before_image_id"
-              name="before_image_id"
-              value={formData.before_image_id || ''}
-              onChange={handleChange}
-              disabled={isLoading}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">None</option>
-              {availableImages.map(img => (
-                <option key={img.id} value={img.id}>
-                  Image {img.id} - {new Date(img.uploaded_at).toLocaleString()}
-                </option>
-              ))}
-            </select>
+        {/* Before Image Upload */}
+        <div>
+          <label htmlFor="before_image_file" className="block text-sm font-medium text-gray-700 mb-1">
+            Before Image (Optional)
+          </label>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <input
+                type="file"
+                id="before_image_file"
+                name="before_image_file"
+                ref={beforeImageRef}
+                onChange={handleFileChange}
+                accept="image/*"
+                disabled={isLoading}
+                className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Upload a new image or select from existing images below
+              </p>
+            </div>
             
-            {formData.before_image_id && (
-              <div className="mt-2">
+            {/* Image preview */}
+            {beforeImagePreview && (
+              <div className="flex justify-center items-center border rounded-md p-2">
                 <img 
-                  src={availableImages.find(img => img.id === Number(formData.before_image_id))?.image_url} 
-                  alt="Before" 
-                  className="h-32 object-cover rounded"
+                  src={beforeImagePreview}
+                  alt="Before Preview" 
+                  className="h-32 object-contain"
                 />
               </div>
             )}
           </div>
-        )}
+          
+          {/* Existing images dropdown - only show if there are images and job selected */}
+          {availableImages.length > 0 && formData.job_id && (
+            <div className="mt-2">
+              <label htmlFor="before_image_id" className="block text-sm font-medium text-gray-700 mb-1">
+                Select Existing Before Image
+              </label>
+              <select
+                id="before_image_id"
+                name="before_image_id"
+                value={formData.before_image_id || ''}
+                onChange={handleChange}disabled={isLoading}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">None (Use uploaded image or no image)</option>
+                {availableImages.map(img => (
+                  <option key={img.id} value={img.id}>
+                    Image {img.id} - {new Date(img.uploaded_at).toLocaleString()}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
         
-        {/* After Image (if any images available and in edit mode) */}
-        {isEditMode && availableImages.length > 0 && (
+        {/* After Image Upload - only show for edit mode or completion */}
+        {isEditMode && (
           <div>
-            <label htmlFor="after_image_id" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="after_image_file" className="block text-sm font-medium text-gray-700 mb-1">
               After Image (Optional)
             </label>
-            <select
-              id="after_image_id"
-              name="after_image_id"
-              value={formData.after_image_id || ''}
-              onChange={handleChange}
-              disabled={isLoading}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">None</option>
-              {availableImages.map(img => (
-                <option key={img.id} value={img.id}>
-                  Image {img.id} - {new Date(img.uploaded_at).toLocaleString()}
-                </option>
-              ))}
-            </select>
             
-            {formData.after_image_id && (
-              <div className="mt-2">
-                <img 
-                  src={availableImages.find(img => img.id === Number(formData.after_image_id))?.image_url} 
-                  alt="After" 
-                  className="h-32 object-cover rounded"
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <input
+                  type="file"
+                  id="after_image_file"
+                  name="after_image_file"
+                  ref={afterImageRef}
+                  onChange={handleFileChange}
+                  accept="image/*"
+                  disabled={isLoading}
+                  className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                 />
+                <p className="mt-1 text-xs text-gray-500">
+                  Upload a new image or select from existing images below
+                </p>
+              </div>
+              
+              {/* Image preview */}
+              {afterImagePreview && (
+                <div className="flex justify-center items-center border rounded-md p-2">
+                  <img 
+                    src={afterImagePreview}
+                    alt="After Preview" 
+                    className="h-32 object-contain"
+                  />
+                </div>
+              )}
+            </div>
+            
+            {/* Existing images dropdown - only show if there are images and job selected */}
+            {availableImages.length > 0 && formData.job_id && (
+              <div className="mt-2">
+                <label htmlFor="after_image_id" className="block text-sm font-medium text-gray-700 mb-1">
+                  Select Existing After Image
+                </label>
+                <select
+                  id="after_image_id"
+                  name="after_image_id"
+                  value={formData.after_image_id || ''}
+                  onChange={handleChange}
+                  disabled={isLoading}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">None (Use uploaded image or no image)</option>
+                  {availableImages.map(img => (
+                    <option key={img.id} value={img.id}>
+                      Image {img.id} - {new Date(img.uploaded_at).toLocaleString()}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
           </div>

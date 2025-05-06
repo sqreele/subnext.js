@@ -2,10 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { 
   PMStatistics, 
   PreventiveMaintenance,
-  FrequencyDistribution
+  FrequencyDistribution,
+  JobImage,
+  getImageUrl as getImageUrlHelper,
+  determinePMStatus
 } from '@/app/lib/preventiveMaintenanceModels';
 import preventiveMaintenanceService from '@/app/lib/PreventiveMaintenanceService';
 
@@ -75,14 +79,45 @@ export default function PreventiveMaintenanceDashboard() {
   };
 
   // Status badge styling
-  const getStatusBadge = (item: { status: string }): string => {
-    if (item.status === 'completed') {
+  const getStatusBadge = (status: string): string => {
+    if (status === 'completed') {
       return "bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium";
-    } else if (item.status === 'overdue') {
+    } else if (status === 'overdue') {
       return "bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium";
     } else {
       return "bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium";
     }
+  };
+
+  // Extract job ID from PM item
+  const getJobId = (item: PreventiveMaintenance): string | null => {
+    if (item.job_details?.job_id) {
+      return item.job_details.job_id;
+    }
+    
+    if (typeof item.job === 'object' && item.job) {
+      return item.job.job_id;
+    }
+    
+    return (item as any).job_id || null;
+  };
+  
+  // Extract job description from PM item
+  const getJobDescription = (item: PreventiveMaintenance): string => {
+    // First try to get it from job_details
+    if (item.job_details?.description) {
+      return item.job_details.description;
+    }
+    
+    // Then try from job object
+    if (typeof item.job === 'object' && item.job) {
+      if ('description' in item.job) {
+        return (item.job as any).description;
+      }
+    }
+    
+    // Return a default if nothing found
+    return 'No description';
   };
 
   if (isLoading) {
@@ -230,17 +265,47 @@ export default function PreventiveMaintenanceDashboard() {
       )}
       
       {/* Upcoming Maintenance */}
-      {stats.upcoming.map((item) => {
-                  // Get the job ID from either job_details, job object, or as a fallback use the item's own property if available
-                  const jobId = item.job_details?.job_id || 
-                              (typeof item.job === 'object' && item.job ? item.job.job_id : null) ||
-                              (item as any).job_id;
-                              
-                  // Get job description from job_details
-                  const jobDescription = item.job_details?.description || 'No description';
+      {stats.upcoming && stats.upcoming.length > 0 && (
+        <div className="bg-white rounded-lg shadow mb-8">
+          <div className="px-6 py-4 border-b">
+            <h2 className="text-lg font-semibold text-gray-700">Upcoming Maintenance</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    ID
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Job
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Date
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Images
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {stats.upcoming.map((item) => {
+                  // Get job info
+                  const jobId = getJobId(item);
+                  const jobDescription = getJobDescription(item);
                   
-                  // Determine status - default to 'Scheduled' if not available
-                  const status = (item as any).status || 'scheduled';
+                  // Determine PM status
+                  const status = item.status || determinePMStatus(item);
+                  
+                  // Get image URLs
+                  const beforeImageUrl = item.before_image ? getImageUrlHelper(item.before_image) : null;
+                  const afterImageUrl = item.after_image ? getImageUrlHelper(item.after_image) : null;
                   
                   return (
                     <tr key={item.pm_id} className="hover:bg-gray-50">
@@ -266,9 +331,34 @@ export default function PreventiveMaintenanceDashboard() {
                         {formatDate(item.scheduled_date)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={getStatusBadge({ status })}>
+                        <span className={getStatusBadge(status)}>
                           {status.charAt(0).toUpperCase() + status.slice(1)}
                         </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex space-x-2">
+                          {beforeImageUrl && (
+                            <div className="h-10 w-10 rounded overflow-hidden border">
+                              <img 
+                                src={beforeImageUrl} 
+                                alt="Before" 
+                                className="h-full w-full object-cover"
+                              />
+                            </div>
+                          )}
+                          {afterImageUrl && (
+                            <div className="h-10 w-10 rounded overflow-hidden border">
+                              <img 
+                                src={afterImageUrl} 
+                                alt="After" 
+                                className="h-full w-full object-cover"
+                              />
+                            </div>
+                          )}
+                          {!beforeImageUrl && !afterImageUrl && (
+                            <span className="text-xs text-gray-500">No images</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">
@@ -280,7 +370,7 @@ export default function PreventiveMaintenanceDashboard() {
                           </Link>
                           {status !== 'completed' && (
                             <Link 
-                              href={`/preventive-maintenance/${item.pm_id}/complete`}
+                              href={`/preventive-maintenance/${item.pm_id}/edit?complete=true`}
                               className="text-green-600 hover:text-green-900"
                             >
                               Complete
@@ -291,6 +381,11 @@ export default function PreventiveMaintenanceDashboard() {
                     </tr>
                   );
                 })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       
       {/* Quick Access */}
       <div className="bg-white rounded-lg shadow p-6">
