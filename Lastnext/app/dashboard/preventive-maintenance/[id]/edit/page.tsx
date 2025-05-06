@@ -9,10 +9,9 @@ import { PreventiveMaintenance } from '@/app/lib/preventiveMaintenanceModels';
 // For Next.js App Router page components
 type PageProps = {
   params: { id: string };
-  searchParams: { [key: string]: string | string[] | undefined };
 };
 
-export default function EditPreventiveMaintenancePage({ params, searchParams }: PageProps) {
+export default function EditPreventiveMaintenancePage({ params }: PageProps) {
   const router = useRouter();
   const pmId = params.id;
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
