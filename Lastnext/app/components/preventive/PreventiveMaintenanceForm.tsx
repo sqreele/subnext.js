@@ -3,7 +3,7 @@
 import { useState, useEffect, ChangeEvent, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-// Import all types from models file instead of service file
+// Import types from models file
 import { 
   Job, 
   JobImage, 
@@ -11,12 +11,8 @@ import {
   PreventiveMaintenanceRequest
 } from '@/app/lib/preventiveMaintenanceModels';
 
-interface FrequencyOption {
-  value: string;
-  label: string;
-}
-
-const FREQUENCY_OPTIONS: FrequencyOption[] = [
+// Define frequency options within the component
+const FREQUENCY_OPTIONS = [
   { value: 'daily', label: 'Daily' },
   { value: 'weekly', label: 'Weekly' },
   { value: 'monthly', label: 'Monthly' },
@@ -58,28 +54,113 @@ export default function PreventiveMaintenanceForm({
   
   const [availableJobs, setAvailableJobs] = useState<Job[]>([]);
   const [availableImages, setAvailableImages] = useState<JobImage[]>([]);
+  const [manualJobIdEntry, setManualJobIdEntry] = useState<boolean>(false);
+  const [correctEndpoints, setCorrectEndpoints] = useState<{
+    jobs: string | null;
+    jobDetails: string | null;
+  }>({
+    jobs: null,
+    jobDetails: null
+  });
+
+  // Helper function to get auth token
+  const getAuthToken = (): string | null => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('accessToken');
+    }
+    return null;
+  };
+
+  // Find correct API endpoints
+  const findCorrectEndpoints = async (): Promise<void> => {
+    setIsLoading(true);
+    
+    // List of possible job list endpoints based on Django API patterns
+    const jobsEndpoints = [
+      `${apiBaseUrl}/jobs/`,
+      `${apiBaseUrl}/preventive-maintenance/jobs/`,
+      `${apiBaseUrl}/maintenance/jobs/`,
+      `${apiBaseUrl}/jobs/preventive-maintenance/`,
+      `${apiBaseUrl}/jobs/list/`,
+      `${apiBaseUrl}/preventive-maintenance/jobs/list/`
+    ];
+    
+    let jobsFound = false;
+    const token = getAuthToken();
+    
+    console.log('Attempting to discover correct API endpoints...');
+    
+    // Try each endpoint pattern until we find one that works
+    for (const endpoint of jobsEndpoints) {
+      if (jobsFound) break;
+      
+      try {
+        console.log(`Trying jobs endpoint: ${endpoint}`);
+        const response = await axios.get(endpoint, {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          timeout: 5000 // 5 second timeout for each attempt
+        });
+        
+        // Check if the response contains job data
+        let jobsData = null;
+        
+        if (response.data && typeof response.data === 'object') {
+          if (Array.isArray(response.data)) {
+            // Response is directly an array of jobs
+            jobsData = response.data;
+          } else if ('jobs' in response.data && Array.isArray(response.data.jobs)) {
+            // Response has a 'jobs' property with an array
+            jobsData = response.data.jobs;
+          } else if ('results' in response.data && Array.isArray(response.data.results)) {
+            // Response is paginated with a 'results' property
+            jobsData = response.data.results;
+          }
+        }
+        
+        if (jobsData && jobsData.length > 0) {
+          console.log(`Found ${jobsData.length} jobs using endpoint: ${endpoint}`);
+          setAvailableJobs(jobsData);
+          setCorrectEndpoints(prev => ({ ...prev, jobs: endpoint }));
+          jobsFound = true;
+          setError(null);
+          break;
+        }
+      } catch (err) {
+        console.log(`Endpoint ${endpoint} failed:`, err);
+        // Continue to the next endpoint pattern
+      }
+    }
+    
+    if (!jobsFound) {
+      console.error('All API endpoints failed for job list');
+      setError('Failed to load available jobs. You can proceed by entering a job ID manually.');
+      setManualJobIdEntry(true);
+      setAvailableJobs([]);
+    }
+    
+    setIsLoading(false);
+  };
 
   // Fetch data when component mounts
   useEffect(() => {
-    // Fetch available jobs for dropdown
-    const fetchJobs = async (): Promise<void> => {
-      try {
-        const response = await axios.get(`${apiBaseUrl}/maintenance/jobs/preventive-maintenance/`);
-        const jobsData = response.data.jobs || response.data;
-        setAvailableJobs(jobsData);
-      } catch (err) {
-        console.error('Error fetching jobs:', err);
-        setError('Failed to load available jobs');
-      }
-    };
-
+    // Find the correct API endpoints
+    findCorrectEndpoints();
+    
     // If we're editing an existing PM record, fetch its data
     const fetchPMRecord = async (): Promise<void> => {
       if (!pmId) return;
       
       try {
         setIsLoading(true);
-        const response = await axios.get(`${apiBaseUrl}/preventive-maintenance/${pmId}/`);
+        const response = await axios.get(`${apiBaseUrl}/preventive-maintenance/${pmId}/`, {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {})
+          }
+        });
         
         // Format date for input field (YYYY-MM-DDThh:mm)
         const scheduledDate = new Date(response.data.scheduled_date);
@@ -99,7 +180,7 @@ export default function PreventiveMaintenanceForm({
         if (response.data.job?.job_id) {
           fetchJobImages(response.data.job.job_id);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error fetching PM record:', err);
         setError('Failed to load maintenance record data');
       } finally {
@@ -107,8 +188,6 @@ export default function PreventiveMaintenanceForm({
       }
     };
     
-    // Fetch all required data
-    fetchJobs();
     if (isEditMode) {
       fetchPMRecord();
     } else if (jobId) {
@@ -121,13 +200,79 @@ export default function PreventiveMaintenanceForm({
   const fetchJobImages = async (selectedJobId: string): Promise<void> => {
     if (!selectedJobId) return;
     
-    try {
-      const response = await axios.get(`${apiBaseUrl}/maintenance/jobs/${selectedJobId}/`);
-      if (response.data && response.data.images) {
-        setAvailableImages(response.data.images);
+    // Try different job detail endpoints
+    const jobDetailEndpoints = [
+      `${apiBaseUrl}/jobs/${selectedJobId}/`,
+      `${apiBaseUrl}/maintenance/jobs/${selectedJobId}/`,
+      `${apiBaseUrl}/preventive-maintenance/jobs/${selectedJobId}/`
+    ];
+    
+    // If we previously found a working endpoint, try a pattern based on that first
+    if (correctEndpoints.jobs) {
+      const baseEndpoint = correctEndpoints.jobs.endsWith('/') 
+        ? correctEndpoints.jobs.slice(0, -1) 
+        : correctEndpoints.jobs;
+        
+      // Insert the specific job ID before the trailing slash
+      const parts = baseEndpoint.split('/');
+      if (parts.length > 2) {
+        // Try both with and without the trailing "list" segment
+        const withoutList = parts[parts.length - 1] === 'list' 
+          ? parts.slice(0, -1).join('/') 
+          : baseEndpoint;
+          
+        jobDetailEndpoints.unshift(`${withoutList}/${selectedJobId}/`);
       }
-    } catch (err) {
-      console.error('Error fetching job images:', err);
+    }
+    
+    let imagesFound = false;
+    const token = getAuthToken();
+    
+    for (const endpoint of jobDetailEndpoints) {
+      if (imagesFound || correctEndpoints.jobDetails) break;
+      
+      try {
+        console.log(`Trying job detail endpoint: ${endpoint}`);
+        const response = await axios.get(endpoint, {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          }
+        });
+        
+        // Check for images in the response
+        if (response.data) {
+          if (response.data.images && Array.isArray(response.data.images)) {
+            setAvailableImages(response.data.images);
+            setCorrectEndpoints(prev => ({ ...prev, jobDetails: endpoint.replace(selectedJobId, '{id}') }));
+            imagesFound = true;
+            break;
+          }
+        }
+      } catch (err) {
+        console.log(`Failed to get job details from ${endpoint}`);
+        // Continue to next endpoint
+      }
+    }
+    
+    // If we already know the correct endpoint pattern, use it
+    if (correctEndpoints.jobDetails && !imagesFound) {
+      const endpoint = correctEndpoints.jobDetails.replace('{id}', selectedJobId);
+      try {
+        const response = await axios.get(endpoint, {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          }
+        });
+        
+        if (response.data && response.data.images && Array.isArray(response.data.images)) {
+          setAvailableImages(response.data.images);
+          imagesFound = true;
+        }
+      } catch (err) {
+        console.log(`Failed to get images using known endpoint: ${endpoint}`);
+      }
     }
   };
 
@@ -172,14 +317,26 @@ export default function PreventiveMaintenanceForm({
         // Update existing record
         response = await axios.put(
           `${apiBaseUrl}/preventive-maintenance/${pmId}/`, 
-          submitData
+          submitData,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {})
+            }
+          }
         );
         setSuccessMessage('Preventive maintenance record updated successfully');
       } else {
         // Create new record
         response = await axios.post(
           `${apiBaseUrl}/preventive-maintenance/`, 
-          submitData
+          submitData,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {})
+            }
+          }
         );
         setSuccessMessage('Preventive maintenance record created successfully');
         
@@ -224,6 +381,12 @@ export default function PreventiveMaintenanceForm({
           completed_date: new Date().toISOString(),
           notes: formData.notes,
           after_image_id: formData.after_image_id || null
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {})
+          }
         }
       );
       
@@ -240,6 +403,11 @@ export default function PreventiveMaintenanceForm({
       setIsLoading(false);
     }
   };
+  
+  // Toggle between dropdown and manual entry
+  const toggleManualEntry = () => {
+    setManualJobIdEntry(!manualJobIdEntry);
+  };
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
@@ -248,7 +416,11 @@ export default function PreventiveMaintenanceForm({
       </h2>
       
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+        <div className={`border px-4 py-3 rounded mb-4 ${
+          error.includes('You can proceed') 
+            ? 'bg-yellow-100 border-yellow-400 text-yellow-700' 
+            : 'bg-red-100 border-red-400 text-red-700'
+        }`}>
           {error}
         </div>
       )}
@@ -265,22 +437,60 @@ export default function PreventiveMaintenanceForm({
           <label htmlFor="job_id" className="block text-sm font-medium text-gray-700 mb-1">
             Maintenance Job
           </label>
-          <select
-            id="job_id"
-            name="job_id"
-            value={formData.job_id}
-            onChange={handleChange}
-            required
-            disabled={isLoading || (!!jobId && !isEditMode)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select a Job</option>
-            {availableJobs.map(job => (
-              <option key={job.job_id} value={job.job_id}>
-                {job.job_id} - {job.description.substring(0, 50)}...
-              </option>
-            ))}
-          </select>
+          
+          {!manualJobIdEntry && availableJobs.length > 0 ? (
+            <>
+              <select
+                id="job_id"
+                name="job_id"
+                value={formData.job_id}
+                onChange={handleChange}
+                required
+                disabled={isLoading || (!!jobId && !isEditMode)}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select a Job</option>
+                {availableJobs.map(job => (
+                  <option key={job.job_id} value={job.job_id}>
+                    {job.job_id} - {job.description ? job.description.substring(0, 50) + '...' : 'No description'}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={toggleManualEntry}
+                className="mt-2 text-sm text-blue-600 hover:text-blue-800"
+              >
+                Enter job ID manually instead
+              </button>
+            </>
+          ) : (
+            <>
+              <input 
+                type="text"
+                id="job_id"
+                name="job_id"
+                value={formData.job_id}
+                onChange={handleChange}
+                required
+                disabled={isLoading || (!!jobId && !isEditMode)}
+                placeholder="Enter job ID"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="mt-1 text-sm text-gray-500">
+                Enter the job ID manually. For example: "JOB-2023-001"
+              </p>
+              {availableJobs.length > 0 && (
+                <button
+                  type="button"
+                  onClick={toggleManualEntry}
+                  className="mt-2 text-sm text-blue-600 hover:text-blue-800"
+                >
+                  Select from job list instead
+                </button>
+              )}
+            </>
+          )}
         </div>
         
         {/* Scheduled Date */}
@@ -457,6 +667,19 @@ export default function PreventiveMaintenanceForm({
           </button>
         </div>
       </form>
+      
+      {/* API Debug Info - only visible in development */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="mt-6 p-3 border border-gray-300 rounded bg-gray-50 text-xs font-mono">
+          <h3 className="font-medium mb-1">Debug Information</h3>
+          <p>API Base URL: {apiBaseUrl}</p>
+          <p>Discovered Jobs Endpoint: {correctEndpoints.jobs || 'None'}</p>
+          <p>Discovered Job Details Endpoint: {correctEndpoints.jobDetails || 'None'}</p>
+          <p>Jobs Found: {availableJobs.length}</p>
+          <p>Images Found: {availableImages.length}</p>
+          <p>Manual Entry Mode: {manualJobIdEntry ? 'Yes' : 'No'}</p>
+        </div>
+      )}
     </div>
   );
 }
