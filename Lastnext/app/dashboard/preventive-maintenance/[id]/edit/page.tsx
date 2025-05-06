@@ -6,14 +6,13 @@ import Link from 'next/link';
 import PreventiveMaintenanceForm from '@/app/components/preventive/PreventiveMaintenanceForm';
 import { PreventiveMaintenance } from '@/app/lib/preventiveMaintenanceModels';
 
-// Define the props interface for the page component
-interface EditPreventiveMaintenancePageProps {
-  params: {
-    id: string;
-  };
-}
+// For Next.js App Router page components
+type PageProps = {
+  params: { id: string };
+  searchParams: { [key: string]: string | string[] | undefined };
+};
 
-export default function EditPreventiveMaintenancePage({ params }: EditPreventiveMaintenancePageProps) {
+export default function EditPreventiveMaintenancePage({ params, searchParams }: PageProps) {
   const router = useRouter();
   const pmId = params.id;
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
