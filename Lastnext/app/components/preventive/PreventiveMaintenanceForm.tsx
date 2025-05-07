@@ -7,14 +7,13 @@ import {
   PreventiveMaintenanceRequest,
   FREQUENCY_OPTIONS,
   validateFrequency,
-  Job,
-  Topic
+  Topic,
+  MaintenanceJobData
 } from '@/app/lib/preventiveMaintenanceModels';
 import preventiveMaintenanceService from '@/app/lib/PreventiveMaintenanceService';
-import api from '@/app/lib/api-client'; // Import the API client
+import api from '@/app/lib/api-client';
 
 interface PreventiveMaintenanceFormProps {
-  jobId?: string | null;
   pmId?: string | null;
   onSuccessAction: (data: PreventiveMaintenance) => void;
   apiBaseUrl?: string;
@@ -22,7 +21,6 @@ interface PreventiveMaintenanceFormProps {
 }
 
 const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
-  jobId,
   pmId,
   onSuccessAction,
   initialData,
@@ -30,14 +28,13 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
   const { data: session } = useSession();
   
   // State for available jobs and topics
-  const [availableJobs, setAvailableJobs] = useState<Job[]>([]);
+  const [availableJobs, setAvailableJobs] = useState<MaintenanceJobData[]>([]);
   const [availableTopics, setAvailableTopics] = useState<Topic[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   
   // Form state
   const [formData, setFormData] = useState<{
-    job_id: string;
     scheduled_date: string;
     frequency: string;
     custom_days: number | null;
@@ -46,9 +43,8 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     after_image_id: number | null;
     before_image_file?: File | null;
     after_image_file?: File | null;
-    selected_topics: number[];  // Added selected topics array
+    selected_topics: number[];
   }>({
-    job_id: jobId || '',
     scheduled_date: formatDateForInput(new Date()),
     frequency: 'monthly',
     custom_days: null,
@@ -57,12 +53,11 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     after_image_id: null,
     before_image_file: null,
     after_image_file: null,
-    selected_topics: []  // Initialize with empty array
+    selected_topics: []
   });
 
   // Validation state
   const [formErrors, setFormErrors] = useState<{
-    job_id?: string;
     scheduled_date?: string;
     frequency?: string;
     custom_days?: string;
@@ -73,7 +68,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
   const [submitLoading, setSubmitLoading] = useState<boolean>(false);
   const [beforeImagePreview, setBeforeImagePreview] = useState<string | null>(null);
   const [afterImagePreview, setAfterImagePreview] = useState<string | null>(null);
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [selectedJob, setSelectedJob] = useState<MaintenanceJobData | null>(null);
 
   // Helper function to format date for input field
   function formatDateForInput(date: Date): string {
@@ -96,7 +91,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     try {
       const result = await preventiveMaintenanceService.getPreventiveMaintenanceJobs();
       const jobs = Array.isArray(result) ? result : result.jobs || [];
-      setAvailableJobs(jobs as Job[]);
+      setAvailableJobs(jobs as MaintenanceJobData[]);
     } catch (err: any) {
       console.error('Error fetching available jobs:', err);
       setError(err.message || 'Failed to fetch available jobs');
@@ -151,12 +146,10 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
   // Initialize data
   useEffect(() => {
     fetchAvailableJobs();
-    fetchAvailableTopics(); // Added fetching topics
+    fetchAvailableTopics();
     
     // Set initial data if provided
     if (initialData) {
-      const jobIdValue = typeof initialData.job === 'object' ? initialData.job.job_id : '';
-      
       // Get topic IDs from the job
       const topicIds: number[] = [];
       if (initialData.job && typeof initialData.job === 'object' && 'topics' in initialData.job && Array.isArray(initialData.job.topics)) {
@@ -168,7 +161,6 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       }
       
       setFormData({
-        job_id: jobId || jobIdValue || '',
         scheduled_date: initialData.scheduled_date ? formatDateForInput(new Date(initialData.scheduled_date)) : formatDateForInput(new Date()),
         frequency: initialData.frequency || 'monthly',
         custom_days: initialData.custom_days !== undefined ? initialData.custom_days : null,
@@ -188,8 +180,13 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       if (initialData.after_image?.image_url) {
         setAfterImagePreview(initialData.after_image.image_url);
       }
+      
+      // If job is available, set the selected job
+      if (initialData.job && typeof initialData.job === 'object') {
+        setSelectedJob(initialData.job as MaintenanceJobData);
+      }
     }
-  }, [initialData, jobId]);
+  }, [initialData]);
   
   // Fetch maintenance data if pmId is provided but no initialData
   useEffect(() => {
@@ -199,9 +196,6 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       
       preventiveMaintenanceService.getPreventiveMaintenanceById(pmId)
         .then(data => {
-          // Get job ID from the returned data
-          const jobIdValue = typeof data.job === 'object' ? data.job.job_id : '';
-          
           // Get topic IDs from the job
           const topicIds: number[] = [];
           if (data.job && typeof data.job === 'object' && 'topics' in data.job && Array.isArray(data.job.topics)) {
@@ -214,7 +208,6 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
           
           // Set form data
           setFormData({
-            job_id: jobId || jobIdValue || '',
             scheduled_date: data.scheduled_date ? formatDateForInput(new Date(data.scheduled_date)) : formatDateForInput(new Date()),
             frequency: data.frequency || 'monthly',
             custom_days: data.custom_days !== undefined ? data.custom_days : null,
@@ -235,6 +228,11 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
           if (data.after_image?.image_url) {
             setAfterImagePreview(data.after_image.image_url);
           }
+          
+          // If job is available, set the selected job
+          if (data.job && typeof data.job === 'object') {
+            setSelectedJob(data.job as MaintenanceJobData);
+          }
         })
         .catch(err => {
           console.error('Error fetching maintenance data:', err);
@@ -244,21 +242,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
           setIsLoading(false);
         });
     }
-  }, [pmId, initialData, jobId]);
-
-  // Set selected job when job_id changes and available jobs are loaded
-  useEffect(() => {
-    if (formData.job_id && availableJobs.length > 0) {
-      const job = availableJobs.find(j => j.job_id === formData.job_id);
-      if (job) {
-        setSelectedJob(job);
-      } else {
-        setSelectedJob(null);
-      }
-    } else {
-      setSelectedJob(null);
-    }
-  }, [formData.job_id, availableJobs]);
+  }, [pmId, initialData]);
 
   // Update frequency state when form value changes
   useEffect(() => {
@@ -279,6 +263,12 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     if (formErrors[name as keyof typeof formErrors]) {
       setFormErrors(prev => ({ ...prev, [name]: undefined }));
     }
+  };
+
+  const handleJobSelection = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedJobId = e.target.value;
+    const job = availableJobs.find(j => j.id === selectedJobId);
+    setSelectedJob(job || null);
   };
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>, type: 'before' | 'after') => {
@@ -305,14 +295,14 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
 
   const validateForm = (): boolean => {
     const errors: {
-      job_id?: string;
       scheduled_date?: string;
       frequency?: string;
       custom_days?: string;
     } = {};
     
-    if (!formData.job_id) {
-      errors.job_id = 'Please select a job';
+    if (!selectedJob) {
+      setError('Please select a job');
+      return false;
     }
     
     if (!formData.scheduled_date) {
@@ -334,7 +324,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!validateForm()) {
+    if (!validateForm() || !selectedJob) {
       return;
     }
     
@@ -348,7 +338,6 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       }
       
       // Configure service with session token
-      // This ensures the API client uses the NextAuth token instead of localStorage
       const accessToken = session.user.accessToken;
       
       // Store token in localStorage to be used by the API client
@@ -358,7 +347,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       
       // Build request data
       const requestData: PreventiveMaintenanceRequest = {
-        job_id: formData.job_id,
+        job_id: selectedJob.id, // Use selectedJob.id instead of job_id
         scheduled_date: formData.scheduled_date,
         frequency: validateFrequency(formData.frequency),
         custom_days: formData.frequency === 'custom' ? formData.custom_days : null,
@@ -369,7 +358,6 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
 
       // Add topics to request data
       if (formData.selected_topics.length > 0) {
-        // You may need to adjust this based on your API expectations
         (requestData as any).topic_ids = formData.selected_topics;
       }
 
@@ -391,7 +379,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
 
       // Handle image uploads if needed
       if ((formData.before_image_file || formData.after_image_file) && result.job) {
-        const jobId = typeof result.job === 'object' ? result.job.job_id : '';
+        const jobId = typeof result.job === 'object' ? result.job.id : '';
         
         if (jobId) {
           const formDataForImages = new FormData();
@@ -462,33 +450,32 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       
       <form onSubmit={handleSubmit}>
         <div className="mb-6">
-          <label htmlFor="job_id" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="job_selection" className="block text-sm font-medium text-gray-700 mb-1">
             Maintenance Job <span className="text-red-500">*</span>
           </label>
           <select
-            id="job_id"
-            name="job_id"
-            value={formData.job_id}
-            onChange={handleChange}
-            className={`w-full p-2 border rounded-md ${formErrors.job_id ? 'border-red-500' : 'border-gray-300'}`}
-            disabled={!!jobId || isLoading}
+            id="job_selection"
+            value={selectedJob?.id || ''}
+            onChange={handleJobSelection}
+            className={`w-full p-2 border rounded-md ${!selectedJob ? 'border-red-500' : 'border-gray-300'}`}
+            disabled={isLoading}
           >
             <option value="">Select a job</option>
             {availableJobs.map((job) => (
-              <option key={job.job_id} value={job.job_id}>
-                {job.description} (#{job.job_id})
+              <option key={job.id} value={job.id}>
+                {job.description} (#{job.id})
               </option>
             ))}
           </select>
-          {formErrors.job_id && (
-            <p className="mt-1 text-sm text-red-500">{formErrors.job_id}</p>
+          {!selectedJob && error && (
+            <p className="mt-1 text-sm text-red-500">Please select a job</p>
           )}
         </div>
 
         {selectedJob && (
           <div className="mb-6 p-4 bg-gray-50 rounded-md">
             <h3 className="font-medium text-gray-700">Selected Job Details</h3>
-            <p><span className="font-medium">ID:</span> {selectedJob.job_id}</p>
+            <p><span className="font-medium">ID:</span> {selectedJob.id}</p>
             <p><span className="font-medium">Description:</span> {selectedJob.description}</p>
             <p>
               <span className="font-medium">Priority:</span>{' '}

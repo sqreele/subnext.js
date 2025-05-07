@@ -5,12 +5,12 @@ import React, { createContext, useState, useContext, ReactNode, useCallback, use
 import { 
   PreventiveMaintenance, 
   PMStatistics,
-  Job,
   PMListParams,
   ApiError,
   FrequencyDistribution,
   CompletePMRequest,
-  PreventiveMaintenanceRequest
+  PreventiveMaintenanceRequest,
+  MaintenanceJobData
 } from '@/app/lib/preventiveMaintenanceModels';
 
 // Import the service but use local model types
@@ -24,7 +24,7 @@ interface PreventiveMaintenanceContextState {
   maintenanceItems: PreventiveMaintenance[];
   statistics: PMStatistics | null;
   selectedMaintenance: PreventiveMaintenance | null;
-  availableJobs: Job[];
+  availableJobs: MaintenanceJobData[];
   
   // UI State
   isLoading: boolean;
@@ -60,7 +60,7 @@ export const PreventiveMaintenanceProvider: React.FC<PreventiveMaintenanceProvid
   const [statistics, setStatistics] = useState<PMStatistics | null>(null);
   
   const [selectedMaintenance, setSelectedMaintenance] = useState<PreventiveMaintenance | null>(null);
-  const [availableJobs, setAvailableJobs] = useState<Job[]>([]);
+  const [availableJobs, setAvailableJobs] = useState<MaintenanceJobData[]>([]);
   
   // UI state
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -282,7 +282,7 @@ export const PreventiveMaintenanceProvider: React.FC<PreventiveMaintenanceProvid
     try {
       const result = await preventiveMaintenanceService.getPreventiveMaintenanceJobs();
       const jobs = Array.isArray(result) ? result : result.jobs || [];
-      setAvailableJobs(jobs as Job[]); // Type assertion to ensure compatibility
+      setAvailableJobs(jobs as MaintenanceJobData[]); // Type assertion to ensure compatibility
     } catch (err: any) {
       console.error('Error fetching available jobs:', err);
       setError(err.message || 'Failed to fetch available jobs');

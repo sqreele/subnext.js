@@ -41,20 +41,26 @@ export interface BaseModel {
     description?: string | null;
   }
   
-  // Job Image model
-  export interface JobImage extends BaseModel {
+  // Image model (replacing JobImage)
+  export interface MaintenanceImage extends BaseModel {
     id: number;
-    job: string | Job;  // Foreign key to Job
-    job_id?: string;  // For convenience in some API responses
+    maintenance_id: string;
     image: string;
     image_url?: string;  // URL for displaying the image
     uploaded_by: number | string | User;
     uploaded_at: string;
   }
   
-  // Maintenance Job model
-  export interface Job extends BaseModel {
-    job_id: string;
+  // Before and After image types
+  export interface BeforeImage extends MaintenanceImage {}
+  export interface AfterImage extends MaintenanceImage {}
+  
+  // Maintenance Job Data (replacing Job)
+  // Not extending BaseModel to avoid id type conflict
+  export interface MaintenanceJobData {
+    id: string;
+    created_at?: string;
+    updated_at?: string;
     user?: User;
     updated_by?: User | null;
     description: string;
@@ -65,7 +71,7 @@ export interface BaseModel {
     is_defective: boolean;
     rooms?: Room[];
     topics?: Topic[];
-    images?: JobImage[];
+    images?: MaintenanceImage[];
     is_preventivemaintenance: boolean;
   }
   
@@ -75,9 +81,9 @@ export interface BaseModel {
   // Preventive Maintenance model
   export interface PreventiveMaintenance extends BaseModel {
     pm_id: string;
-    job: Job | { job_id: string };
+    job: MaintenanceJobData | { id: string };
     job_details?: {
-      job_id: string;
+      id: string;
       description: string;
       status: string;
       priority: string;
@@ -87,8 +93,8 @@ export interface BaseModel {
     frequency: FrequencyType;
     custom_days?: number | null;
     next_due_date?: string | null;
-    before_image?: JobImage | null;  // Foreign key to JobImage
-    after_image?: JobImage | null;   // Foreign key to JobImage
+    before_image?: BeforeImage | null;
+    after_image?: AfterImage | null;
     notes?: string | null;
     created_by: number | string | User;
     status?: 'completed' | 'overdue' | 'pending';  // Virtual field from API
@@ -116,7 +122,7 @@ export interface BaseModel {
   
   // Create/Update PM Request
   export interface PreventiveMaintenanceRequest {
-    job_id: string;
+    job_id: string;  // This can be kept as a simple ID reference
     scheduled_date: string;
     frequency: string;
     custom_days?: number | null;
@@ -225,8 +231,8 @@ export interface BaseModel {
     return formData;
   }
   
-  // Function to get image URL from a JobImage object
-  export function getImageUrl(image: JobImage | null | undefined): string | null {
+  // Function to get image URL from a MaintenanceImage object
+  export function getImageUrl(image: MaintenanceImage | null | undefined): string | null {
     if (!image) return null;
     return image.image_url || image.image || null;
   }

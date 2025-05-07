@@ -7,7 +7,7 @@ import {
   PMStatistics, 
   PreventiveMaintenance,
   FrequencyDistribution,
-  JobImage,
+  MaintenanceImage,
   getImageUrl as getImageUrlHelper,
   determinePMStatus
 } from '@/app/lib/preventiveMaintenanceModels';
@@ -91,12 +91,12 @@ export default function PreventiveMaintenanceDashboard() {
 
   // Extract job ID from PM item
   const getJobId = (item: PreventiveMaintenance): string | null => {
-    if (item.job_details?.job_id) {
-      return item.job_details.job_id;
+    if (item.job_details?.id) {
+      return item.job_details.id;
     }
     
     if (typeof item.job === 'object' && item.job) {
-      return item.job.job_id;
+      return item.job.id;
     }
     
     return (item as any).job_id || null;

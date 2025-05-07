@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
   PreventiveMaintenance, 
-  JobImage,
+  MaintenanceImage,
   CompletePMRequest
 } from '@/app/lib/preventiveMaintenanceModels';
 import preventiveMaintenanceService from '@/app/lib/PreventiveMaintenanceService';
@@ -28,7 +28,7 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
     notes: '',
     after_image_id: null
   });
-  const [availableImages, setAvailableImages] = useState<JobImage[]>([]);
+  const [availableImages, setAvailableImages] = useState<MaintenanceImage[]>([]);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -59,8 +59,8 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
         
         // Fetch job images if we have a job ID
         const jobId = typeof data.job === 'object' && data.job ? 
-        data.job.job_id : 
-        (typeof data.job === 'string' ? data.job : null);
+          data.job.id : 
+          (typeof data.job === 'string' ? data.job : null);
         if (jobId) {
           try {
             const jobResponse = await preventiveMaintenanceService.getPreventiveMaintenanceJobs({
@@ -69,9 +69,9 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
             
             let jobData;
             if (Array.isArray(jobResponse)) {
-              jobData = jobResponse.find(job => job.job_id === jobId);
+              jobData = jobResponse.find(job => job.id === jobId);
             } else if (jobResponse.jobs && Array.isArray(jobResponse.jobs)) {
-              jobData = jobResponse.jobs.find(job => job.job_id === jobId);
+              jobData = jobResponse.jobs.find(job => job.id === jobId);
             }
             
             if (jobData && jobData.images) {
@@ -227,7 +227,7 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
               Task: {maintenanceData.pm_id}
             </h3>
             <p className="mt-1 text-md text-gray-700">
-              <span className="font-medium">Job ID:</span> {typeof maintenanceData.job === 'object' ? maintenanceData.job?.job_id : maintenanceData.job}
+              <span className="font-medium">Job ID:</span> {typeof maintenanceData.job === 'object' ? maintenanceData.job?.id : maintenanceData.job}
             </p>
             <p className="mt-1 text-sm text-gray-500 line-clamp-2">
               {maintenanceData.job_details?.description || 'No description provided'}

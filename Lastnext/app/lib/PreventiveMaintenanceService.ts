@@ -3,9 +3,9 @@ import axios from 'axios';
 import {
   PreventiveMaintenance,
   PMStatistics,
-  Job,
   PMListParams,
-  PreventiveMaintenanceRequest
+  PreventiveMaintenanceRequest,
+  MaintenanceJobData
 } from './preventiveMaintenanceModels';
 
 // Create a reusable axios instance with default config
@@ -152,7 +152,7 @@ const preventiveMaintenanceService = {
   },
 
   // Get preventive maintenance jobs
-  getPreventiveMaintenanceJobs: async (params: Record<string, any> = {}): Promise<{ jobs: Job[] } | Job[]> => {
+  getPreventiveMaintenanceJobs: async (params: Record<string, any> = {}): Promise<{ jobs: MaintenanceJobData[] } | MaintenanceJobData[]> => {
     try {
       const response = await api.get('/maintenance/jobs/preventive-maintenance/', {
         params
