@@ -6,16 +6,17 @@ import Link from 'next/link';
 import PreventiveMaintenanceForm from '@/app/components/preventive/PreventiveMaintenanceForm';
 import { PreventiveMaintenance } from '@/app/lib/preventiveMaintenanceModels';
 
-// Define the props interface for the page component
+// Update the props interface to match Next.js App router expectations
 interface EditPreventiveMaintenancePageProps {
   params: {
-    id?: string;
+    id: string;
   };
+  searchParams: { [key: string]: string | string[] | undefined };
 }
 
 export default function EditPreventiveMaintenancePage({ params }: EditPreventiveMaintenancePageProps) {
   const router = useRouter();
-  const pmId = params?.id;
+  const pmId = params.id;
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
 
   if (!pmId) {
@@ -36,7 +37,6 @@ export default function EditPreventiveMaintenancePage({ params }: EditPreventive
     );
   }
 
-  // Add type to the data parameter
   const handleSuccess = (data: PreventiveMaintenance) => {
     setIsSubmitted(true);
     // Redirect after a short delay to show success message
@@ -72,7 +72,7 @@ export default function EditPreventiveMaintenancePage({ params }: EditPreventive
       ) : (
         <PreventiveMaintenanceForm
           pmId={pmId}
-          onSuccessAction={handleSuccess} // Changed from onSuccess to onSuccessAction
+          onSuccessAction={handleSuccess}
           apiBaseUrl="/api/v1"
         />
       )}
