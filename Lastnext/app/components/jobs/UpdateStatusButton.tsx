@@ -40,15 +40,6 @@ interface UpdateStatusButtonProps {
   size?: "default" | "sm" | "lg" | "icon";
   className?: string;
   buttonText?: string;
-}
-
-interface UpdateStatusButtonProps {
-  job: Job;
-  onStatusUpdated: (updatedJob: Job) => void;
-  variant?: "default" | "outline" | "destructive" | "secondary" | "ghost" | "link";
-  size?: "default" | "sm" | "lg" | "icon";
-  className?: string;
-  buttonText?: string;
   onClick?: (e: React.MouseEvent) => void;
 }
 
@@ -84,15 +75,22 @@ const UpdateStatusButton: React.FC<UpdateStatusButtonProps> = ({
 
     setIsSubmitting(true);
     try {
-      // Prepare update data
+      // Create a minimal update payload that preserves all required fields
       const updateData = {
         status: selectedStatus,
-        // Include other required fields that should remain unchanged
+        // Include other fields from the original job that the API requires
+        // NOTE: This is the key fix - including required fields
+        room_id: job.rooms?.[0]?.room_id,
+        topic_data: job.topics?.[0] ? JSON.stringify({
+          title: job.topics[0].title,
+          description: job.topics[0].description || ""
+        }) : JSON.stringify({ title: "Unknown", description: "" }),
+        // Include other fields for completeness
         description: job.description,
         priority: job.priority,
-        remarks: job.remarks,
-        is_defective: job.is_defective,
-        is_preventivemaintenance: job.is_preventivemaintenance,
+        remarks: job.remarks || "",
+        is_defective: job.is_defective || false,
+        is_preventivemaintenance: job.is_preventivemaintenance || false,
       };
 
       // Call API
