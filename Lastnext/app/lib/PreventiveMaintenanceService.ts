@@ -1,13 +1,8 @@
-import axios from 'axios';
-// Import types from the updated models file
-import {
+import { fetchData, postData, updateData, patchData, deleteData, uploadFile } from './api-client';
+import { 
   PreventiveMaintenance,
   PreventiveMaintenanceRequest,
-  ServiceResponse,
-  PMStatistics,
-  PMResponse,
-  Topic,
-  FrequencyDistribution
+  ServiceResponse
 } from './preventiveMaintenanceModels';
 
 // Define interfaces that are specific to the service
@@ -29,159 +24,160 @@ export interface PreventiveMaintenanceCompleteRequest {
   after_image_id?: number | null;
 }
 
-// Create a reusable axios instance with default config
-const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || '/api/v1',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-// Add request interceptor to inject auth token
-api.interceptors.request.use(
-  (config) => {
-    // Check if running in browser
-    if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('accessToken');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+// API endpoint configurations
+const API_ROUTES = {
+  // Main API routes using router.register
+  BASE: '/api/preventive-maintenance',
+  JOBS: '/api/preventive-maintenance/jobs/',
+  ROOMS: '/api/preventive-maintenance/rooms/',
+  TOPICS: '/api/preventive-maintenance/topics/',
+  
+  // ViewSet routes through the router
+  PM_LIST: '/api/preventive-maintenance/',
+  PM_DETAIL: (id: string) => `/api/preventive-maintenance/${id}/`,
+  PM_COMPLETE: (id: string) => `/api/preventive-maintenance/${id}/complete/`,
+  PM_UPLOAD: (id: string) => `/api/preventive-maintenance/${id}/upload-images/`,
+  PM_STATS: '/api/preventive-maintenance/stats/',
+  PM_UPCOMING: '/api/preventive-maintenance/upcoming/',
+  PM_OVERDUE: '/api/preventive-maintenance/overdue/',
+  
+  // Job routes
+  JOB_PM: '/api/jobs/preventive-maintenance/',
+};
 
 /**
  * Preventive Maintenance API Service
  * 
- * This service targets the Django REST Framework ViewSet registered as:
- * router.register(r'preventive-maintenance', views.PreventiveMaintenanceViewSet, basename='preventive-maintenance')
+ * This service uses the centralized api-client for making requests
+ * and handles the specific endpoints for preventive maintenance.
  */
 const preventiveMaintenanceService = {
   /**
    * Get all preventive maintenance records with optional filtering
-   * Maps to ViewSet's list action: GET /preventive-maintenance/
    */
-  getAllPreventiveMaintenance: async (params: SearchParams = {}): Promise<ServiceResponse<PMResponse>> => {
+  getAllPreventiveMaintenance: async (params: SearchParams = {}): Promise<ServiceResponse<any>> => {
     try {
-      const response = await api.get('/preventive-maintenance/', { params });
+      console.log('Getting preventive maintenance items with params:', params);
+      
+      const data = await fetchData(API_ROUTES.PM_LIST, { params });
+      
       return {
         success: true,
-        data: response.data
+        data
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching preventive maintenance records:', error);
       return {
         success: false,
-        error: 'Failed to fetch preventive maintenance records'
+        error: error.message || 'Failed to fetch preventive maintenance records'
       };
     }
   },
 
   /**
    * Get a single preventive maintenance record by ID
-   * Maps to ViewSet's retrieve action: GET /preventive-maintenance/{id}/
    */
   getPreventiveMaintenanceById: async (pmId: string): Promise<ServiceResponse<PreventiveMaintenance>> => {
     try {
-      const response = await api.get(`/preventive-maintenance/${pmId}/`);
+      const data = await fetchData<PreventiveMaintenance>(API_ROUTES.PM_DETAIL(pmId));
+      
       return {
         success: true,
-        data: response.data
+        data
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error fetching preventive maintenance record ${pmId}:`, error);
       return {
         success: false,
-        error: `Failed to fetch preventive maintenance record ${pmId}`
+        error: error.message || `Failed to fetch preventive maintenance record ${pmId}`
       };
     }
   },
 
   /**
    * Create a new preventive maintenance record
-   * Maps to ViewSet's create action: POST /preventive-maintenance/
    */
   createPreventiveMaintenance: async (data: PreventiveMaintenanceRequest): Promise<ServiceResponse<PreventiveMaintenance>> => {
     try {
-      const response = await api.post('/preventive-maintenance/', data);
+      console.log('Creating maintenance with data:', data);
+      
+      const response = await postData<PreventiveMaintenance, PreventiveMaintenanceRequest>(API_ROUTES.PM_LIST, data);
+      
       return {
         success: true,
-        data: response.data
+        data: response
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating preventive maintenance record:', error);
       return {
         success: false,
-        error: 'Failed to create preventive maintenance record'
+        error: error.message || 'Failed to create preventive maintenance record'
       };
     }
   },
 
   /**
    * Update an existing preventive maintenance record
-   * Maps to ViewSet's update action: PUT /preventive-maintenance/{id}/
    */
   updatePreventiveMaintenance: async (pmId: string, data: PreventiveMaintenanceRequest): Promise<ServiceResponse<PreventiveMaintenance>> => {
     try {
-      const response = await api.put(`/preventive-maintenance/${pmId}/`, data);
+      const response = await updateData<PreventiveMaintenance, PreventiveMaintenanceRequest>(API_ROUTES.PM_DETAIL(pmId), data);
+      
       return {
         success: true,
-        data: response.data
+        data: response
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error updating preventive maintenance record ${pmId}:`, error);
       return {
         success: false,
-        error: `Failed to update preventive maintenance record ${pmId}`
+        error: error.message || `Failed to update preventive maintenance record ${pmId}`
       };
     }
   },
 
   /**
    * Partially update an existing preventive maintenance record
-   * Maps to ViewSet's partial_update action: PATCH /preventive-maintenance/{id}/
    */
   partialUpdatePreventiveMaintenance: async (pmId: string, data: Partial<PreventiveMaintenanceRequest>): Promise<ServiceResponse<PreventiveMaintenance>> => {
     try {
-      const response = await api.patch(`/preventive-maintenance/${pmId}/`, data);
+      const response = await patchData<PreventiveMaintenance, Partial<PreventiveMaintenanceRequest>>(API_ROUTES.PM_DETAIL(pmId), data);
+      
       return {
         success: true,
-        data: response.data
+        data: response
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error partially updating preventive maintenance record ${pmId}:`, error);
       return {
         success: false,
-        error: `Failed to partially update preventive maintenance record ${pmId}`
+        error: error.message || `Failed to partially update preventive maintenance record ${pmId}`
       };
     }
   },
 
   /**
    * Delete a preventive maintenance record
-   * Maps to ViewSet's destroy action: DELETE /preventive-maintenance/{id}/
    */
   deletePreventiveMaintenance: async (pmId: string): Promise<ServiceResponse<any>> => {
     try {
-      const response = await api.delete(`/preventive-maintenance/${pmId}/`);
+      await deleteData(API_ROUTES.PM_DETAIL(pmId));
+      
       return {
         success: true,
-        data: response.data
+        data: null
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error deleting preventive maintenance record ${pmId}:`, error);
       return {
         success: false,
-        error: `Failed to delete preventive maintenance record ${pmId}`
+        error: error.message || `Failed to delete preventive maintenance record ${pmId}`
       };
     }
   },
 
   /**
    * Mark a preventive maintenance task as completed
-   * Maps to ViewSet's custom @action: POST /preventive-maintenance/{id}/complete/
    */
   completePreventiveMaintenance: async (pmId: string, data: PreventiveMaintenanceCompleteRequest = {}): Promise<ServiceResponse<PreventiveMaintenance>> => {
     try {
@@ -192,122 +188,102 @@ const preventiveMaintenanceService = {
         after_image_id: data.after_image_id || null
       };
       
-      const response = await api.post(
-        `/preventive-maintenance/${pmId}/complete/`, 
+      const response = await postData<PreventiveMaintenance, PreventiveMaintenanceCompleteRequest>(
+        API_ROUTES.PM_COMPLETE(pmId), 
         completionData
       );
+      
       return {
         success: true,
-        data: response.data
+        data: response
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error completing preventive maintenance task ${pmId}:`, error);
       return {
         success: false,
-        error: `Failed to complete preventive maintenance task ${pmId}`
+        error: error.message || `Failed to complete preventive maintenance task ${pmId}`
       };
     }
   },
 
   /**
    * Get upcoming preventive maintenance tasks
-   * Maps to ViewSet's custom @action: GET /preventive-maintenance/upcoming/
    */
   getUpcomingTasks: async (days: number = 30): Promise<ServiceResponse<PreventiveMaintenance[]>> => {
     try {
-      const response = await api.get('/preventive-maintenance/upcoming/', {
+      const response = await fetchData<PreventiveMaintenance[]>(API_ROUTES.PM_UPCOMING, {
         params: { days }
       });
+      
       return {
         success: true,
-        data: response.data
+        data: response
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching upcoming tasks:', error);
       return {
         success: false,
-        error: 'Failed to fetch upcoming tasks'
+        error: error.message || 'Failed to fetch upcoming tasks'
       };
     }
   },
 
   /**
    * Get overdue preventive maintenance tasks
-   * Maps to ViewSet's custom @action: GET /preventive-maintenance/overdue/
    */
   getOverdueTasks: async (): Promise<ServiceResponse<PreventiveMaintenance[]>> => {
     try {
-      const response = await api.get('/preventive-maintenance/overdue/');
+      const response = await fetchData<PreventiveMaintenance[]>(API_ROUTES.PM_OVERDUE);
+      
       return {
         success: true,
-        data: response.data
+        data: response
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching overdue tasks:', error);
       return {
         success: false,
-        error: 'Failed to fetch overdue tasks'
+        error: error.message || 'Failed to fetch overdue tasks'
       };
     }
   },
 
   /**
    * Get preventive maintenance statistics and overview
-   * Maps to ViewSet's custom @action: GET /preventive-maintenance/stats/
    */
-  getPreventiveMaintenanceStats: async (): Promise<ServiceResponse<{
-    counts: {
-      total: number;
-      completed: number;
-      pending: number;
-      overdue: number;
-    };
-    frequency_distribution: FrequencyDistribution[];
-    upcoming: PreventiveMaintenance[];
-  }>> => {
+  getPreventiveMaintenanceStats: async (): Promise<ServiceResponse<any>> => {
     try {
-      const response = await api.get('/preventive-maintenance/stats/');
+      const response = await fetchData(API_ROUTES.PM_STATS);
+      
       return {
         success: true,
-        data: response.data
+        data: response
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching preventive maintenance statistics:', error);
       return {
         success: false,
-        error: 'Failed to fetch preventive maintenance statistics'
+        error: error.message || 'Failed to fetch preventive maintenance statistics'
       };
     }
   },
 
   /**
    * Upload images directly for preventive maintenance
-   * Maps to ViewSet's custom @action: POST /preventive-maintenance/{id}/upload-images/
    */
   uploadImages: async (pmId: string, formData: FormData): Promise<ServiceResponse<any>> => {
     try {
-      // Create a special instance for file uploads
-      const response = await axios.post(
-        `${api.defaults.baseURL}/preventive-maintenance/${pmId}/upload-images/`,
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-            'Authorization': typeof window !== 'undefined' 
-              ? `Bearer ${localStorage.getItem('accessToken')}`
-              : ''
-          }
-        }
-      );
+      const response = await uploadFile(API_ROUTES.PM_UPLOAD(pmId), formData);
+      
       return {
         success: true,
-        data: response.data
+        data: response
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error uploading images for PM ${pmId}:`, error);
       return {
         success: false,
-        error: `Failed to upload images for PM ${pmId}`
+        error: error.message || `Failed to upload images for PM ${pmId}`
       };
     }
   },
@@ -323,20 +299,40 @@ const preventiveMaintenanceService = {
   
   /**
    * Get all topics for preventive maintenance
-   * Related endpoint: GET /topics/ (router registered)
    */
-  getTopics: async (): Promise<ServiceResponse<Topic[]>> => {
+  getTopics: async (): Promise<ServiceResponse<any>> => {
     try {
-      const response = await api.get('/topics/');
+      const response = await fetchData(API_ROUTES.TOPICS);
+      
       return {
         success: true,
-        data: response.data
+        data: response
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching topics:', error);
       return {
         success: false,
-        error: 'Failed to fetch topics'
+        error: error.message || 'Failed to fetch topics'
+      };
+    }
+  },
+
+  /**
+   * Get preventive maintenance jobs
+   */
+  getPreventiveMaintenanceJobs: async (params: Record<string, any> = {}): Promise<ServiceResponse<any>> => {
+    try {
+      const response = await fetchData(API_ROUTES.JOBS, { params });
+      
+      return {
+        success: true,
+        data: response
+      };
+    } catch (error: any) {
+      console.error('Error fetching preventive maintenance jobs:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch preventive maintenance jobs'
       };
     }
   }
