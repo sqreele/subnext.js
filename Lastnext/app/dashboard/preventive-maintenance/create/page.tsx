@@ -3,10 +3,12 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { PreventiveMaintenanceProvider } from '@/app/lib/PreventiveContext';
 import PreventiveMaintenanceForm from '@/app/components/preventive/PreventiveMaintenanceForm';
 import { PreventiveMaintenance } from '@/app/lib/preventiveMaintenanceModels';
 
-export default function CreatePreventiveMaintenancePage() {
+// Create page content component that doesn't require context
+function CreatePageContent() {
   const router = useRouter();
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
 
@@ -15,7 +17,7 @@ export default function CreatePreventiveMaintenancePage() {
     setIsSubmitted(true);
     // Redirect after a short delay to show success message
     setTimeout(() => {
-      router.push(`/preventive-maintenance/${data.pm_id}`);
+      router.push(`/dashboard/preventive-maintenance/${data.pm_id}`);
     }, 1500);
   };
 
@@ -24,7 +26,7 @@ export default function CreatePreventiveMaintenancePage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Create Preventive Maintenance</h1>
         <Link 
-          href="/preventive-maintenance" 
+          href="/dashboard/preventive-maintenance" 
           className="bg-gray-100 py-2 px-4 rounded-md text-gray-700 hover:bg-gray-200"
         >
           Back to List
@@ -40,6 +42,19 @@ export default function CreatePreventiveMaintenancePage() {
           onSuccessAction={handleSuccess}
         />
       )}
+    </div>
+  );
+}
+
+// Main page component that provides the context
+// We're providing the context for future compatibility
+// even though the current form doesn't use it yet
+export default function CreatePreventiveMaintenancePage() {
+  return (
+    <div className="bg-gray-50 min-h-screen">
+      <PreventiveMaintenanceProvider>
+        <CreatePageContent />
+      </PreventiveMaintenanceProvider>
     </div>
   );
 }
