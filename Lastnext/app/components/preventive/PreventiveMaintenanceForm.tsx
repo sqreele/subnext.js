@@ -2,21 +2,27 @@
 
 import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
-import { 
-  PreventiveMaintenance, 
-  PreventiveMaintenanceRequest,
+import {
+  PreventiveMaintenance,
+  PreventiveMaintenanceRequest as OriginalPMRequest,
   FREQUENCY_OPTIONS,
   validateFrequency,
+  FrequencyType,
   Topic,
-  MaintenanceJobData
+  PMFormErrors,
+  ServiceResponse,
 } from '@/app/lib/preventiveMaintenanceModels';
+
+// Extend the original request type to include pmtitle
+interface PreventiveMaintenanceRequest extends OriginalPMRequest {
+  pmtitle?: string;
+}
 import preventiveMaintenanceService from '@/app/lib/PreventiveMaintenanceService';
 import api from '@/app/lib/api-client';
 
 interface PreventiveMaintenanceFormProps {
   pmId?: string | null;
   onSuccessAction: (data: PreventiveMaintenance) => void;
-  apiBaseUrl?: string;
   initialData?: PreventiveMaintenance | null;
 }
 
@@ -26,17 +32,18 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
   initialData,
 }) => {
   const { data: session } = useSession();
-  
-  // State for available jobs and topics
-  const [availableJobs, setAvailableJobs] = useState<MaintenanceJobData[]>([]);
+
+  // State for available topics
   const [availableTopics, setAvailableTopics] = useState<Topic[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isImageUploading, setIsImageUploading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Form state
   const [formData, setFormData] = useState<{
+    pmtitle: string;
     scheduled_date: string;
-    frequency: string;
+    frequency: FrequencyType;
     custom_days: number | null;
     notes: string;
     before_image_id: number | null;
@@ -45,6 +52,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     after_image_file?: File | null;
     selected_topics: number[];
   }>({
+    pmtitle: '',
     scheduled_date: formatDateForInput(new Date()),
     frequency: 'monthly',
     custom_days: null,
@@ -53,22 +61,15 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     after_image_id: null,
     before_image_file: null,
     after_image_file: null,
-    selected_topics: []
+    selected_topics: [],
   });
 
   // Validation state
-  const [formErrors, setFormErrors] = useState<{
-    scheduled_date?: string;
-    frequency?: string;
-    custom_days?: string;
-  }>({});
-
-  const [selectedFrequency, setSelectedFrequency] = useState<string>('monthly');
+  const [formErrors, setFormErrors] = useState<PMFormErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitLoading, setSubmitLoading] = useState<boolean>(false);
   const [beforeImagePreview, setBeforeImagePreview] = useState<string | null>(null);
   const [afterImagePreview, setAfterImagePreview] = useState<string | null>(null);
-  const [selectedJob, setSelectedJob] = useState<MaintenanceJobData | null>(null);
 
   // Helper function to format date for input field
   function formatDateForInput(date: Date): string {
@@ -78,163 +79,167 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     return `${year}-${month}-${day}`;
   }
 
+  // Helper function to extract PreventiveMaintenance from ServiceResponse
+  function extractPreventiveMaintenanceData(
+    response: ServiceResponse<PreventiveMaintenance> | PreventiveMaintenance
+  ): PreventiveMaintenance {
+    if ('success' in response && response.success && response.data) {
+      return response.data;
+    } else {
+      return response as PreventiveMaintenance;
+    }
+  }
+
   // Clear error
   const clearError = () => {
     setError(null);
+    setSubmitError(null);
   };
 
-  // Fetch jobs from API
-  const fetchAvailableJobs = async () => {
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      const result = await preventiveMaintenanceService.getPreventiveMaintenanceJobs();
-      const jobs = Array.isArray(result) ? result : result.jobs || [];
-      setAvailableJobs(jobs as MaintenanceJobData[]);
-    } catch (err: any) {
-      console.error('Error fetching available jobs:', err);
-      setError(err.message || 'Failed to fetch available jobs');
-    } finally {
-      setIsLoading(false);
-    }
+  // Reset form after successful creation
+  const resetForm = () => {
+    setFormData({
+      pmtitle: '',
+      scheduled_date: formatDateForInput(new Date()),
+      frequency: 'monthly',
+      custom_days: null,
+      notes: '',
+      before_image_id: null,
+      after_image_id: null,
+      before_image_file: null,
+      after_image_file: null,
+      selected_topics: [],
+    });
+    setBeforeImagePreview(null);
+    setAfterImagePreview(null);
+    setFormErrors({});
   };
-  
+
   // Fetch available topics
   const fetchAvailableTopics = async () => {
     try {
-      // Make sure we have a valid session token
       if (session?.user?.accessToken) {
-        // Store token in localStorage for API client to use
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('accessToken', session.user.accessToken);
-        }
-        
-        // Use the correct API endpoint with authentication
-        const response = await api.get('/api/topics/');
-        if (response.data) {
+        const response = await api.get('/api/topics/', {
+          headers: { Authorization: `Bearer ${session.user.accessToken}` },
+        });
+        if (response.data && response.data.topics) {
+          setAvailableTopics(response.data.topics);
+        } else if (response.data) {
           setAvailableTopics(response.data);
         }
       }
     } catch (err: any) {
       console.error('Error fetching available topics:', err);
-      // Not setting error here to avoid blocking the form
+      setError('Failed to load topics. Please try again.');
     }
   };
 
   // Handle topic selection
   const handleTopicChange = (topicId: number) => {
-    setFormData(prevData => {
+    setFormData((prevData) => {
       const currentSelectedTopics = [...prevData.selected_topics];
       const index = currentSelectedTopics.indexOf(topicId);
-      
+
       if (index === -1) {
-        // Add topic if not already selected
         currentSelectedTopics.push(topicId);
       } else {
-        // Remove topic if already selected
         currentSelectedTopics.splice(index, 1);
       }
-      
+
       return {
         ...prevData,
-        selected_topics: currentSelectedTopics
+        selected_topics: currentSelectedTopics,
       };
     });
   };
-  
+
   // Initialize data
   useEffect(() => {
-    fetchAvailableJobs();
     fetchAvailableTopics();
-    
-    // Set initial data if provided
+
     if (initialData) {
-      // Get topic IDs from the job
       const topicIds: number[] = [];
-      if (initialData.job && typeof initialData.job === 'object' && 'topics' in initialData.job && Array.isArray(initialData.job.topics)) {
-        initialData.job.topics.forEach(topic => {
+
+      if ('topics' in initialData && initialData.topics && Array.isArray(initialData.topics)) {
+        initialData.topics.forEach((topic) => {
           if (typeof topic === 'object' && 'id' in topic) {
             topicIds.push(topic.id);
+          } else if (typeof topic === 'number') {
+            topicIds.push(topic);
           }
         });
       }
-      
+
       setFormData({
-        scheduled_date: initialData.scheduled_date ? formatDateForInput(new Date(initialData.scheduled_date)) : formatDateForInput(new Date()),
-        frequency: initialData.frequency || 'monthly',
+        pmtitle: initialData.pmtitle || '',
+        scheduled_date: initialData.scheduled_date
+          ? formatDateForInput(new Date(initialData.scheduled_date))
+          : formatDateForInput(new Date()),
+        frequency: validateFrequency(initialData.frequency || 'monthly'),
         custom_days: initialData.custom_days !== undefined ? initialData.custom_days : null,
         notes: initialData.notes || '',
-        before_image_id: initialData.before_image?.id || null,
-        after_image_id: initialData.after_image?.id || null,
+        before_image_id: initialData.before_image?.id ? Number(initialData.before_image.id) : null,
+        after_image_id: initialData.after_image?.id ? Number(initialData.after_image.id) : null,
         before_image_file: null,
         after_image_file: null,
-        selected_topics: topicIds
+        selected_topics: topicIds,
       });
-      
-      setSelectedFrequency(initialData.frequency || 'monthly');
-      
-      if (initialData.before_image?.image_url) {
-        setBeforeImagePreview(initialData.before_image.image_url);
+
+      if (initialData.before_image_url) {
+        setBeforeImagePreview(initialData.before_image_url);
       }
-      if (initialData.after_image?.image_url) {
-        setAfterImagePreview(initialData.after_image.image_url);
-      }
-      
-      // If job is available, set the selected job
-      if (initialData.job && typeof initialData.job === 'object') {
-        setSelectedJob(initialData.job as MaintenanceJobData);
+      if (initialData.after_image_url) {
+        setAfterImagePreview(initialData.after_image_url);
       }
     }
   }, [initialData]);
-  
+
   // Fetch maintenance data if pmId is provided but no initialData
   useEffect(() => {
     if (pmId && !initialData) {
       setIsLoading(true);
-      setError(null);
-      
-      preventiveMaintenanceService.getPreventiveMaintenanceById(pmId)
-        .then(data => {
-          // Get topic IDs from the job
+      clearError();
+
+      preventiveMaintenanceService
+        .getPreventiveMaintenanceById(pmId)
+        .then((response) => {
+          const data = extractPreventiveMaintenanceData(response);
+
           const topicIds: number[] = [];
-          if (data.job && typeof data.job === 'object' && 'topics' in data.job && Array.isArray(data.job.topics)) {
-            data.job.topics.forEach(topic => {
+
+          if ('topics' in data && data.topics && Array.isArray(data.topics)) {
+            data.topics.forEach((topic) => {
               if (typeof topic === 'object' && 'id' in topic) {
                 topicIds.push(topic.id);
+              } else if (typeof topic === 'number') {
+                topicIds.push(topic);
               }
             });
           }
-          
-          // Set form data
+
           setFormData({
-            scheduled_date: data.scheduled_date ? formatDateForInput(new Date(data.scheduled_date)) : formatDateForInput(new Date()),
-            frequency: data.frequency || 'monthly',
+            pmtitle: data.pmtitle || '',
+            scheduled_date: data.scheduled_date
+              ? formatDateForInput(new Date(data.scheduled_date))
+              : formatDateForInput(new Date()),
+            frequency: validateFrequency(data.frequency || 'monthly'),
             custom_days: data.custom_days !== undefined ? data.custom_days : null,
             notes: data.notes || '',
-            before_image_id: data.before_image?.id || null,
-            after_image_id: data.after_image?.id || null,
+            before_image_id: data.before_image?.id ? Number(data.before_image.id) : null,
+            after_image_id: data.after_image?.id ? Number(data.after_image.id) : null,
             before_image_file: null,
             after_image_file: null,
-            selected_topics: topicIds
+            selected_topics: topicIds,
           });
-          
-          setSelectedFrequency(data.frequency || 'monthly');
-          
-          // Set image previews
-          if (data.before_image?.image_url) {
-            setBeforeImagePreview(data.before_image.image_url);
+
+          if (data.before_image_url) {
+            setBeforeImagePreview(data.before_image_url);
           }
-          if (data.after_image?.image_url) {
-            setAfterImagePreview(data.after_image.image_url);
-          }
-          
-          // If job is available, set the selected job
-          if (data.job && typeof data.job === 'object') {
-            setSelectedJob(data.job as MaintenanceJobData);
+          if (data.after_image_url) {
+            setAfterImagePreview(data.after_image_url);
           }
         })
-        .catch(err => {
+        .catch((err) => {
           console.error('Error fetching maintenance data:', err);
           setError(err.message || 'Failed to fetch maintenance data');
         })
@@ -244,31 +249,23 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     }
   }, [pmId, initialData]);
 
-  // Update frequency state when form value changes
-  useEffect(() => {
-    setSelectedFrequency(formData.frequency);
-  }, [formData.frequency]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
+  ) => {
     const { name, value } = e.target;
-    
+
     if (name === 'custom_days') {
       const numValue = value ? parseInt(value, 10) : null;
-      setFormData(prev => ({ ...prev, [name]: numValue }));
+      setFormData((prev) => ({ ...prev, [name]: numValue }));
+    } else if (name === 'frequency') {
+      setFormData((prev) => ({ ...prev, [name]: validateFrequency(value) }));
     } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
+      setFormData((prev) => ({ ...prev, [name]: value }));
     }
-    
-    // Clear validation errors when field is changed
-    if (formErrors[name as keyof typeof formErrors]) {
-      setFormErrors(prev => ({ ...prev, [name]: undefined }));
-    }
-  };
 
-  const handleJobSelection = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedJobId = e.target.value;
-    const job = availableJobs.find(j => j.id === selectedJobId);
-    setSelectedJob(job || null);
+    if (formErrors[name as keyof typeof formErrors]) {
+      setFormErrors((prev) => ({ ...prev, [name]: undefined }));
+    }
   };
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>, type: 'before' | 'after') => {
@@ -283,148 +280,151 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         }
       };
       reader.readAsDataURL(file);
-      
-      // Set the file in the form
+
       if (type === 'before') {
-        setFormData(prev => ({ ...prev, before_image_file: file }));
+        setFormData((prev) => ({ ...prev, before_image_file: file }));
       } else {
-        setFormData(prev => ({ ...prev, after_image_file: file }));
+        setFormData((prev) => ({ ...prev, after_image_file: file }));
       }
     }
   };
 
   const validateForm = (): boolean => {
-    const errors: {
-      scheduled_date?: string;
-      frequency?: string;
-      custom_days?: string;
-    } = {};
-    
-    if (!selectedJob) {
-      setError('Please select a job');
-      return false;
-    }
-    
+    const errors: PMFormErrors = {};
+
     if (!formData.scheduled_date) {
       errors.scheduled_date = 'Scheduled date is required';
     }
-    
+
     if (!formData.frequency) {
       errors.frequency = 'Frequency is required';
     }
-    
+
     if (formData.frequency === 'custom' && (!formData.custom_days || formData.custom_days < 1)) {
       errors.custom_days = 'Custom days must be at least 1';
     }
-    
+
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!validateForm() || !selectedJob) {
+
+    if (!validateForm()) {
       return;
     }
-    
+
     setSubmitLoading(true);
-    setSubmitError(null);
-    
+    clearError();
+
     try {
-      // Check if we have a valid session
       if (!session?.user?.accessToken) {
-        throw new Error("Authentication token is missing. Please log in again.");
+        throw new Error('Authentication required. Please log in.');
       }
-      
-      // Configure service with session token
-      const accessToken = session.user.accessToken;
-      
-      // Store token in localStorage to be used by the API client
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('accessToken', accessToken);
-      }
-      
-      // Build request data
+
+      // Create the request data object with standard fields
       const requestData: PreventiveMaintenanceRequest = {
-        job_id: selectedJob.id, // Use selectedJob.id instead of job_id
         scheduled_date: formData.scheduled_date,
-        frequency: validateFrequency(formData.frequency),
+        frequency: formData.frequency,
         custom_days: formData.frequency === 'custom' ? formData.custom_days : null,
         notes: formData.notes || '',
         before_image_id: formData.before_image_id,
         after_image_id: formData.after_image_id,
+        topic_ids: formData.selected_topics.length > 0 ? formData.selected_topics : undefined,
       };
-
-      // Add topics to request data
-      if (formData.selected_topics.length > 0) {
-        (requestData as any).topic_ids = formData.selected_topics;
+      
+      // Only add pmtitle if it's not empty
+      if (formData.pmtitle) {
+        requestData.pmtitle = formData.pmtitle;
       }
 
-      let result: PreventiveMaintenance;
-
-      // Use pmId over initialData if both are provided
       const maintenanceId = pmId || (initialData ? initialData.pm_id : null);
+      let response;
 
       if (maintenanceId) {
-        // Update existing record
-        result = await preventiveMaintenanceService.updatePreventiveMaintenance(
+        // Update existing maintenance
+        response = await preventiveMaintenanceService.updatePreventiveMaintenance(
           maintenanceId,
           requestData
         );
       } else {
-        // Create new record
-        result = await preventiveMaintenanceService.createPreventiveMaintenance(requestData);
+        // Create new maintenance
+        response = await preventiveMaintenanceService.createPreventiveMaintenance(
+          requestData
+        );
       }
 
-      // Handle image uploads if needed
-      if ((formData.before_image_file || formData.after_image_file) && result.job) {
-        const jobId = typeof result.job === 'object' ? result.job.id : '';
-        
-        if (jobId) {
-          const formDataForImages = new FormData();
-          
-          if (formData.before_image_file) {
-            formDataForImages.append('images', formData.before_image_file);
-            formDataForImages.append('image_types', 'before');
-          }
-          
-          if (formData.after_image_file) {
-            formDataForImages.append('images', formData.after_image_file);
-            formDataForImages.append('image_types', 'after');
-          }
-          
-          // Upload images
-          const uploadResult = await preventiveMaintenanceService.uploadJobImages(
-            jobId,
-            formDataForImages
+      let maintenanceData = extractPreventiveMaintenanceData(response);
+
+      if (!maintenanceData || !('pm_id' in maintenanceData)) {
+        throw new Error('Failed to save maintenance record');
+      }
+
+      if (formData.before_image_file || formData.after_image_file) {
+        setIsImageUploading(true);
+        const formDataForImages = new FormData();
+
+        if (formData.before_image_file) {
+          formDataForImages.append('images', formData.before_image_file);
+          formDataForImages.append('image_types', 'before');
+        }
+
+        if (formData.after_image_file) {
+          formDataForImages.append('images', formData.after_image_file);
+          formDataForImages.append('image_types', 'after');
+        }
+
+        // Note: We're using uploadJobImages but passing the PM ID as the job ID
+        // This is a temporary solution until a dedicated PM image upload endpoint is available
+        const uploadResponse = await preventiveMaintenanceService.uploadJobImages(
+          maintenanceData.pm_id,
+          formDataForImages
+        );
+
+        // Check if upload was successful
+        if (
+          ('success' in uploadResponse && uploadResponse.success) || 
+          (!('success' in uploadResponse) && uploadResponse)
+        ) {
+          // Fetch the updated PM record with new image URLs
+          const updatedPMResponse = await preventiveMaintenanceService.getPreventiveMaintenanceById(
+            maintenanceData.pm_id
           );
-          
-          // If successful, refetch the PM to get updated image info
-          if (uploadResult) {
-            const updatedPM = await preventiveMaintenanceService.getPreventiveMaintenanceById(result.pm_id);
-            result = updatedPM;
+
+          const updatedPM = extractPreventiveMaintenanceData(updatedPMResponse);
+
+          if (updatedPM && 'pm_id' in updatedPM) {
+            maintenanceData = updatedPM;
           }
         }
       }
 
-      // Call the success action with the result
-      onSuccessAction(result);
-    } catch (error) {
+      onSuccessAction(maintenanceData);
+
+      if (!maintenanceId) {
+        resetForm();
+      }
+    } catch (error: any) {
       console.error('Error submitting form:', error);
-      setSubmitError(error instanceof Error ? error.message : 'An unexpected error occurred');
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'An unexpected error occurred while saving the maintenance record';
+      setSubmitError(errorMessage);
     } finally {
       setSubmitLoading(false);
+      setIsImageUploading(false);
     }
   };
 
   const removeImage = (type: 'before' | 'after') => {
     if (type === 'before') {
       setBeforeImagePreview(null);
-      setFormData(prev => ({ ...prev, before_image_file: null }));
+      setFormData((prev) => ({ ...prev, before_image_file: null, before_image_id: null }));
     } else {
       setAfterImagePreview(null);
-      setFormData(prev => ({ ...prev, after_image_file: null }));
+      setFormData((prev) => ({ ...prev, after_image_file: null, after_image_id: null }));
     }
   };
 
@@ -434,66 +434,42 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
           <div className="flex justify-between">
             <p>{error || submitError}</p>
-            <button 
-              onClick={() => {
-                clearError();
-                setSubmitError(null);
-              }}
+            <button
+              onClick={clearError}
               className="text-red-700"
               type="button"
+              aria-label="Close error message"
             >
-              &times;
+              ×
             </button>
           </div>
         </div>
       )}
-      
-      <form onSubmit={handleSubmit}>
+
+      <form onSubmit={handleSubmit} aria-label="Preventive Maintenance Form">
         <div className="mb-6">
-          <label htmlFor="job_selection" className="block text-sm font-medium text-gray-700 mb-1">
-            Maintenance Job <span className="text-red-500">*</span>
-          </label>
-          <select
-            id="job_selection"
-            value={selectedJob?.id || ''}
-            onChange={handleJobSelection}
-            className={`w-full p-2 border rounded-md ${!selectedJob ? 'border-red-500' : 'border-gray-300'}`}
-            disabled={isLoading}
+          <label
+            htmlFor="pmtitle"
+            className="block text-sm font-medium text-gray-700 mb-1"
           >
-            <option value="">Select a job</option>
-            {availableJobs.map((job) => (
-              <option key={job.id} value={job.id}>
-                {job.description} (#{job.id})
-              </option>
-            ))}
-          </select>
-          {!selectedJob && error && (
-            <p className="mt-1 text-sm text-red-500">Please select a job</p>
-          )}
+            Maintenance Title
+          </label>
+          <input
+            type="text"
+            id="pmtitle"
+            name="pmtitle"
+            value={formData.pmtitle}
+            onChange={handleChange}
+            className="w-full p-2 border border-gray-300 rounded-md"
+            placeholder="Enter maintenance title (optional)"
+          />
         </div>
 
-        {selectedJob && (
-          <div className="mb-6 p-4 bg-gray-50 rounded-md">
-            <h3 className="font-medium text-gray-700">Selected Job Details</h3>
-            <p><span className="font-medium">ID:</span> {selectedJob.id}</p>
-            <p><span className="font-medium">Description:</span> {selectedJob.description}</p>
-            <p>
-              <span className="font-medium">Priority:</span>{' '}
-              <span className={`${
-                selectedJob.priority === 'high' 
-                  ? 'text-red-600' 
-                  : selectedJob.priority === 'medium' 
-                    ? 'text-yellow-600' 
-                    : 'text-green-600'
-              }`}>
-                {selectedJob.priority.toUpperCase()}
-              </span>
-            </p>
-          </div>
-        )}
-
         <div className="mb-6">
-          <label htmlFor="scheduled_date" className="block text-sm font-medium text-gray-700 mb-1">
+          <label
+            htmlFor="scheduled_date"
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
             Scheduled Date <span className="text-red-500">*</span>
           </label>
           <input
@@ -502,7 +478,11 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
             name="scheduled_date"
             value={formData.scheduled_date}
             onChange={handleChange}
-            className={`w-full p-2 border rounded-md ${formErrors.scheduled_date ? 'border-red-500' : 'border-gray-300'}`}
+            className={`w-full p-2 border rounded-md ${
+              formErrors.scheduled_date ? 'border-red-500' : 'border-gray-300'
+            }`}
+            aria-required="true"
+            aria-invalid={!!formErrors.scheduled_date}
           />
           {formErrors.scheduled_date && (
             <p className="mt-1 text-sm text-red-500">{formErrors.scheduled_date}</p>
@@ -518,7 +498,11 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
             name="frequency"
             value={formData.frequency}
             onChange={handleChange}
-            className={`w-full p-2 border rounded-md ${formErrors.frequency ? 'border-red-500' : 'border-gray-300'}`}
+            className={`w-full p-2 border rounded-md ${
+              formErrors.frequency ? 'border-red-500' : 'border-gray-300'
+            }`}
+            aria-required="true"
+            aria-invalid={!!formErrors.frequency}
           >
             {FREQUENCY_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -531,9 +515,12 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
           )}
         </div>
 
-        {selectedFrequency === 'custom' && (
+        {formData.frequency === 'custom' && (
           <div className="mb-6">
-            <label htmlFor="custom_days" className="block text-sm font-medium text-gray-700 mb-1">
+            <label
+              htmlFor="custom_days"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
               Custom Days Interval <span className="text-red-500">*</span>
             </label>
             <input
@@ -544,7 +531,11 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
               max="365"
               value={formData.custom_days || ''}
               onChange={handleChange}
-              className={`w-full p-2 border rounded-md ${formErrors.custom_days ? 'border-red-500' : 'border-gray-300'}`}
+              className={`w-full p-2 border rounded-md ${
+                formErrors.custom_days ? 'border-red-500' : 'border-gray-300'
+              }`}
+              aria-required="true"
+              aria-invalid={!!formErrors.custom_days}
             />
             {formErrors.custom_days && (
               <p className="mt-1 text-sm text-red-500">{formErrors.custom_days}</p>
@@ -564,15 +555,23 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
             onChange={handleChange}
             className="w-full p-2 border border-gray-300 rounded-md"
             placeholder="Add any additional notes here..."
+            aria-describedby="notes-description"
           />
+          <p id="notes-description" className="sr-only">
+            Optional field for additional notes about the maintenance task
+          </p>
         </div>
-        
+
         <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Topics
-          </label>
-          <div className="border border-gray-300 rounded-md p-3 max-h-48 overflow-y-auto">
-            {availableTopics.length > 0 ? (
+          <label className="block text-sm font-medium text-gray-700 mb-1">Topics</label>
+          <div
+            className="border border-gray-300 rounded-md p-3 max-h-48 overflow-y-auto"
+            role="group"
+            aria-label="Select maintenance topics"
+          >
+            {isLoading ? (
+              <p className="text-sm text-gray-500 italic">Loading topics...</p>
+            ) : availableTopics.length > 0 ? (
               <div className="grid grid-cols-1 gap-2">
                 {availableTopics.map((topic) => (
                   <div key={topic.id} className="flex items-center">
@@ -582,15 +581,28 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                       checked={formData.selected_topics.includes(topic.id)}
                       onChange={() => handleTopicChange(topic.id)}
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      aria-checked={formData.selected_topics.includes(topic.id)}
                     />
-                    <label htmlFor={`topic-${topic.id}`} className="ml-2 block text-sm text-gray-900">
+                    <label
+                      htmlFor={`topic-${topic.id}`}
+                      className="ml-2 block text-sm text-gray-900"
+                    >
                       {topic.title}
                     </label>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-500 italic">No topics available</p>
+              <p className="text-sm text-gray-500 italic">
+                No topics available.{' '}
+                <button
+                  type="button"
+                  onClick={fetchAvailableTopics}
+                  className="text-blue-600 hover:underline"
+                >
+                  Try again
+                </button>
+              </p>
             )}
           </div>
         </div>
@@ -612,14 +624,27 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                     type="button"
                     onClick={() => removeImage('before')}
                     className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 w-6 h-6 flex items-center justify-center"
+                    aria-label="Remove before image"
                   >
-                    &times;
+                    ×
                   </button>
                 </div>
               ) : (
                 <label className="w-full h-40 flex flex-col items-center justify-center bg-gray-100 rounded-md cursor-pointer hover:bg-gray-200">
-                  <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                  <svg
+                    className="w-12 h-12 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                    ></path>
                   </svg>
                   <span className="mt-2 text-sm text-gray-500">Click to upload before image</span>
                   <input
@@ -627,6 +652,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                     accept="image/*"
                     onChange={(e) => handleImageChange(e, 'before')}
                     className="hidden"
+                    aria-label="Upload before image"
                   />
                 </label>
               )}
@@ -634,9 +660,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              After Image
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">After Image</label>
             <div className="flex flex-col items-center space-y-2">
               {afterImagePreview ? (
                 <div className="relative w-full h-40 bg-gray-100">
@@ -649,14 +673,27 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                     type="button"
                     onClick={() => removeImage('after')}
                     className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 w-6 h-6 flex items-center justify-center"
+                    aria-label="Remove after image"
                   >
-                    &times;
+                    ×
                   </button>
                 </div>
               ) : (
                 <label className="w-full h-40 flex flex-col items-center justify-center bg-gray-100 rounded-md cursor-pointer hover:bg-gray-200">
-                  <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                  <svg
+                    className="w-12 h-12 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                    ></path>
                   </svg>
                   <span className="mt-2 text-sm text-gray-500">Click to upload after image</span>
                   <input
@@ -664,6 +701,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                     accept="image/*"
                     onChange={(e) => handleImageChange(e, 'after')}
                     className="hidden"
+                    aria-label="Upload after image"
                   />
                 </label>
               )}
@@ -674,20 +712,41 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         <div className="flex justify-end">
           <button
             type="submit"
-            disabled={submitLoading || isLoading}
+            disabled={submitLoading || isLoading || isImageUploading}
             className={`px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-              (submitLoading || isLoading) ? 'opacity-50 cursor-not-allowed' : ''
+              submitLoading || isLoading || isImageUploading ? 'opacity-50 cursor-not-allowed' : ''
             }`}
+            aria-label={pmId || initialData ? 'Update maintenance' : 'Create maintenance'}
           >
-            {submitLoading ? (
+            {submitLoading || isImageUploading ? (
               <span className="flex items-center">
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg
+                  className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
                 </svg>
                 Processing...
               </span>
-            ) : pmId || initialData ? 'Update Maintenance' : 'Create Maintenance'}
+            ) : pmId || initialData ? (
+              'Update Maintenance'
+            ) : (
+              'Create Maintenance'
+            )}
           </button>
         </div>
       </form>

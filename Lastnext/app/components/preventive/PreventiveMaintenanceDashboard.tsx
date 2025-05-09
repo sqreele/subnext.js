@@ -2,65 +2,72 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { 
-  PMStatistics, 
-  PreventiveMaintenance,
-  FrequencyDistribution,
-  MaintenanceImage,
-  getImageUrl as getImageUrlHelper,
-  determinePMStatus
-} from '@/app/lib/preventiveMaintenanceModels';
-import preventiveMaintenanceService from '@/app/lib/PreventiveMaintenanceService';
+import { usePreventiveMaintenance } from '@/app/lib/PreventiveContext';
+import { PreventiveMaintenance } from '@/app/lib/preventiveMaintenanceModels';
 
-// Define types for the component state
-interface PMDashboardState {
-  counts: {
-    total: number;
-    completed: number;
-    pending: number;
-    overdue: number;
-  };
-  frequency_distribution: FrequencyDistribution[];
-  upcoming: PreventiveMaintenance[];
-}
+// Helper function to get image URL
+const getImageUrl = (image: any): string | null => {
+  if (!image) return null;
+  
+  // First try to get direct URL property
+  if (typeof image === 'object' && 'image_url' in image && image.image_url) {
+    return image.image_url;
+  }
+  
+  // If no direct URL but we have an ID, construct URL
+  if (typeof image === 'object' && 'id' in image && image.id) {
+    return `/api/images/${image.id}`;
+  }
+  
+  // If image is just a string URL
+  if (typeof image === 'string') {
+    return image;
+  }
+  
+  return null;
+};
+
+// Helper function to determine PM status
+const determinePMStatus = (item: PreventiveMaintenance): string => {
+  // If status is already set, return it
+  if (item.status) {
+    return item.status;
+  }
+  
+  // Get current date
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  // Check if completed
+  if (item.completed_date) {
+    return 'completed';
+  }
+  
+  // Check if scheduled date is in the past
+  if (item.scheduled_date) {
+    const scheduledDate = new Date(item.scheduled_date);
+    if (scheduledDate < today) {
+      return 'overdue';
+    }
+  }
+  
+  // Default to pending
+  return 'pending';
+};
 
 export default function PreventiveMaintenanceDashboard() {
-  // Initialize state with properly typed initial values
-  const [stats, setStats] = useState<PMDashboardState>({
-    counts: { total: 0, completed: 0, pending: 0, overdue: 0 },
-    frequency_distribution: [],
-    upcoming: []
-  });
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  // Use our context hook to access all maintenance data and actions
+  const { 
+    statistics, 
+    isLoading, 
+    error,
+    fetchStatistics 
+  } = usePreventiveMaintenance();
 
-  // Fetch stats
+  // Fetch stats on component mount
   useEffect(() => {
-    const fetchStats = async () => {
-      setIsLoading(true);
-      try {
-        const data = await preventiveMaintenanceService.getPreventiveMaintenanceStats();
-        
-        // Type guard to ensure data has the expected shape
-        const processedData: PMDashboardState = {
-          counts: data.counts || { total: 0, completed: 0, pending: 0, overdue: 0 },
-          frequency_distribution: Array.isArray(data.frequency_distribution) ? 
-            data.frequency_distribution : [],
-          upcoming: Array.isArray(data.upcoming) ? data.upcoming : []
-        };
-        
-        setStats(processedData);
-      } catch (err: any) {
-        console.error('Error fetching statistics:', err);
-        setError(err.message || 'Failed to load statistics');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchStats();
-  }, []);
+    fetchStatistics();
+  }, [fetchStatistics]);
 
   // Format date
   const formatDate = (dateString: string | null | undefined): string => {
@@ -74,8 +81,8 @@ export default function PreventiveMaintenanceDashboard() {
 
   // Get completion rate percentage
   const getCompletionRate = (): number => {
-    if (!stats.counts.total) return 0;
-    return Math.round((stats.counts.completed / stats.counts.total) * 100);
+    if (!statistics?.counts.total) return 0;
+    return Math.round((statistics.counts.completed / statistics.counts.total) * 100);
   };
 
   // Status badge styling
@@ -89,37 +96,11 @@ export default function PreventiveMaintenanceDashboard() {
     }
   };
 
-  // Extract job ID from PM item
-  const getJobId = (item: PreventiveMaintenance): string | null => {
-    if (item.job_details?.id) {
-      return item.job_details.id;
-    }
-    
-    if (typeof item.job === 'object' && item.job) {
-      return item.job.id;
-    }
-    
-    return (item as any).job_id || null;
+  // Get maintenance title with fallback
+  const getMaintenanceTitle = (item: PreventiveMaintenance): string => {
+    return item.pmtitle || `Maintenance #${item.pm_id}`;
   };
   
-  // Extract job description from PM item
-  const getJobDescription = (item: PreventiveMaintenance): string => {
-    // First try to get it from job_details
-    if (item.job_details?.description) {
-      return item.job_details.description;
-    }
-    
-    // Then try from job object
-    if (typeof item.job === 'object' && item.job) {
-      if ('description' in item.job) {
-        return (item.job as any).description;
-      }
-    }
-    
-    // Return a default if nothing found
-    return 'No description';
-  };
-
   if (isLoading) {
     return (
       <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
@@ -143,6 +124,23 @@ export default function PreventiveMaintenanceDashboard() {
         >
           View All Maintenance Tasks
         </Link>
+      </div>
+    );
+  }
+
+  // If statistics is null, show a no data message
+  if (!statistics) {
+    return (
+      <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <div className="text-center py-10">
+          <p className="text-lg text-gray-500">No maintenance data available.</p>
+          <Link 
+            href="/preventive-maintenance/create" 
+            className="mt-4 inline-block bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"
+          >
+            Create Your First Maintenance Task
+          </Link>
+        </div>
       </div>
     );
   }
@@ -179,7 +177,7 @@ export default function PreventiveMaintenanceDashboard() {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500">Total Tasks</p>
-              <p className="text-3xl font-bold text-gray-900">{stats.counts.total}</p>
+              <p className="text-3xl font-bold text-gray-900">{statistics.counts.total}</p>
             </div>
           </div>
         </div>
@@ -194,7 +192,7 @@ export default function PreventiveMaintenanceDashboard() {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500">Pending</p>
-              <p className="text-3xl font-bold text-gray-900">{stats.counts.pending}</p>
+              <p className="text-3xl font-bold text-gray-900">{statistics.counts.pending}</p>
             </div>
           </div>
         </div>
@@ -209,7 +207,7 @@ export default function PreventiveMaintenanceDashboard() {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500">Overdue</p>
-              <p className="text-3xl font-bold text-red-600">{stats.counts.overdue}</p>
+              <p className="text-3xl font-bold text-red-600">{statistics.counts.overdue}</p>
             </div>
           </div>
         </div>
@@ -224,7 +222,7 @@ export default function PreventiveMaintenanceDashboard() {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500">Completed</p>
-              <p className="text-3xl font-bold text-green-600">{stats.counts.completed}</p>
+              <p className="text-3xl font-bold text-green-600">{statistics.counts.completed}</p>
             </div>
           </div>
         </div>
@@ -243,16 +241,16 @@ export default function PreventiveMaintenanceDashboard() {
           <span className="ml-4 text-xl font-bold">{getCompletionRate()}%</span>
         </div>
         <p className="text-sm text-gray-500">
-          {stats.counts.completed} of {stats.counts.total} maintenance tasks completed
+          {statistics.counts.completed} of {statistics.counts.total} maintenance tasks completed
         </p>
       </div>
       
       {/* Frequency Distribution */}
-      {stats.frequency_distribution && stats.frequency_distribution.length > 0 && (
+      {statistics.frequency_distribution && statistics.frequency_distribution.length > 0 && (
         <div className="bg-white rounded-lg shadow p-6 mb-8">
           <h2 className="text-lg font-semibold text-gray-700 mb-4">Maintenance Frequency Distribution</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {stats.frequency_distribution.map((item) => (
+            {statistics.frequency_distribution.map((item) => (
               <div key={item.frequency} className="bg-gray-50 rounded-lg p-4 text-center">
                 <p className="text-xl font-bold text-gray-900">{item.count}</p>
                 <p className="text-sm font-medium text-gray-500 capitalize">
@@ -265,7 +263,7 @@ export default function PreventiveMaintenanceDashboard() {
       )}
       
       {/* Upcoming Maintenance */}
-      {stats.upcoming && stats.upcoming.length > 0 && (
+      {statistics.upcoming && statistics.upcoming.length > 0 && (
         <div className="bg-white rounded-lg shadow mb-8">
           <div className="px-6 py-4 border-b">
             <h2 className="text-lg font-semibold text-gray-700">Upcoming Maintenance</h2>
@@ -278,10 +276,13 @@ export default function PreventiveMaintenanceDashboard() {
                     ID
                   </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Job
+                    Title
                   </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
+                    Scheduled Date
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Next Due Date
                   </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
@@ -295,17 +296,16 @@ export default function PreventiveMaintenanceDashboard() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {stats.upcoming.map((item) => {
-                  // Get job info
-                  const jobId = getJobId(item);
-                  const jobDescription = getJobDescription(item);
-                  
+                {statistics.upcoming.map((item) => {
                   // Determine PM status
                   const status = item.status || determinePMStatus(item);
                   
+                  // Get maintenance title
+                  const title = getMaintenanceTitle(item);
+                  
                   // Get image URLs
-                  const beforeImageUrl = item.before_image ? getImageUrlHelper(item.before_image) : null;
-                  const afterImageUrl = item.after_image ? getImageUrlHelper(item.after_image) : null;
+                  const beforeImageUrl = item.before_image_url || (item.before_image ? getImageUrl(item.before_image) : null);
+                  const afterImageUrl = item.after_image_url || (item.after_image ? getImageUrl(item.after_image) : null);
                   
                   return (
                     <tr key={item.pm_id} className="hover:bg-gray-50">
@@ -313,22 +313,15 @@ export default function PreventiveMaintenanceDashboard() {
                         <span className="font-medium text-blue-600">{item.pm_id}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {jobId ? (
-                          <Link 
-                            href={`/maintenance/jobs/${jobId}`}
-                            className="text-blue-600 hover:text-blue-800 hover:underline"
-                          >
-                            {jobId}
-                          </Link>
-                        ) : (
-                          <span>Unknown Job</span>
-                        )}
-                        <p className="text-sm text-gray-500 truncate max-w-[200px]">
-                          {jobDescription}
+                        <p className="text-sm truncate max-w-[200px]">
+                          {title}
                         </p>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {formatDate(item.scheduled_date)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {formatDate(item.next_due_date)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={getStatusBadge(status)}>

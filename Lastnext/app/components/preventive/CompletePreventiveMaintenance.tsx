@@ -3,12 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { 
-  PreventiveMaintenance, 
-  MaintenanceImage,
-  CompletePMRequest
-} from '@/app/lib/preventiveMaintenanceModels';
-import preventiveMaintenanceService from '@/app/lib/PreventiveMaintenanceService';
+import { usePreventiveMaintenance } from '@/app/lib/PreventiveContext';
+import { PreventiveMaintenance, MaintenanceImage } from '@/app/lib/preventiveMaintenanceModels';
+import { PreventiveMaintenanceCompleteRequest } from '@/app/lib/PreventiveMaintenanceService';
 
 interface CompletePreventiveMaintenanceProps {
   params: {
@@ -20,85 +17,81 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
   const router = useRouter();
   const pmId = params?.id;
   
-  const [maintenanceData, setMaintenanceData] = useState<PreventiveMaintenance | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [completionData, setCompletionData] = useState<CompletePMRequest>({
+  // Use context for state management and actions
+  const { 
+    selectedMaintenance,
+    isLoading,
+    error,
+    fetchMaintenanceById,
+    completeMaintenance,
+    clearError
+  } = usePreventiveMaintenance();
+
+  // Local state
+  const [completionData, setCompletionData] = useState<PreventiveMaintenanceCompleteRequest>({
     completed_date: new Date().toISOString().slice(0, 16), // Format: YYYY-MM-DDThh:mm
     notes: '',
-    after_image_id: null
+    after_image_id: null,
+    before_image_id: null
   });
-  const [availableImages, setAvailableImages] = useState<MaintenanceImage[]>([]);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Fetch maintenance record and available images
+  // Fetch maintenance record
   useEffect(() => {
-    const fetchData = async (): Promise<void> => {
-      if (!pmId) return;
-      
-      setIsLoading(true);
-      try {
-        // Get maintenance record
-        const data = await preventiveMaintenanceService.getPreventiveMaintenanceById(pmId);
-        setMaintenanceData(data);
-        
-        // Pre-populate notes if any exist
-        if (data.notes) {
-          setCompletionData(prev => ({
-            ...prev,
-            notes: data.notes || ''
-          }));
-        }
-        
-        // If already completed, show message
-        if (data.completed_date) {
-          setSuccessMessage('This maintenance task has already been completed.');
-          return;
-        }
-        
-        // Fetch job images if we have a job ID
-        const jobId = typeof data.job === 'object' && data.job ? 
-          data.job.id : 
-          (typeof data.job === 'string' ? data.job : null);
-        if (jobId) {
-          try {
-            const jobResponse = await preventiveMaintenanceService.getPreventiveMaintenanceJobs({
-              job_id: jobId
-            });
-            
-            let jobData;
-            if (Array.isArray(jobResponse)) {
-              jobData = jobResponse.find(job => job.id === jobId);
-            } else if (jobResponse.jobs && Array.isArray(jobResponse.jobs)) {
-              jobData = jobResponse.jobs.find(job => job.id === jobId);
-            }
-            
-            if (jobData && jobData.images) {
-              setAvailableImages(jobData.images);
-            }
-          } catch (err) {
-            console.error('Error fetching job images:', err);
-          }
-        }
-      } catch (err: any) {
-        console.error('Error fetching maintenance record:', err);
-        setError(err.message || 'Failed to load the maintenance record');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    if (pmId) {
+      fetchMaintenanceById(pmId);
+    }
+  }, [pmId, fetchMaintenanceById]);
 
-    fetchData();
-  }, [pmId]);
+  // Pre-populate form when data is loaded
+  useEffect(() => {
+    if (selectedMaintenance) {
+      // Pre-populate notes if any exist
+      if (selectedMaintenance.notes) {
+        setCompletionData(prev => ({
+          ...prev,
+          notes: selectedMaintenance.notes || ''
+        }));
+      }
+      
+      // If already completed, show message
+      if (selectedMaintenance.completed_date) {
+        setSuccessMessage('This maintenance task has already been completed.');
+      }
+      
+      // Pre-populate image IDs if available
+      if (selectedMaintenance.before_image?.id) {
+        setCompletionData(prev => ({
+          ...prev,
+          before_image_id: selectedMaintenance.before_image?.id || null
+        }));
+      }
+      if (selectedMaintenance.after_image?.id) {
+        setCompletionData(prev => ({
+          ...prev,
+          after_image_id: selectedMaintenance.after_image?.id || null
+        }));
+      }
+    }
+  }, [selectedMaintenance]);
 
   // Handle input change
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>): void => {
     const { name, value } = e.target;
-    setCompletionData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    
+    // Handle special case for image selection
+    if (name === 'after_image_id' || name === 'before_image_id') {
+      setCompletionData(prev => ({
+        ...prev,
+        [name]: value ? Number(value) : null
+      }));
+    } else {
+      setCompletionData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
   };
 
   // Handle form submission
@@ -107,31 +100,23 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
     if (!pmId) return;
     
     setIsSubmitting(true);
-    setError(null);
+    clearError();
     
     try {
-      // Convert the CompletePMRequest to the format expected by the service
-      const requestData = {
-        completed_date: completionData.completed_date,
-        notes: completionData.notes || '',
-        after_image_id: completionData.after_image_id || null
-      };
+      const result = await completeMaintenance(pmId, completionData);
       
-      const response = await preventiveMaintenanceService.completePreventiveMaintenance(
-        pmId, 
-        requestData
-      );
-      
-      setMaintenanceData(response);
-      setSuccessMessage('Maintenance task completed successfully!');
-      
-      // Redirect after a short delay
-      setTimeout(() => {
-        router.push(`/preventive-maintenance/${pmId}`);
-      }, 2000);
+      if (result) {
+        setSuccessMessage('Maintenance task completed successfully!');
+        
+        // Redirect after a short delay
+        setTimeout(() => {
+          router.push(`/preventive-maintenance/${pmId}`);
+        }, 2000);
+      } else {
+        throw new Error('Failed to complete maintenance task');
+      }
     } catch (err: any) {
       console.error('Error completing maintenance task:', err);
-      setError(err.message || 'Failed to complete the maintenance task');
       setIsSubmitting(false);
     }
   };
@@ -146,6 +131,28 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  // Helper function to get image URL
+  const getImageUrl = (image: MaintenanceImage | string | null | undefined): string | null => {
+    if (!image) return null;
+    
+    // First try to get direct URL property
+    if (typeof image === 'object' && 'image_url' in image && image.image_url) {
+      return image.image_url;
+    }
+    
+    // If no direct URL but we have an ID, construct URL
+    if (typeof image === 'object' && 'id' in image && image.id) {
+      return `/api/images/${image.id}`;
+    }
+    
+    // If image is just a string URL
+    if (typeof image === 'string') {
+      return image;
+    }
+    
+    return null;
   };
 
   if (isLoading) {
@@ -177,7 +184,7 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
     );
   }
 
-  if (!maintenanceData) {
+  if (!selectedMaintenance) {
     return (
       <div className="max-w-3xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4">
@@ -219,18 +226,15 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
         </div>
       )}
       
-      {/* Job Details Summary */}
-      {maintenanceData && !maintenanceData.completed_date && !successMessage && (
+      {/* Maintenance Details Summary */}
+      {selectedMaintenance && !selectedMaintenance.completed_date && !successMessage && (
         <div className="bg-white shadow overflow-hidden rounded-lg mb-6">
           <div className="px-4 py-5 sm:px-6 bg-gray-50">
             <h3 className="text-lg font-semibold text-gray-900">
-              Task: {maintenanceData.pm_id}
+              Task: {selectedMaintenance.pm_id}
             </h3>
             <p className="mt-1 text-md text-gray-700">
-              <span className="font-medium">Job ID:</span> {typeof maintenanceData.job === 'object' ? maintenanceData.job?.id : maintenanceData.job}
-            </p>
-            <p className="mt-1 text-sm text-gray-500 line-clamp-2">
-              {maintenanceData.job_details?.description || 'No description provided'}
+              <span className="font-medium">Title:</span> {selectedMaintenance.pmtitle || 'No title provided'}
             </p>
           </div>
           
@@ -239,23 +243,32 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
               <div>
                 <dt className="text-sm font-medium text-gray-500">Scheduled Date</dt>
                 <dd className="mt-1 text-md text-gray-900">
-                  {formatDate(maintenanceData.scheduled_date)}
+                  {formatDate(selectedMaintenance.scheduled_date)}
                 </dd>
               </div>
               
               <div>
                 <dt className="text-sm font-medium text-gray-500">Frequency</dt>
                 <dd className="mt-1 text-md text-gray-900">
-                  <span className="capitalize">{maintenanceData.frequency.replace('_', ' ')}</span>
+                  <span className="capitalize">{selectedMaintenance.frequency.replace('_', ' ')}</span>
                 </dd>
               </div>
+              
+              {selectedMaintenance.next_due_date && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Next Due Date</dt>
+                  <dd className="mt-1 text-md text-gray-900">
+                    {formatDate(selectedMaintenance.next_due_date)}
+                  </dd>
+                </div>
+              )}
             </dl>
           </div>
         </div>
       )}
       
       {/* Completion Form */}
-      {maintenanceData && !maintenanceData.completed_date && !successMessage && (
+      {selectedMaintenance && !selectedMaintenance.completed_date && !successMessage && (
         <div className="bg-white shadow overflow-hidden rounded-lg">
           <div className="px-4 py-5 sm:px-6 bg-gray-50">
             <h3 className="text-lg font-semibold text-gray-900">Completion Details</h3>
@@ -292,44 +305,52 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
                 rows={4}
                 value={completionData.notes || ''}
                 onChange={handleInputChange}
-               
                 className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Enter any notes about the completed maintenance task..."
               />
             </div>
             
-            {/* After Image Selection */}
-            {availableImages.length > 0 && (
-              <div className="mb-4">
-                <label htmlFor="after_image_id" className="block text-sm font-medium text-gray-700 mb-1">
-                  After Image (Optional)
+            {/* Images */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+              {/* Before Image */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Before Image
                 </label>
-                <select
-                  id="after_image_id"
-                  name="after_image_id"
-                  value={completionData.after_image_id || ''}
-                  onChange={handleInputChange}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">None</option>
-                  {availableImages.map(img => (
-                    <option key={img.id} value={img.id}>
-                      Image {img.id} - {new Date(img.uploaded_at).toLocaleString()}
-                    </option>
-                  ))}
-                </select>
-                
-                {completionData.after_image_id && (
-                  <div className="mt-2">
+                <div className="mt-1 h-40 border border-gray-300 rounded-md overflow-hidden bg-gray-100 flex items-center justify-center">
+                  {selectedMaintenance.before_image || selectedMaintenance.before_image_url ? (
                     <img 
-                      src={availableImages.find(img => img.id === Number(completionData.after_image_id))?.image_url} 
-                      alt="Selected after image" 
-                      className="h-32 object-cover rounded"
+                      src={selectedMaintenance.before_image_url || getImageUrl(selectedMaintenance.before_image) || ''}
+                      alt="Before maintenance" 
+                      className="h-full w-full object-contain"
                     />
-                  </div>
-                )}
+                  ) : (
+                    <span className="text-sm text-gray-500">No before image available</span>
+                  )}
+                </div>
               </div>
-            )}
+              
+              {/* After Image */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  After Image
+                </label>
+                <div className="mt-1 h-40 border border-gray-300 rounded-md overflow-hidden bg-gray-100 flex items-center justify-center">
+                  {selectedMaintenance.after_image || selectedMaintenance.after_image_url ? (
+                    <img 
+                      src={selectedMaintenance.after_image_url || getImageUrl(selectedMaintenance.after_image) || ''}
+                      alt="After maintenance" 
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    <span className="text-sm text-gray-500">No after image uploaded yet</span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  To add an after image, first upload it on the details page, then come back to complete the task.
+                </p>
+              </div>
+            </div>
             
             {/* Submit Button */}
             <div className="flex justify-end space-x-3 mt-6">
@@ -352,7 +373,7 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
       )}
       
       {/* Already Completed Message */}
-      {maintenanceData && maintenanceData.completed_date && (
+      {selectedMaintenance && selectedMaintenance.completed_date && (
         <div className="bg-white shadow overflow-hidden rounded-lg">
           <div className="px-4 py-5 sm:px-6 bg-green-50">
             <div className="flex items-center">
@@ -364,11 +385,18 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
               </h3>
             </div>
             <p className="mt-1 text-sm text-gray-500">
-              Completed on: {formatDate(maintenanceData.completed_date)}
+              Completed on: {formatDate(selectedMaintenance.completed_date)}
             </p>
           </div>
           
           <div className="border-t border-gray-200 px-4 py-5 sm:p-6">
+            {selectedMaintenance.notes && (
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-700">Completion Notes:</h4>
+                <p className="mt-1 text-sm text-gray-600">{selectedMaintenance.notes}</p>
+              </div>
+            )}
+            
             <p className="text-center py-4">
               <Link 
                 href={`/preventive-maintenance/${pmId}`}
