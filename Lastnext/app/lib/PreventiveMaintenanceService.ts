@@ -1,4 +1,4 @@
-// ./app/lib/PreventiveMaintenanceService.ts - Fixed with proper file handling
+// ./app/lib/PreventiveMaintenanceService.ts - Fixed file upload handling
 import apiClient, { handleApiError } from '@/app/lib/api-client';
 import {
   PreventiveMaintenance,
@@ -35,8 +35,27 @@ class PreventiveMaintenanceService {
    */
   public async createPreventiveMaintenance(data: CreatePreventiveMaintenanceData): Promise<ServiceResponse<PreventiveMaintenance>> {
     try {
+      // DEBUG: Log the input data
+      console.log('=== CREATE PREVENTIVE MAINTENANCE ===');
+      console.log('Input data:', {
+        ...data,
+        before_image: data.before_image ? {
+          name: data.before_image.name,
+          size: data.before_image.size,
+          type: data.before_image.type,
+          instanceof_File: data.before_image instanceof File
+        } : null,
+        after_image: data.after_image ? {
+          name: data.after_image.name,
+          size: data.after_image.size,
+          type: data.after_image.type,
+          instanceof_File: data.after_image instanceof File
+        } : null
+      });
+
       // Determine content type based on presence of files
       const hasFiles = data.before_image instanceof File || data.after_image instanceof File;
+      console.log('Has files:', hasFiles);
       
       if (hasFiles) {
         // Use FormData for file uploads
@@ -66,37 +85,48 @@ class PreventiveMaintenanceService {
         
         // Handle file uploads - ONLY add if they are actual File objects
         if (data.before_image instanceof File) {
+          console.log('Adding before_image to FormData:', {
+            name: data.before_image.name,
+            size: data.before_image.size,
+            type: data.before_image.type
+          });
           formData.append('before_image', data.before_image);
         }
         if (data.after_image instanceof File) {
+          console.log('Adding after_image to FormData:', {
+            name: data.after_image.name,
+            size: data.after_image.size,
+            type: data.after_image.type
+          });
           formData.append('after_image', data.after_image);
         }
         
-        console.log('Sending FormData with files:', {
-          hasBeforeImage: data.before_image instanceof File,
-          hasAfterImage: data.after_image instanceof File,
-          entries: Array.from(formData.entries()).map(([key, value]) => ({
-            key,
-            type: value instanceof File ? 'File' : typeof value,
-            fileName: value instanceof File ? value.name : undefined
-          }))
-        });
+        // DEBUG: Log FormData contents
+        console.log('FormData entries:');
+        for (const [key, value] of formData.entries()) {
+          if (value instanceof File) {
+            console.log(`  ${key}: File(${value.name}, ${value.size} bytes, ${value.type})`);
+          } else {
+            console.log(`  ${key}: ${value}`);
+          }
+        }
         
         // Make the request with proper headers for multipart/form-data
+        console.log('Sending FormData request...');
         const response = await apiClient.post<ServiceResponse<PreventiveMaintenance>>(
           `${this.baseUrl}/`,
           formData,
           {
-            headers: {
-              // Don't set Content-Type manually for FormData
-              // Let the browser set it with the correct boundary
-            }
+            // DO NOT set Content-Type header for FormData
+            // Let the browser/axios set it with the correct boundary automatically
           }
         );
         
+        console.log('Response received:', response.data);
         return response.data;
       } else {
         // Use regular JSON for non-file uploads
+        console.log('Sending JSON data...');
         const cleanData: Record<string, any> = {
           scheduled_date: data.scheduled_date,
           frequency: data.frequency,
@@ -116,11 +146,19 @@ class PreventiveMaintenanceService {
           cleanData.topic_ids = data.topic_ids;
         }
         
+        console.log('Sending JSON:', cleanData);
         const response = await apiClient.post(`${this.baseUrl}/`, cleanData);
+        console.log('Response received:', response.data);
         return response.data;
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Service error creating maintenance:', error);
+      // Type guard to ensure error has the expected structure
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { response?: { data?: unknown }; config?: unknown };
+        console.error('Error details:', axiosError.response?.data);
+        console.error('Request config:', axiosError.config);
+      }
       throw handleApiError(error);
     }
   }
@@ -133,8 +171,28 @@ class PreventiveMaintenanceService {
     data: UpdatePreventiveMaintenanceData
   ): Promise<ServiceResponse<PreventiveMaintenance>> {
     try {
+      // DEBUG: Log the input data
+      console.log('=== UPDATE PREVENTIVE MAINTENANCE ===');
+      console.log('ID:', id);
+      console.log('Input data:', {
+        ...data,
+        before_image: data.before_image ? {
+          name: data.before_image.name,
+          size: data.before_image.size,
+          type: data.before_image.type,
+          instanceof_File: data.before_image instanceof File
+        } : null,
+        after_image: data.after_image ? {
+          name: data.after_image.name,
+          size: data.after_image.size,
+          type: data.after_image.type,
+          instanceof_File: data.after_image instanceof File
+        } : null
+      });
+
       // Determine content type based on presence of files
       const hasFiles = data.before_image instanceof File || data.after_image instanceof File;
+      console.log('Has files:', hasFiles);
       
       if (hasFiles) {
         // Use FormData for file uploads
@@ -171,39 +229,60 @@ class PreventiveMaintenanceService {
         
         // Handle file uploads - ONLY add if they are actual File objects
         if (data.before_image instanceof File) {
+          console.log('Adding before_image to FormData:', {
+            name: data.before_image.name,
+            size: data.before_image.size,
+            type: data.before_image.type
+          });
           formData.append('before_image', data.before_image);
         }
         if (data.after_image instanceof File) {
+          console.log('Adding after_image to FormData:', {
+            name: data.after_image.name,
+            size: data.after_image.size,
+            type: data.after_image.type
+          });
           formData.append('after_image', data.after_image);
         }
         
-        console.log('Updating with FormData:', {
-          entries: Array.from(formData.entries()).map(([key, value]) => ({
-            key,
-            type: value instanceof File ? 'File' : typeof value,
-            fileName: value instanceof File ? value.name : undefined
-          }))
-        });
+        // DEBUG: Log FormData contents
+        console.log('FormData entries:');
+        for (const [key, value] of formData.entries()) {
+          if (value instanceof File) {
+            console.log(`  ${key}: File(${value.name}, ${value.size} bytes, ${value.type})`);
+          } else {
+            console.log(`  ${key}: ${value}`);
+          }
+        }
         
+        console.log('Sending FormData request...');
         const response = await apiClient.patch<ServiceResponse<PreventiveMaintenance>>(
           `${this.baseUrl}/${id}/`,
           formData,
           {
-            headers: {
-              // Don't set Content-Type for FormData
-            }
+            // DO NOT set Content-Type header for FormData
+            // Let the browser/axios set it with the correct boundary automatically
           }
         );
         
+        console.log('Response received:', response.data);
         return response.data;
       } else {
         // Use regular JSON for non-file updates
-        console.log('Updating with JSON data');
+        console.log('Sending JSON data...');
+        console.log('Update data:', data);
         const response = await apiClient.patch(`${this.baseUrl}/${id}/`, data);
+        console.log('Response received:', response.data);
         return response.data;
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Service error updating maintenance:', error);
+      // Type guard to ensure error has the expected structure
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { response?: { data?: unknown }; config?: unknown };
+        console.error('Error details:', axiosError.response?.data);
+        console.error('Request config:', axiosError.config);
+      }
       throw handleApiError(error);
     }
   }
@@ -215,7 +294,7 @@ class PreventiveMaintenanceService {
     try {
       const response = await apiClient.get(`${this.baseUrl}/${id}/`);
       return response.data;
-    } catch (error) {
+    } catch (error: unknown) {
       throw handleApiError(error);
     }
   }
@@ -227,7 +306,7 @@ class PreventiveMaintenanceService {
     try {
       const response = await apiClient.get(`${this.baseUrl}/`, { params });
       return response.data;
-    } catch (error) {
+    } catch (error: unknown) {
       throw handleApiError(error);
     }
   }
@@ -239,7 +318,7 @@ class PreventiveMaintenanceService {
     try {
       const response = await apiClient.delete(`${this.baseUrl}/${id}/`);
       return response.data;
-    } catch (error) {
+    } catch (error: unknown) {
       throw handleApiError(error);
     }
   }
@@ -273,9 +352,8 @@ class PreventiveMaintenanceService {
           `${this.baseUrl}/${id}/complete/`,
           formData,
           {
-            headers: {
-              // Don't set Content-Type for FormData
-            }
+            // DO NOT set Content-Type header for FormData
+            // Let the browser/axios set it with the correct boundary automatically
           }
         );
         
@@ -285,7 +363,7 @@ class PreventiveMaintenanceService {
         const response = await apiClient.post(`${this.baseUrl}/${id}/complete/`, data);
         return response.data;
       }
-    } catch (error) {
+    } catch (error: unknown) {
       throw handleApiError(error);
     }
   }
@@ -297,7 +375,7 @@ class PreventiveMaintenanceService {
     try {
       const response = await apiClient.get(`${this.baseUrl}/statistics/`);
       return response.data;
-    } catch (error) {
+    } catch (error: unknown) {
       throw handleApiError(error);
     }
   }
@@ -309,7 +387,7 @@ class PreventiveMaintenanceService {
     try {
       const response = await apiClient.get(`${this.baseUrl}/dashboard/`);
       return response.data;
-    } catch (error) {
+    } catch (error: unknown) {
       throw handleApiError(error);
     }
   }
