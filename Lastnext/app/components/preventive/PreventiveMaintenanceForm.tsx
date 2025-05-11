@@ -76,17 +76,16 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       errors.custom_days = 'Custom days must be at least 1';
     }
 
-    // Validate file sizes - cast to any to avoid TypeScript issues with file validation
-    const errorsWithFiles = errors as any;
+    // Validate file sizes
     if (values.before_image_file && values.before_image_file.size > MAX_FILE_SIZE) {
-      errorsWithFiles.before_image_file = 'Before image must be less than 5MB';
+      (errors as any).before_image_file = 'Before image must be less than 5MB';
     }
 
     if (values.after_image_file && values.after_image_file.size > MAX_FILE_SIZE) {
-      errorsWithFiles.after_image_file = 'After image must be less than 5MB';
+      (errors as any).after_image_file = 'After image must be less than 5MB';
     }
 
-    return errorsWithFiles;
+    return errors;
   };
 
   // Initial values
@@ -203,6 +202,10 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     setFieldError: (field: string, message: string) => void
   ) => {
     const file = event.target.files?.[0] || null;
+    
+    // Clear previous error
+    setFieldError(type === 'before' ? 'before_image_file' : 'after_image_file', '');
+    
     if (file) {
       // Validate file size
       if (file.size > MAX_FILE_SIZE) {
@@ -211,6 +214,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         return;
       }
 
+      // Create preview
       const reader = new FileReader();
       reader.onloadend = () => {
         if (type === 'before') {
@@ -221,7 +225,17 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       };
       reader.readAsDataURL(file);
 
+      // Set the file in form values
       setFieldValue(type === 'before' ? 'before_image_file' : 'after_image_file', file);
+    } else {
+      // Clear preview and file if no file selected
+      if (type === 'before') {
+        setBeforeImagePreview(null);
+        setFieldValue('before_image_file', null);
+      } else {
+        setAfterImagePreview(null);
+        setFieldValue('after_image_file', null);
+      }
     }
   };
 
@@ -247,7 +261,11 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     clearError();
     
     try {
-      console.log('Starting form submission...');
+      console.log('Starting form submission with values:', {
+        ...values,
+        before_image_file: values.before_image_file ? `File: ${values.before_image_file.name}` : null,
+        after_image_file: values.after_image_file ? `File: ${values.after_image_file.name}` : null,
+      });
       
       // Prepare the data with proper typing
       const submitData: CreatePreventiveMaintenanceData = {
@@ -264,10 +282,11 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         after_image: values.after_image_file instanceof File ? values.after_image_file : undefined,
       };
       
-      console.log('Submit data prepared:', {
-        ...submitData,
-        before_image: submitData.before_image ? 'File object' : undefined,
-        after_image: submitData.after_image ? 'File object' : undefined,
+      console.log('Submit data prepared (files):', {
+        hasBeforeImage: submitData.before_image instanceof File,
+        hasAfterImage: submitData.after_image instanceof File,
+        beforeImageName: submitData.before_image?.name,
+        afterImageName: submitData.after_image?.name,
       });
 
       const maintenanceId = pmId || (initialData ? initialData.pm_id : null);
@@ -276,12 +295,14 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       
       if (maintenanceId) {
         // Update existing maintenance
+        console.log('Updating maintenance with ID:', maintenanceId);
         response = await preventiveMaintenanceService.updatePreventiveMaintenance(
           maintenanceId,
           submitData
         );
       } else {
         // Create new maintenance
+        console.log('Creating new maintenance');
         response = await preventiveMaintenanceService.createPreventiveMaintenance(
           submitData
         );
@@ -290,11 +311,11 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       // Extract the data from the service response correctly
       if (response.success && response.data) {
         const maintenanceData = response.data;
+        console.log('Successfully saved maintenance:', maintenanceData);
         onSuccessAction(maintenanceData);
         
-        // Also reset form if creating new
+        // Reset form if creating new
         if (!maintenanceId) {
-          // Reset form values
           setFieldValue('pmtitle', '');
           setFieldValue('notes', '');
           setFieldValue('custom_days', '');
@@ -324,7 +345,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         } else if (error.response.data.message) {
           errorMessage = error.response.data.message;
         } else {
-          // Handle field-specific errors
+          // Handle field-specific errors including file validation errors
           const fieldErrors = Object.entries(error.response.data)
             .map(([field, errorList]) => {
               if (Array.isArray(errorList)) {
@@ -364,7 +385,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       {(error || submitError) && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
           <div className="flex justify-between">
-            <p>{error || submitError}</p>
+            <p className="whitespace-pre-wrap">{error || submitError}</p>
             <button
               onClick={clearError}
               className="text-red-700"
@@ -483,47 +504,91 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
             </div>
 
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Topics</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Topics</label>
               <div
-                className="border border-gray-300 rounded-md p-3 max-h-48 overflow-y-auto"
+                className="border border-gray-300 rounded-md p-4 max-h-48 overflow-y-auto bg-white"
                 role="group"
                 aria-label="Select maintenance topics"
               >
                 {isLoading ? (
                   <p className="text-sm text-gray-500 italic">Loading topics...</p>
                 ) : availableTopics.length > 0 ? (
-                  <div className="grid grid-cols-1 gap-2">
+                  <div className="space-y-3">
                     {availableTopics.map((topic) => (
-                      <div key={topic.id} className="flex items-center">
-                        <Field
-                          type="checkbox"
-                          id={`topic-${topic.id}`}
-                          name="selected_topics"
-                          value={topic.id}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <label
-                          htmlFor={`topic-${topic.id}`}
-                          className="ml-2 block text-sm text-gray-900"
-                        >
-                          {topic.title}
+                      <div key={topic.id} className="relative">
+                        <label className="flex items-center cursor-pointer">
+                          <Field name="selected_topics">
+                            {({ field }: any) => (
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                                id={`topic-${topic.id}`}
+                                checked={field.value.includes(topic.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    // Add topic id to selected topics
+                                    setFieldValue('selected_topics', [...field.value, topic.id]);
+                                  } else {
+                                    // Remove topic id from selected topics
+                                    setFieldValue('selected_topics', field.value.filter((id: number) => id !== topic.id));
+                                  }
+                                }}
+                              />
+                            )}
+                          </Field>
+                          <span className="ml-3 text-sm text-gray-700 flex-1">{topic.title}</span>
                         </label>
+                        {/* Visual indicator for selected state */}
+                        {values.selected_topics.includes(topic.id) && (
+                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-full"></div>
+                        )}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500 italic">
-                    No topics available.{' '}
+                  <div className="text-center py-6">
+                    <p className="text-sm text-gray-500 mb-3">No topics available.</p>
                     <button
                       type="button"
                       onClick={fetchAvailableTopics}
-                      className="text-blue-600 hover:underline"
+                      className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
                     >
-                      Try again
+                      Refresh Topics
                     </button>
-                  </p>
+                  </div>
                 )}
               </div>
+              {/* Display selected topics count */}
+              {values.selected_topics.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-sm text-gray-600 mb-2">
+                    {values.selected_topics.length} topic{values.selected_topics.length > 1 ? 's' : ''} selected:
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {values.selected_topics.map((topicId) => {
+                      const topic = availableTopics.find(t => t.id === topicId);
+                      return topic ? (
+                        <span
+                          key={topic.id}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full"
+                        >
+                          {topic.title}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFieldValue('selected_topics', values.selected_topics.filter(id => id !== topic.id));
+                            }}
+                            className="ml-1 text-blue-600 hover:text-blue-800"
+                            aria-label={`Remove ${topic.title}`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">

@@ -1,4 +1,4 @@
-// ./app/lib/PreventiveMaintenanceService.ts - Complete with all methods
+// ./app/lib/PreventiveMaintenanceService.ts - Fixed with proper file handling
 import apiClient, { handleApiError } from '@/app/lib/api-client';
 import {
   PreventiveMaintenance,
@@ -35,7 +35,7 @@ class PreventiveMaintenanceService {
    */
   public async createPreventiveMaintenance(data: CreatePreventiveMaintenanceData): Promise<ServiceResponse<PreventiveMaintenance>> {
     try {
-      // Check if we have files to upload
+      // Determine content type based on presence of files
       const hasFiles = data.before_image instanceof File || data.after_image instanceof File;
       
       if (hasFiles) {
@@ -46,15 +46,15 @@ class PreventiveMaintenanceService {
         formData.append('scheduled_date', data.scheduled_date);
         formData.append('frequency', data.frequency);
         
-        // Add optional fields only if they exist
+        // Add optional fields only if they have values
         if (data.custom_days !== undefined && data.custom_days !== null) {
           formData.append('custom_days', String(data.custom_days));
         }
-        if (data.notes) {
-          formData.append('notes', data.notes);
+        if (data.notes && data.notes.trim()) {
+          formData.append('notes', data.notes.trim());
         }
-        if (data.pmtitle) {
-          formData.append('pmtitle', data.pmtitle);
+        if (data.pmtitle && data.pmtitle.trim()) {
+          formData.append('pmtitle', data.pmtitle.trim());
         }
         
         // Handle topic_ids array
@@ -66,26 +66,30 @@ class PreventiveMaintenanceService {
         
         // Handle file uploads - ONLY add if they are actual File objects
         if (data.before_image instanceof File) {
-          formData.append('before_image', data.before_image, data.before_image.name);
+          formData.append('before_image', data.before_image);
         }
         if (data.after_image instanceof File) {
-          formData.append('after_image', data.after_image, data.after_image.name);
+          formData.append('after_image', data.after_image);
         }
         
         console.log('Sending FormData with files:', {
           hasBeforeImage: data.before_image instanceof File,
           hasAfterImage: data.after_image instanceof File,
-          formDataKeys: Array.from(formData.keys())
+          entries: Array.from(formData.entries()).map(([key, value]) => ({
+            key,
+            type: value instanceof File ? 'File' : typeof value,
+            fileName: value instanceof File ? value.name : undefined
+          }))
         });
         
-        // Use axios directly for file upload
+        // Make the request with proper headers for multipart/form-data
         const response = await apiClient.post<ServiceResponse<PreventiveMaintenance>>(
           `${this.baseUrl}/`,
           formData,
           {
             headers: {
               // Don't set Content-Type manually for FormData
-              // Axios will set it automatically with the correct boundary
+              // Let the browser set it with the correct boundary
             }
           }
         );
@@ -93,23 +97,20 @@ class PreventiveMaintenanceService {
         return response.data;
       } else {
         // Use regular JSON for non-file uploads
-        console.log('Sending JSON data without files');
-        
-        // Create clean data object
         const cleanData: Record<string, any> = {
           scheduled_date: data.scheduled_date,
           frequency: data.frequency,
         };
         
-        // Add optional fields only if they exist
+        // Add optional fields only if they have values
         if (data.custom_days !== undefined && data.custom_days !== null) {
           cleanData.custom_days = data.custom_days;
         }
-        if (data.notes) {
-          cleanData.notes = data.notes;
+        if (data.notes && data.notes.trim()) {
+          cleanData.notes = data.notes.trim();
         }
-        if (data.pmtitle) {
-          cleanData.pmtitle = data.pmtitle;
+        if (data.pmtitle && data.pmtitle.trim()) {
+          cleanData.pmtitle = data.pmtitle.trim();
         }
         if (data.topic_ids && data.topic_ids.length > 0) {
           cleanData.topic_ids = data.topic_ids;
@@ -119,7 +120,7 @@ class PreventiveMaintenanceService {
         return response.data;
       }
     } catch (error) {
-      console.error('Service error:', error);
+      console.error('Service error creating maintenance:', error);
       throw handleApiError(error);
     }
   }
@@ -132,7 +133,7 @@ class PreventiveMaintenanceService {
     data: UpdatePreventiveMaintenanceData
   ): Promise<ServiceResponse<PreventiveMaintenance>> {
     try {
-      // Check if we have files to upload
+      // Determine content type based on presence of files
       const hasFiles = data.before_image instanceof File || data.after_image instanceof File;
       
       if (hasFiles) {
@@ -150,26 +151,39 @@ class PreventiveMaintenanceService {
           formData.append('custom_days', String(data.custom_days));
         }
         if (data.notes !== undefined) {
-          formData.append('notes', data.notes);
+          formData.append('notes', data.notes || '');
         }
         if (data.pmtitle !== undefined) {
-          formData.append('pmtitle', data.pmtitle);
+          formData.append('pmtitle', data.pmtitle || '');
         }
         
         // Handle topic_ids array
-        if (data.topic_ids && data.topic_ids.length > 0) {
-          data.topic_ids.forEach(topicId => {
-            formData.append('topic_ids', String(topicId));
-          });
+        if (data.topic_ids !== undefined) {
+          if (data.topic_ids && data.topic_ids.length > 0) {
+            data.topic_ids.forEach(topicId => {
+              formData.append('topic_ids', String(topicId));
+            });
+          } else {
+            // Send empty array when clearing topics
+            formData.append('topic_ids', '');
+          }
         }
         
         // Handle file uploads - ONLY add if they are actual File objects
         if (data.before_image instanceof File) {
-          formData.append('before_image', data.before_image, data.before_image.name);
+          formData.append('before_image', data.before_image);
         }
         if (data.after_image instanceof File) {
-          formData.append('after_image', data.after_image, data.after_image.name);
+          formData.append('after_image', data.after_image);
         }
+        
+        console.log('Updating with FormData:', {
+          entries: Array.from(formData.entries()).map(([key, value]) => ({
+            key,
+            type: value instanceof File ? 'File' : typeof value,
+            fileName: value instanceof File ? value.name : undefined
+          }))
+        });
         
         const response = await apiClient.patch<ServiceResponse<PreventiveMaintenance>>(
           `${this.baseUrl}/${id}/`,
@@ -184,10 +198,12 @@ class PreventiveMaintenanceService {
         return response.data;
       } else {
         // Use regular JSON for non-file updates
+        console.log('Updating with JSON data');
         const response = await apiClient.patch(`${this.baseUrl}/${id}/`, data);
         return response.data;
       }
     } catch (error) {
+      console.error('Service error updating maintenance:', error);
       throw handleApiError(error);
     }
   }
@@ -236,7 +252,7 @@ class PreventiveMaintenanceService {
     data: CompletePreventiveMaintenanceData
   ): Promise<ServiceResponse<PreventiveMaintenance>> {
     try {
-      // Check if we have a file to upload
+      // Determine content type based on presence of files
       const hasFile = data.after_image instanceof File;
       
       if (hasFile) {
@@ -250,7 +266,7 @@ class PreventiveMaintenanceService {
         
         // Handle file upload - ONLY add if it's an actual File object
         if (data.after_image instanceof File) {
-          formData.append('after_image', data.after_image, data.after_image.name);
+          formData.append('after_image', data.after_image);
         }
         
         const response = await apiClient.post<ServiceResponse<PreventiveMaintenance>>(
