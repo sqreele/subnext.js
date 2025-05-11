@@ -1,12 +1,12 @@
-// ./app/lib/PreventiveMaintenanceService.ts - Fixed with correct types
+// ./app/lib/PreventiveMaintenanceService.ts - Complete with all methods
 import apiClient, { handleApiError } from '@/app/lib/api-client';
 import {
   PreventiveMaintenance,
   ServiceResponse,
 } from './preventiveMaintenanceModels';
 
-// Define the data types for creating and updating PM records
-interface CreatePreventiveMaintenanceData {
+// Export the data types for creating and updating PM records
+export interface CreatePreventiveMaintenanceData {
   scheduled_date: string;
   frequency: string;
   custom_days?: number | null;
@@ -17,67 +17,23 @@ interface CreatePreventiveMaintenanceData {
   after_image?: File;
 }
 
-interface UpdatePreventiveMaintenanceData extends Partial<CreatePreventiveMaintenanceData> {
+export interface UpdatePreventiveMaintenanceData extends Partial<CreatePreventiveMaintenanceData> {
   // All fields are optional for updates
 }
 
+// Export the data type for completing PM records
+export interface CompletePreventiveMaintenanceData {
+  completion_notes?: string;
+  after_image?: File;
+}
+
 class PreventiveMaintenanceService {
-  private baseUrl = '/api/preventive-maintenance';
-
-  /**
-   * Get all preventive maintenance records
-   */
-  async getAllPreventiveMaintenance(params?: Record<string, string>): Promise<ServiceResponse<PreventiveMaintenance[]>> {
-    try {
-      const queryString = params ? `?${new URLSearchParams(params).toString()}` : '';
-      const response = await apiClient.get(`${this.baseUrl}/${queryString}`);
-      
-      // Handle different response formats
-      if (response.data.success && response.data.data) {
-        return {
-          success: true,
-          data: response.data.data,
-          message: response.data.message
-        };
-      } else if (Array.isArray(response.data)) {
-        return {
-          success: true,
-          data: response.data,
-        };
-      } else {
-        throw new Error('Invalid response format');
-      }
-    } catch (error) {
-      throw handleApiError(error);
-    }
-  }
-
-  /**
-   * Get a specific preventive maintenance by ID
-   */
-  async getPreventiveMaintenanceById(id: string): Promise<ServiceResponse<PreventiveMaintenance>> {
-    try {
-      const response = await apiClient.get(`${this.baseUrl}/${id}/`);
-      
-      if (response.data.success && response.data.data) {
-        return response.data;
-      } else if (response.data.pm_id) {
-        return {
-          success: true,
-          data: response.data
-        };
-      } else {
-        throw new Error('Invalid response format');
-      }
-    } catch (error) {
-      throw handleApiError(error);
-    }
-  }
+  public readonly baseUrl = '/api/preventive-maintenance';
 
   /**
    * Create a new preventive maintenance record
    */
-  async createPreventiveMaintenance(data: CreatePreventiveMaintenanceData): Promise<ServiceResponse<PreventiveMaintenance>> {
+  public async createPreventiveMaintenance(data: CreatePreventiveMaintenanceData): Promise<ServiceResponse<PreventiveMaintenance>> {
     try {
       // Check if we have files to upload
       const hasFiles = data.before_image instanceof File || data.after_image instanceof File;
@@ -86,31 +42,50 @@ class PreventiveMaintenanceService {
         // Use FormData for file uploads
         const formData = new FormData();
         
-        // Add all fields to FormData
-        Object.entries(data).forEach(([key, value]) => {
-          if (value === null || value === undefined) return;
-          
-          if (Array.isArray(value)) {
-            // Handle arrays (like topic_ids)
-            value.forEach(item => {
-              formData.append(key, String(item));
-            });
-          } else if (value instanceof File) {
-            // Handle file uploads
-            formData.append(key, value);
-          } else {
-            // Handle primitive values
-            formData.append(key, String(value));
-          }
+        // Add required fields
+        formData.append('scheduled_date', data.scheduled_date);
+        formData.append('frequency', data.frequency);
+        
+        // Add optional fields only if they exist
+        if (data.custom_days !== undefined && data.custom_days !== null) {
+          formData.append('custom_days', String(data.custom_days));
+        }
+        if (data.notes) {
+          formData.append('notes', data.notes);
+        }
+        if (data.pmtitle) {
+          formData.append('pmtitle', data.pmtitle);
+        }
+        
+        // Handle topic_ids array
+        if (data.topic_ids && data.topic_ids.length > 0) {
+          data.topic_ids.forEach(topicId => {
+            formData.append('topic_ids', String(topicId));
+          });
+        }
+        
+        // Handle file uploads - ONLY add if they are actual File objects
+        if (data.before_image instanceof File) {
+          formData.append('before_image', data.before_image, data.before_image.name);
+        }
+        if (data.after_image instanceof File) {
+          formData.append('after_image', data.after_image, data.after_image.name);
+        }
+        
+        console.log('Sending FormData with files:', {
+          hasBeforeImage: data.before_image instanceof File,
+          hasAfterImage: data.after_image instanceof File,
+          formDataKeys: Array.from(formData.keys())
         });
         
-        // Use the API client's ability to handle multipart form data
+        // Use axios directly for file upload
         const response = await apiClient.post<ServiceResponse<PreventiveMaintenance>>(
           `${this.baseUrl}/`,
           formData,
           {
             headers: {
-              // Let the browser set the Content-Type with boundary
+              // Don't set Content-Type manually for FormData
+              // Axios will set it automatically with the correct boundary
             }
           }
         );
@@ -118,10 +93,33 @@ class PreventiveMaintenanceService {
         return response.data;
       } else {
         // Use regular JSON for non-file uploads
-        const response = await apiClient.post(`${this.baseUrl}/`, data);
+        console.log('Sending JSON data without files');
+        
+        // Create clean data object
+        const cleanData: Record<string, any> = {
+          scheduled_date: data.scheduled_date,
+          frequency: data.frequency,
+        };
+        
+        // Add optional fields only if they exist
+        if (data.custom_days !== undefined && data.custom_days !== null) {
+          cleanData.custom_days = data.custom_days;
+        }
+        if (data.notes) {
+          cleanData.notes = data.notes;
+        }
+        if (data.pmtitle) {
+          cleanData.pmtitle = data.pmtitle;
+        }
+        if (data.topic_ids && data.topic_ids.length > 0) {
+          cleanData.topic_ids = data.topic_ids;
+        }
+        
+        const response = await apiClient.post(`${this.baseUrl}/`, cleanData);
         return response.data;
       }
     } catch (error) {
+      console.error('Service error:', error);
       throw handleApiError(error);
     }
   }
@@ -129,7 +127,7 @@ class PreventiveMaintenanceService {
   /**
    * Update an existing preventive maintenance record
    */
-  async updatePreventiveMaintenance(
+  public async updatePreventiveMaintenance(
     id: string,
     data: UpdatePreventiveMaintenanceData
   ): Promise<ServiceResponse<PreventiveMaintenance>> {
@@ -141,37 +139,51 @@ class PreventiveMaintenanceService {
         // Use FormData for file uploads
         const formData = new FormData();
         
-        // Add all fields to FormData
-        Object.entries(data).forEach(([key, value]) => {
-          if (value === null || value === undefined) return;
-          
-          if (Array.isArray(value)) {
-            // Handle arrays (like topic_ids)
-            value.forEach(item => {
-              formData.append(key, String(item));
-            });
-          } else if (value instanceof File) {
-            // Handle file uploads
-            formData.append(key, value);
-          } else {
-            // Handle primitive values
-            formData.append(key, String(value));
-          }
-        });
+        // Add fields only if they exist (for updates)
+        if (data.scheduled_date) {
+          formData.append('scheduled_date', data.scheduled_date);
+        }
+        if (data.frequency) {
+          formData.append('frequency', data.frequency);
+        }
+        if (data.custom_days !== undefined && data.custom_days !== null) {
+          formData.append('custom_days', String(data.custom_days));
+        }
+        if (data.notes !== undefined) {
+          formData.append('notes', data.notes);
+        }
+        if (data.pmtitle !== undefined) {
+          formData.append('pmtitle', data.pmtitle);
+        }
+        
+        // Handle topic_ids array
+        if (data.topic_ids && data.topic_ids.length > 0) {
+          data.topic_ids.forEach(topicId => {
+            formData.append('topic_ids', String(topicId));
+          });
+        }
+        
+        // Handle file uploads - ONLY add if they are actual File objects
+        if (data.before_image instanceof File) {
+          formData.append('before_image', data.before_image, data.before_image.name);
+        }
+        if (data.after_image instanceof File) {
+          formData.append('after_image', data.after_image, data.after_image.name);
+        }
         
         const response = await apiClient.patch<ServiceResponse<PreventiveMaintenance>>(
           `${this.baseUrl}/${id}/`,
           formData,
           {
             headers: {
-              // Let the browser set the Content-Type with boundary for multipart/form-data
+              // Don't set Content-Type for FormData
             }
           }
         );
         
         return response.data;
       } else {
-        // Use regular JSON for non-file uploads
+        // Use regular JSON for non-file updates
         const response = await apiClient.patch(`${this.baseUrl}/${id}/`, data);
         return response.data;
       }
@@ -181,26 +193,11 @@ class PreventiveMaintenanceService {
   }
 
   /**
-   * Delete a preventive maintenance record
+   * Get a preventive maintenance record by ID
    */
-  async deletePreventiveMaintenance(id: string): Promise<ServiceResponse<void>> {
+  public async getPreventiveMaintenanceById(id: string): Promise<ServiceResponse<PreventiveMaintenance>> {
     try {
-      await apiClient.delete(`${this.baseUrl}/${id}/`);
-      return {
-        success: true,
-        message: 'Preventive maintenance deleted successfully'
-      };
-    } catch (error) {
-      throw handleApiError(error);
-    }
-  }
-
-  /**
-   * Get preventive maintenance history for a specific item
-   */
-  async getPreventiveMaintenanceHistory(itemId: string): Promise<ServiceResponse<PreventiveMaintenance[]>> {
-    try {
-      const response = await apiClient.get(`${this.baseUrl}/history/${itemId}/`);
+      const response = await apiClient.get(`${this.baseUrl}/${id}/`);
       return response.data;
     } catch (error) {
       throw handleApiError(error);
@@ -208,43 +205,68 @@ class PreventiveMaintenanceService {
   }
 
   /**
-   * Mark preventive maintenance as completed
+   * Get all preventive maintenance records with optional query parameters
    */
-  async completePreventiveMaintenance(id: string, data: {
-    completion_notes?: string;
-    after_image?: File;
-  }): Promise<ServiceResponse<PreventiveMaintenance>> {
+  public async getAllPreventiveMaintenance(params?: Record<string, string>): Promise<ServiceResponse<PreventiveMaintenance[] | { results: PreventiveMaintenance[]; count: number; topics?: any[] }>> {
     try {
-      // Check if we have files to upload
-      const hasFiles = data.after_image instanceof File;
+      const response = await apiClient.get(`${this.baseUrl}/`, { params });
+      return response.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  /**
+   * Delete a preventive maintenance record
+   */
+  public async deletePreventiveMaintenance(id: string): Promise<ServiceResponse<void>> {
+    try {
+      const response = await apiClient.delete(`${this.baseUrl}/${id}/`);
+      return response.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  /**
+   * Complete a preventive maintenance record
+   */
+  public async completePreventiveMaintenance(
+    id: string,
+    data: CompletePreventiveMaintenanceData
+  ): Promise<ServiceResponse<PreventiveMaintenance>> {
+    try {
+      // Check if we have a file to upload
+      const hasFile = data.after_image instanceof File;
       
-      if (hasFiles) {
+      if (hasFile) {
         // Use FormData for file uploads
         const formData = new FormData();
         
-        if (data.completion_notes) {
+        // Add completion notes if provided
+        if (data.completion_notes !== undefined) {
           formData.append('completion_notes', data.completion_notes);
         }
         
-        if (data.after_image) {
-          formData.append('after_image', data.after_image);
+        // Handle file upload - ONLY add if it's an actual File object
+        if (data.after_image instanceof File) {
+          formData.append('after_image', data.after_image, data.after_image.name);
         }
         
-        formData.append('status', 'completed'); // Add completion status
-        
-        const response = await apiClient.patch(`${this.baseUrl}/${id}/complete/`, formData, {
-          headers: {
-            // Let the browser set the Content-Type with boundary for multipart/form-data
+        const response = await apiClient.post<ServiceResponse<PreventiveMaintenance>>(
+          `${this.baseUrl}/${id}/complete/`,
+          formData,
+          {
+            headers: {
+              // Don't set Content-Type for FormData
+            }
           }
-        });
+        );
         
         return response.data;
       } else {
-        // Use regular JSON for non-file uploads
-        const response = await apiClient.patch(`${this.baseUrl}/${id}/complete/`, {
-          ...data,
-          status: 'completed'
-        });
+        // Use regular JSON for non-file completion
+        const response = await apiClient.post(`${this.baseUrl}/${id}/complete/`, data);
         return response.data;
       }
     } catch (error) {
@@ -253,20 +275,23 @@ class PreventiveMaintenanceService {
   }
 
   /**
-   * Generate preventive maintenance report
+   * Get maintenance statistics
    */
-  async generateReport(params: {
-    startDate?: string;
-    endDate?: string;
-    propertyId?: string;
-    format?: 'pdf' | 'excel';
-  }): Promise<Blob> {
+  public async getMaintenanceStatistics(): Promise<ServiceResponse<any>> {
     try {
-      const queryString = new URLSearchParams(params as any).toString();
-      const response = await apiClient.get(`${this.baseUrl}/report/?${queryString}`, {
-        responseType: 'blob'
-      });
-      
+      const response = await apiClient.get(`${this.baseUrl}/statistics/`);
+      return response.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  /**
+   * Get maintenance dashboard data
+   */
+  public async getDashboardData(): Promise<ServiceResponse<any>> {
+    try {
+      const response = await apiClient.get(`${this.baseUrl}/dashboard/`);
       return response.data;
     } catch (error) {
       throw handleApiError(error);

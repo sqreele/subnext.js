@@ -11,7 +11,10 @@ import {
   Topic,
   ServiceResponse,
 } from '@/app/lib/preventiveMaintenanceModels';
-import preventiveMaintenanceService from '@/app/lib/PreventiveMaintenanceService';
+import preventiveMaintenanceService, {
+  CreatePreventiveMaintenanceData,
+  UpdatePreventiveMaintenanceData,
+} from '@/app/lib/PreventiveMaintenanceService';
 import apiClient from '@/app/lib/api-client';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -69,20 +72,21 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       errors.frequency = 'Frequency is required';
     }
 
-    if (values.frequency === 'custom' && (!values.custom_days || values.custom_days < 1)) {
+    if (values.frequency === 'custom' && (!values.custom_days || Number(values.custom_days) < 1)) {
       errors.custom_days = 'Custom days must be at least 1';
     }
 
-    // Validate file sizes
+    // Validate file sizes - cast to any to avoid TypeScript issues with file validation
+    const errorsWithFiles = errors as any;
     if (values.before_image_file && values.before_image_file.size > MAX_FILE_SIZE) {
-      errors.before_image_file = 'Before image must be less than 5MB';
+      errorsWithFiles.before_image_file = 'Before image must be less than 5MB';
     }
 
     if (values.after_image_file && values.after_image_file.size > MAX_FILE_SIZE) {
-      errors.after_image_file = 'After image must be less than 5MB';
+      errorsWithFiles.after_image_file = 'After image must be less than 5MB';
     }
 
-    return errors;
+    return errorsWithFiles;
   };
 
   // Initial values
@@ -246,7 +250,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       console.log('Starting form submission...');
       
       // Prepare the data with proper typing
-      const submitData = {
+      const submitData: CreatePreventiveMaintenanceData = {
         scheduled_date: values.scheduled_date,
         frequency: values.frequency,
         custom_days: values.frequency === 'custom' && values.custom_days && values.custom_days > 0 
@@ -255,6 +259,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         notes: values.notes && values.notes.trim() ? values.notes.trim() : undefined,
         pmtitle: values.pmtitle && values.pmtitle.trim() ? values.pmtitle.trim() : undefined,
         topic_ids: values.selected_topics.length > 0 ? values.selected_topics : undefined,
+        // Only include files if they are actual File instances
         before_image: values.before_image_file instanceof File ? values.before_image_file : undefined,
         after_image: values.after_image_file instanceof File ? values.after_image_file : undefined,
       };
@@ -571,8 +576,8 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                       />
                     </label>
                   )}
-                  {errors.before_image_file && touched.before_image_file && (
-                    <p className="text-sm text-red-500">{errors.before_image_file}</p>
+                  {(errors as any).before_image_file && touched.before_image_file && (
+                    <p className="text-sm text-red-500">{(errors as any).before_image_file}</p>
                   )}
                 </div>
               </div>
@@ -624,8 +629,8 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                       />
                     </label>
                   )}
-                  {errors.after_image_file && touched.after_image_file && (
-                    <p className="text-sm text-red-500">{errors.after_image_file}</p>
+                  {(errors as any).after_image_file && touched.after_image_file && (
+                    <p className="text-sm text-red-500">{(errors as any).after_image_file}</p>
                   )}
                 </div>
               </div>
