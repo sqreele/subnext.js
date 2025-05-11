@@ -49,6 +49,7 @@ const navItems = [
   { href: '/dashboard/profile', label: 'Profile', icon: Users2 },
   { href: '/dashboard/createJob', label: 'Create Job', icon: PlusCircle },
   { href: '/dashboard/Preventive_maintenance', label: 'PM', icon: PlusCircle },
+  { href: '/dashboard/preventive-maintenance/dashboard', label: 'PM', icon: PlusCircle },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
