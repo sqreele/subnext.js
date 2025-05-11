@@ -78,8 +78,9 @@ class PreventiveMaintenanceService {
         
         // Handle topic_ids array
         if (data.topic_ids && data.topic_ids.length > 0) {
+          // Send topics as topic_ids for the request
           data.topic_ids.forEach(topicId => {
-            formData.append('topic_ids', String(topicId));
+            formData.append('topic_ids[]', String(topicId));
           });
         }
         
@@ -219,11 +220,11 @@ class PreventiveMaintenanceService {
         if (data.topic_ids !== undefined) {
           if (data.topic_ids && data.topic_ids.length > 0) {
             data.topic_ids.forEach(topicId => {
-              formData.append('topic_ids', String(topicId));
+              formData.append('topic_ids[]', String(topicId));
             });
           } else {
             // Send empty array when clearing topics
-            formData.append('topic_ids', '');
+            formData.append('topic_ids[]', '');
           }
         }
         
