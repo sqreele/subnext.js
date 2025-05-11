@@ -12,7 +12,7 @@ import {
   ServiceResponse,
 } from '@/app/lib/preventiveMaintenanceModels';
 import preventiveMaintenanceService from '@/app/lib/PreventiveMaintenanceService';
-import api from '@/app/lib/api-client';
+import apiClient, { handleApiError } from '@/app/lib/api-client';
 
 interface PreventiveMaintenanceFormProps {
   pmId?: string | null;
@@ -109,18 +109,14 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     setFormErrors({});
   };
 
-  // Fetch available topics
+  // Fetch available topics using API client
   const fetchAvailableTopics = async () => {
     try {
-      if (session?.user?.accessToken) {
-        const response = await api.get('/api/topics/', {
-          headers: { Authorization: `Bearer ${session.user.accessToken}` },
-        });
-        if (response.data && response.data.topics) {
-          setAvailableTopics(response.data.topics);
-        } else if (response.data) {
-          setAvailableTopics(response.data);
-        }
+      const response = await apiClient.get('/api/topics/');
+      if (response.data && response.data.topics) {
+        setAvailableTopics(response.data.topics);
+      } else if (response.data) {
+        setAvailableTopics(response.data);
       }
     } catch (err: any) {
       console.error('Error fetching available topics:', err);
@@ -313,92 +309,55 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     clearError();
   
     try {
-      if (!session?.user?.accessToken) {
-        throw new Error('Authentication required. Please log in.');
-      }
-  
-      // Create FormData for multipart/form-data request
-      const submitData = new FormData();
-      
-      // Add non-file fields
-      submitData.append('scheduled_date', formState.scheduled_date);
-      submitData.append('frequency', formState.frequency);
-      if (formState.frequency === 'custom' && formState.custom_days) {
-        submitData.append('custom_days', formState.custom_days.toString());
-      }
-      if (formState.notes) {
-        submitData.append('notes', formState.notes);
-      }
-      if (formState.pmtitle) {
-        submitData.append('pmtitle', formState.pmtitle);
-      }
-      
-      // Add topic_ids if they exist
-      if (formState.selected_topics.length > 0) {
-        formState.selected_topics.forEach(topicId => {
-          submitData.append('topic_ids', topicId.toString());
-        });
-      }
-      
-      // Add image files if they exist
-      if (formState.before_image_file) {
-        submitData.append('before_image', formState.before_image_file);
-      }
-      if (formState.after_image_file) {
-        submitData.append('after_image', formState.after_image_file);
-      }
+      // Prepare the data object
+      const submitData = {
+        scheduled_date: formState.scheduled_date,
+        frequency: formState.frequency,
+        custom_days: formState.frequency === 'custom' ? formState.custom_days : undefined,
+        notes: formState.notes || undefined,
+        pmtitle: formState.pmtitle || undefined,
+        topic_ids: formState.selected_topics.length > 0 ? formState.selected_topics : undefined,
+        before_image: formState.before_image_file || undefined,
+        after_image: formState.after_image_file || undefined,
+      };
   
       const maintenanceId = pmId || (initialData ? initialData.pm_id : null);
+      
       let response;
-  
-      // Prepare headers
-      const headers = {
-        'Authorization': `Bearer ${session.user.accessToken}`,
-        // Don't set Content-Type - let browser set it with boundary for multipart
-      };
-  
-      // Use fetch instead of the service method to properly handle FormData
-      const url = maintenanceId 
-        ? `${process.env.NEXT_PUBLIC_API_URL || ''}/api/preventive-maintenance/${maintenanceId}/`
-        : `${process.env.NEXT_PUBLIC_API_URL || ''}/api/preventive-maintenance/`;
-      
-      const fetchOptions = {
-        method: maintenanceId ? 'PATCH' : 'POST',
-        headers,
-        body: submitData,
-      };
-  
-      response = await fetch(url, fetchOptions);
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to save maintenance record');
-      }
-      
-      const maintenanceData = await response.json();
-  
-      // Handle the response based on its structure
-      let finalData;
-      if ('success' in maintenanceData && maintenanceData.success && maintenanceData.data) {
-        finalData = maintenanceData.data;
-      } else if ('pm_id' in maintenanceData) {
-        finalData = maintenanceData;
+      if (maintenanceId) {
+        // Update existing maintenance
+        response = await preventiveMaintenanceService.updatePreventiveMaintenance(
+          maintenanceId,
+          submitData
+        );
       } else {
-        throw new Error('Invalid response format');
+        // Create new maintenance
+        response = await preventiveMaintenanceService.createPreventiveMaintenance(
+          submitData
+        );
       }
-  
-      onSuccessAction(finalData);
-  
-      if (!maintenanceId) {
-        resetForm();
+      
+      // Extract the data from the service response
+      if (response.success && response.data) {
+        onSuccessAction(response.data);
+        
+        if (!maintenanceId) {
+          resetForm();
+        }
+      } else {
+        throw new Error(response.message || 'Failed to save maintenance record');
       }
     } catch (error: any) {
       console.error('Error submitting form:', error);
-      const errorMessage =
-        error.response?.data?.message ||
-        error.message ||
-        'An unexpected error occurred while saving the maintenance record';
+      
+      // The handleApiError is already called in the service
+      const errorMessage = error.message || 'An unexpected error occurred while saving the maintenance record';
       setSubmitError(errorMessage);
+      
+      // Log additional details for debugging
+      if (error.details) {
+        console.error('Error details:', error.details);
+      }
     } finally {
       setSubmitLoading(false);
     }

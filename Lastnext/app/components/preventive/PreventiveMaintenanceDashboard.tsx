@@ -2,8 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePreventiveMaintenance } from '@/app/lib/PreventiveContext';
+import { usePreventiveMaintenance } from '@/app/lib/PreventiveContext'; // Fixed import path
 import { PreventiveMaintenance } from '@/app/lib/preventiveMaintenanceModels';
+
+// Define interface for frequency distribution item
+interface FrequencyDistributionItem {
+  name: string;
+  value: number;
+}
 
 // Helper function to get image URL
 const getImageUrl = (image: any): string | null => {
@@ -81,18 +87,19 @@ export default function PreventiveMaintenanceDashboard() {
 
   // Get completion rate percentage
   const getCompletionRate = (): number => {
-    if (!statistics?.counts.total) return 0;
+    if (!statistics?.counts?.total) return 0;
     return Math.round((statistics.counts.completed / statistics.counts.total) * 100);
   };
 
   // Status badge styling
   const getStatusBadge = (status: string): string => {
-    if (status === 'completed') {
-      return "bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium";
-    } else if (status === 'overdue') {
-      return "bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium";
-    } else {
-      return "bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium";
+    switch (status) {
+      case 'completed':
+        return "bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium";
+      case 'overdue':
+        return "bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium";
+      default:
+        return "bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium";
     }
   };
 
@@ -129,7 +136,7 @@ export default function PreventiveMaintenanceDashboard() {
   }
 
   // If statistics is null, show a no data message
-  if (!statistics) {
+  if (!statistics || !statistics.counts) {
     return (
       <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="text-center py-10">
@@ -245,16 +252,16 @@ export default function PreventiveMaintenanceDashboard() {
         </p>
       </div>
       
-      {/* Frequency Distribution */}
+      {/* Frequency Distribution - Updated to match the data structure */}
       {statistics.frequency_distribution && statistics.frequency_distribution.length > 0 && (
         <div className="bg-white rounded-lg shadow p-6 mb-8">
           <h2 className="text-lg font-semibold text-gray-700 mb-4">Maintenance Frequency Distribution</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {statistics.frequency_distribution.map((item) => (
-              <div key={item.frequency} className="bg-gray-50 rounded-lg p-4 text-center">
-                <p className="text-xl font-bold text-gray-900">{item.count}</p>
+            {statistics.frequency_distribution.map((item: FrequencyDistributionItem) => (
+              <div key={item.name} className="bg-gray-50 rounded-lg p-4 text-center">
+                <p className="text-xl font-bold text-gray-900">{item.value}</p>
                 <p className="text-sm font-medium text-gray-500 capitalize">
-                  {item.frequency.replace('_', ' ')}
+                  {item.name.replace('_', ' ')}
                 </p>
               </div>
             ))}
@@ -296,7 +303,7 @@ export default function PreventiveMaintenanceDashboard() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {statistics.upcoming.map((item) => {
+                {statistics.upcoming.map((item: PreventiveMaintenance) => {
                   // Determine PM status
                   const status = item.status || determinePMStatus(item);
                   

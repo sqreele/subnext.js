@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { usePreventiveMaintenance } from '@/app/lib/PreventiveContext';
-import { PreventiveMaintenance, MaintenanceImage } from '@/app/lib/preventiveMaintenanceModels';
-import { PreventiveMaintenanceCompleteRequest } from '@/app/lib/PreventiveMaintenanceService';
+import { usePreventiveMaintenance,PreventiveMaintenanceCompleteRequest  } from '@/app/lib/PreventiveContext'; // Fixed import path
+import {  MaintenanceImage } from '@/app/lib/preventiveMaintenanceModels';
+
 
 interface CompletePreventiveMaintenanceProps {
   params: {
@@ -27,15 +27,14 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
     clearError
   } = usePreventiveMaintenance();
 
-  // Local state
+  // Local state - Updated to match the service's expected structure
   const [completionData, setCompletionData] = useState<PreventiveMaintenanceCompleteRequest>({
-    completed_date: new Date().toISOString().slice(0, 16), // Format: YYYY-MM-DDThh:mm
-    notes: '',
-    after_image_id: null,
-    before_image_id: null
+    completion_notes: '', // Fixed property name from 'notes' to 'completion_notes'
+    after_image: undefined, // Will be a File object if uploaded
   });
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [completedDate, setCompletedDate] = useState<string>(new Date().toISOString().slice(0, 16)); // Local state for date
 
   // Fetch maintenance record
   useEffect(() => {
@@ -51,27 +50,13 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
       if (selectedMaintenance.notes) {
         setCompletionData(prev => ({
           ...prev,
-          notes: selectedMaintenance.notes || ''
+          completion_notes: selectedMaintenance.notes || ''
         }));
       }
       
       // If already completed, show message
       if (selectedMaintenance.completed_date) {
         setSuccessMessage('This maintenance task has already been completed.');
-      }
-      
-      // Pre-populate image IDs if available
-      if (selectedMaintenance.before_image?.id) {
-        setCompletionData(prev => ({
-          ...prev,
-          before_image_id: selectedMaintenance.before_image?.id || null
-        }));
-      }
-      if (selectedMaintenance.after_image?.id) {
-        setCompletionData(prev => ({
-          ...prev,
-          after_image_id: selectedMaintenance.after_image?.id || null
-        }));
       }
     }
   }, [selectedMaintenance]);
@@ -80,16 +65,23 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>): void => {
     const { name, value } = e.target;
     
-    // Handle special case for image selection
-    if (name === 'after_image_id' || name === 'before_image_id') {
+    if (name === 'completed_date') {
+      setCompletedDate(value);
+    } else if (name === 'completion_notes') {
       setCompletionData(prev => ({
         ...prev,
-        [name]: value ? Number(value) : null
+        completion_notes: value
       }));
-    } else {
+    }
+  };
+
+  // Handle file upload
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    const file = e.target.files?.[0];
+    if (file) {
       setCompletionData(prev => ({
         ...prev,
-        [name]: value
+        after_image: file
       }));
     }
   };
@@ -103,6 +95,8 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
     clearError();
     
     try {
+      // Note: The service should handle setting the completed_date
+      // We're not sending it as part of the completion data
       const result = await completeMaintenance(pmId, completionData);
       
       if (result) {
@@ -117,6 +111,8 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
       }
     } catch (err: any) {
       console.error('Error completing maintenance task:', err);
+      // Don't reset submitting state on error to let user retry
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -278,39 +274,42 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
           </div>
           
           <form onSubmit={handleSubmit} className="border-t border-gray-200 px-4 py-5 sm:p-6">
-            {/* Completion Date */}
+            {/* Completion Date - Note: This is for display only */}
             <div className="mb-4">
               <label htmlFor="completed_date" className="block text-sm font-medium text-gray-700 mb-1">
-                Completion Date and Time
+                Current Date and Time (when completing this task)
               </label>
               <input
                 type="datetime-local"
                 id="completed_date"
                 name="completed_date"
-                value={completionData.completed_date}
+                value={completedDate}
                 onChange={handleInputChange}
-                required
-                className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled
+                className="w-full rounded-md border border-gray-300 px-3 py-2 bg-gray-100 text-gray-600"
               />
+              <p className="mt-1 text-xs text-gray-500">
+                The completion date will be automatically set to the current date/time when you submit.
+              </p>
             </div>
             
             {/* Notes */}
             <div className="mb-4">
-              <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="completion_notes" className="block text-sm font-medium text-gray-700 mb-1">
                 Completion Notes
               </label>
               <textarea
-                id="notes"
-                name="notes"
+                id="completion_notes"
+                name="completion_notes"
                 rows={4}
-                value={completionData.notes || ''}
+                value={completionData.completion_notes || ''}
                 onChange={handleInputChange}
                 className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Enter any notes about the completed maintenance task..."
               />
             </div>
             
-            {/* Images */}
+            {/* Images Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
               {/* Before Image */}
               <div>
@@ -330,24 +329,44 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
                 </div>
               </div>
               
-              {/* After Image */}
+              {/* After Image Upload */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   After Image
                 </label>
-                <div className="mt-1 h-40 border border-gray-300 rounded-md overflow-hidden bg-gray-100 flex items-center justify-center">
-                  {selectedMaintenance.after_image || selectedMaintenance.after_image_url ? (
-                    <img 
-                      src={selectedMaintenance.after_image_url || getImageUrl(selectedMaintenance.after_image) || ''}
-                      alt="After maintenance" 
-                      className="h-full w-full object-contain"
-                    />
-                  ) : (
-                    <span className="text-sm text-gray-500">No after image uploaded yet</span>
+                <div className="mt-1">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    className="block w-full text-sm text-gray-500
+                      file:mr-4 file:py-2 file:px-4
+                      file:rounded-full file:border-0
+                      file:text-sm file:font-semibold
+                      file:bg-blue-50 file:text-blue-700
+                      hover:file:bg-blue-100"
+                  />
+                  {completionData.after_image && (
+                    <div className="mt-2 h-40 border border-gray-300 rounded-md overflow-hidden bg-gray-100">
+                      <img 
+                        src={URL.createObjectURL(completionData.after_image)}
+                        alt="After maintenance preview" 
+                        className="h-full w-full object-contain"
+                      />
+                    </div>
+                  )}
+                  {!completionData.after_image && selectedMaintenance.after_image_url && (
+                    <div className="mt-2 h-40 border border-gray-300 rounded-md overflow-hidden bg-gray-100">
+                      <img 
+                        src={selectedMaintenance.after_image_url}
+                        alt="After maintenance existing" 
+                        className="h-full w-full object-contain"
+                      />
+                    </div>
                   )}
                 </div>
                 <p className="mt-1 text-xs text-gray-500">
-                  To add an after image, first upload it on the details page, then come back to complete the task.
+                  Upload a new after image to replace the existing one (if any).
                 </p>
               </div>
             </div>
@@ -362,7 +381,7 @@ export default function CompletePreventiveMaintenance({ params }: CompletePreven
               </Link>
               <button
                 type="submit"
-                className="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={isSubmitting}
               >
                 {isSubmitting ? 'Processing...' : 'Mark as Completed'}

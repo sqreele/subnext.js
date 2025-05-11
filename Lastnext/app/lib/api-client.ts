@@ -5,6 +5,7 @@
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from "axios";
 import { getSession, signOut } from "next-auth/react";
 import { jwtDecode } from "jwt-decode";
+import { useState,useCallback} from 'react'
 
 // Define token structure
 interface JwtToken {
@@ -433,5 +434,192 @@ export async function uploadFile<T>(url: string, formData: FormData): Promise<T>
     throw handleApiError(error);
   }
 }
+// Add this to your api-client.ts file
+
+/**
+ * Helper function to upload multipart form data with automatic auth handling
+ * This function ensures proper content-type handling for file uploads
+ */
+export async function uploadMultipartData<T>(
+  url: string, 
+  formData: FormData, 
+  options?: {
+    onUploadProgress?: (progressEvent: any) => void;
+    signal?: AbortSignal;
+  }
+): Promise<AxiosResponse<T>> {
+  try {
+    // Don't set Content-Type header manually - Axios will set it automatically with boundary
+    const config: AxiosRequestConfig = {
+      headers: {
+        // Let the browser set the Content-Type with boundary for multipart/form-data
+        // Don't set 'Content-Type': 'multipart/form-data' manually
+      },
+      onUploadProgress: options?.onUploadProgress,
+      signal: options?.signal,
+    };
+
+    // Log debug info in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[uploadMultipartData] Uploading to:', url);
+      console.log('[uploadMultipartData] FormData keys:', Array.from(formData.keys()));
+    }
+
+    const response = await apiClient.post<T>(url, formData, config);
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[uploadMultipartData] Upload successful:', response.status);
+    }
+    
+    return response;
+  } catch (error) {
+    console.error('[uploadMultipartData] Upload failed:', error);
+    throw handleApiError(error);
+  }
+}
+
+// Example usage in your form:
+/*
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  
+  try {
+    const formData = new FormData();
+    // Add your form fields...
+    
+    const response = await uploadMultipartData('/api/preventive-maintenance/', formData, {
+      onUploadProgress: (progressEvent) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        console.log(`Upload Progress: ${percentCompleted}%`);
+      }
+    });
+    
+    // Handle success
+  } catch (error) {
+    // Handle error
+  }
+};
+*/
+
+// Alternative: Create a custom hook for form submission with upload progress
+export function useFormSubmit<T>() {
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [error, setError] = useState<string | null>(null);
+  
+  const submitForm = useCallback(async (
+    url: string,
+    data: FormData | object,
+    isMultipart: boolean = false,
+    method: 'POST' | 'PATCH' = 'POST'
+  ): Promise<T | null> => {
+    try {
+      setIsSubmitting(true);
+      setError(null);
+      setUploadProgress(0);
+      
+      let response: AxiosResponse<T>;
+      
+      if (isMultipart && data instanceof FormData) {
+        response = await uploadMultipartData<T>(url, data, {
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setUploadProgress(percentCompleted);
+          }
+        });
+      } else {
+        // Regular JSON submission
+        if (method === 'PATCH') {
+          response = await apiClient.patch<T>(url, data);
+        } else {
+          response = await apiClient.post<T>(url, data);
+        }
+      }
+      
+      return response.data;
+    } catch (err) {
+      const processedError = handleApiError(err);
+      setError(processedError.message);
+      return null;
+    } finally {
+      setIsSubmitting(false);
+      setUploadProgress(0);
+    }
+  }, []);
+  
+  return {
+    submitForm,
+    isSubmitting,
+    uploadProgress,
+    error,
+    clearError: () => setError(null)
+  };
+}
+
+// Utility function to create a FormData from an object
+export function createFormData(data: Record<string, any>): FormData {
+  const formData = new FormData();
+  
+  Object.entries(data).forEach(([key, value]) => {
+    if (value === null || value === undefined) return;
+    
+    if (Array.isArray(value)) {
+      // Handle arrays (like topic_ids)
+      value.forEach(item => {
+        formData.append(key, String(item));
+      });
+    } else if (value instanceof File) {
+      // Handle file uploads
+      formData.append(key, value);
+    } else if (typeof value === 'object') {
+      // Convert objects to JSON string
+      formData.append(key, JSON.stringify(value));
+    } else {
+      // Handle primitive values
+      formData.append(key, String(value));
+    }
+  });
+  
+  return formData;
+}
+
+// Example usage in PreventiveMaintenanceForm:
+/*
+const { submitForm, isSubmitting, uploadProgress, error, clearError } = useFormSubmit<PreventiveMaintenance>();
+
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  
+  if (!validateForm()) return;
+  clearError();
+  
+  const submitData = {
+    scheduled_date: formState.scheduled_date,
+    frequency: formState.frequency,
+    custom_days: formState.custom_days,
+    notes: formState.notes,
+    pmtitle: formState.pmtitle,
+    topic_ids: formState.selected_topics,
+    before_image: formState.before_image_file,
+    after_image: formState.after_image_file,
+  };
+  
+  const url = pmId 
+    ? `/api/preventive-maintenance/${pmId}/`
+    : '/api/preventive-maintenance/';
+  
+  const result = await submitForm(
+    url,
+    createFormData(submitData),
+    true, // isMultipart
+    pmId ? 'PATCH' : 'POST'
+  );
+  
+  if (result) {
+    onSuccessAction(result);
+    if (!pmId) resetForm();
+  }
+};
+*/
 
 export default apiClient;
