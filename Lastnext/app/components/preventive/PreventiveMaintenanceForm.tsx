@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import {
   PreventiveMaintenance,
-  PreventiveMaintenanceRequest as OriginalPMRequest,
   FREQUENCY_OPTIONS,
   validateFrequency,
   FrequencyType,
@@ -12,11 +11,6 @@ import {
   PMFormErrors,
   ServiceResponse,
 } from '@/app/lib/preventiveMaintenanceModels';
-
-// Extend the original request type to include pmtitle
-interface PreventiveMaintenanceRequest extends OriginalPMRequest {
-  pmtitle?: string;
-}
 import preventiveMaintenanceService from '@/app/lib/PreventiveMaintenanceService';
 import api from '@/app/lib/api-client';
 
@@ -40,7 +34,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   // Form state
-  const [formData, setFormData] = useState<{
+  const [formState, setFormState] = useState<{
     pmtitle: string;
     scheduled_date: string;
     frequency: FrequencyType;
@@ -98,7 +92,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
 
   // Reset form after successful creation
   const resetForm = () => {
-    setFormData({
+    setFormState({
       pmtitle: '',
       scheduled_date: formatDateForInput(new Date()),
       frequency: 'monthly',
@@ -136,7 +130,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
 
   // Handle topic selection
   const handleTopicChange = (topicId: number) => {
-    setFormData((prevData) => {
+    setFormState((prevData) => {
       const currentSelectedTopics = [...prevData.selected_topics];
       const index = currentSelectedTopics.indexOf(topicId);
 
@@ -170,7 +164,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         });
       }
 
-      setFormData({
+      setFormState({
         pmtitle: initialData.pmtitle || '',
         scheduled_date: initialData.scheduled_date
           ? formatDateForInput(new Date(initialData.scheduled_date))
@@ -217,7 +211,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
             });
           }
 
-          setFormData({
+          setFormState({
             pmtitle: data.pmtitle || '',
             scheduled_date: data.scheduled_date
               ? formatDateForInput(new Date(data.scheduled_date))
@@ -256,11 +250,11 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
 
     if (name === 'custom_days') {
       const numValue = value ? parseInt(value, 10) : null;
-      setFormData((prev) => ({ ...prev, [name]: numValue }));
+      setFormState((prev) => ({ ...prev, [name]: numValue }));
     } else if (name === 'frequency') {
-      setFormData((prev) => ({ ...prev, [name]: validateFrequency(value) }));
+      setFormState((prev) => ({ ...prev, [name]: validateFrequency(value) }));
     } else {
-      setFormData((prev) => ({ ...prev, [name]: value }));
+      setFormState((prev) => ({ ...prev, [name]: value }));
     }
 
     if (formErrors[name as keyof typeof formErrors]) {
@@ -282,9 +276,9 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       reader.readAsDataURL(file);
 
       if (type === 'before') {
-        setFormData((prev) => ({ ...prev, before_image_file: file }));
+        setFormState((prev) => ({ ...prev, before_image_file: file }));
       } else {
-        setFormData((prev) => ({ ...prev, after_image_file: file }));
+        setFormState((prev) => ({ ...prev, after_image_file: file }));
       }
     }
   };
@@ -292,15 +286,15 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
   const validateForm = (): boolean => {
     const errors: PMFormErrors = {};
 
-    if (!formData.scheduled_date) {
+    if (!formState.scheduled_date) {
       errors.scheduled_date = 'Scheduled date is required';
     }
 
-    if (!formData.frequency) {
+    if (!formState.frequency) {
       errors.frequency = 'Frequency is required';
     }
 
-    if (formData.frequency === 'custom' && (!formData.custom_days || formData.custom_days < 1)) {
+    if (formState.frequency === 'custom' && (!formState.custom_days || formState.custom_days < 1)) {
       errors.custom_days = 'Custom days must be at least 1';
     }
 
@@ -310,98 +304,91 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
+  
     if (!validateForm()) {
       return;
     }
-
+  
     setSubmitLoading(true);
     clearError();
-
+  
     try {
       if (!session?.user?.accessToken) {
         throw new Error('Authentication required. Please log in.');
       }
-
-      // Create the request data object with standard fields
-      const requestData: PreventiveMaintenanceRequest = {
-        scheduled_date: formData.scheduled_date,
-        frequency: formData.frequency,
-        custom_days: formData.frequency === 'custom' ? formData.custom_days : null,
-        notes: formData.notes || '',
-        before_image_id: formData.before_image_id,
-        after_image_id: formData.after_image_id,
-        topic_ids: formData.selected_topics.length > 0 ? formData.selected_topics : undefined,
-      };
+  
+      // Create FormData for multipart/form-data request
+      const submitData = new FormData();
       
-      // Only add pmtitle if it's not empty
-      if (formData.pmtitle) {
-        requestData.pmtitle = formData.pmtitle;
+      // Add non-file fields
+      submitData.append('scheduled_date', formState.scheduled_date);
+      submitData.append('frequency', formState.frequency);
+      if (formState.frequency === 'custom' && formState.custom_days) {
+        submitData.append('custom_days', formState.custom_days.toString());
       }
-
+      if (formState.notes) {
+        submitData.append('notes', formState.notes);
+      }
+      if (formState.pmtitle) {
+        submitData.append('pmtitle', formState.pmtitle);
+      }
+      
+      // Add topic_ids if they exist
+      if (formState.selected_topics.length > 0) {
+        formState.selected_topics.forEach(topicId => {
+          submitData.append('topic_ids', topicId.toString());
+        });
+      }
+      
+      // Add image files if they exist
+      if (formState.before_image_file) {
+        submitData.append('before_image', formState.before_image_file);
+      }
+      if (formState.after_image_file) {
+        submitData.append('after_image', formState.after_image_file);
+      }
+  
       const maintenanceId = pmId || (initialData ? initialData.pm_id : null);
       let response;
-
-      if (maintenanceId) {
-        // Update existing maintenance
-        response = await preventiveMaintenanceService.updatePreventiveMaintenance(
-          maintenanceId,
-          requestData
-        );
+  
+      // Prepare headers
+      const headers = {
+        'Authorization': `Bearer ${session.user.accessToken}`,
+        // Don't set Content-Type - let browser set it with boundary for multipart
+      };
+  
+      // Use fetch instead of the service method to properly handle FormData
+      const url = maintenanceId 
+        ? `${process.env.NEXT_PUBLIC_API_URL || ''}/api/preventive-maintenance/${maintenanceId}/`
+        : `${process.env.NEXT_PUBLIC_API_URL || ''}/api/preventive-maintenance/`;
+      
+      const fetchOptions = {
+        method: maintenanceId ? 'PATCH' : 'POST',
+        headers,
+        body: submitData,
+      };
+  
+      response = await fetch(url, fetchOptions);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to save maintenance record');
+      }
+      
+      const maintenanceData = await response.json();
+  
+      // Handle the response based on its structure
+      let finalData;
+      if ('success' in maintenanceData && maintenanceData.success && maintenanceData.data) {
+        finalData = maintenanceData.data;
+      } else if ('pm_id' in maintenanceData) {
+        finalData = maintenanceData;
       } else {
-        // Create new maintenance
-        response = await preventiveMaintenanceService.createPreventiveMaintenance(
-          requestData
-        );
+        throw new Error('Invalid response format');
       }
-
-      let maintenanceData = extractPreventiveMaintenanceData(response);
-
-      if (!maintenanceData || !('pm_id' in maintenanceData)) {
-        throw new Error('Failed to save maintenance record');
-      }
-
-      if (formData.before_image_file || formData.after_image_file) {
-        setIsImageUploading(true);
-        const formDataForImages = new FormData();
-
-        if (formData.before_image_file) {
-          formDataForImages.append('images', formData.before_image_file);
-          formDataForImages.append('image_types', 'before');
-        }
-
-        if (formData.after_image_file) {
-          formDataForImages.append('images', formData.after_image_file);
-          formDataForImages.append('image_types', 'after');
-        }
-
-        // Note: We're using uploadJobImages but passing the PM ID as the job ID
-        // This is a temporary solution until a dedicated PM image upload endpoint is available
-        const uploadResponse = await preventiveMaintenanceService.uploadJobImages(
-          maintenanceData.pm_id,
-          formDataForImages
-        );
-
-        // Check if upload was successful
-        if (
-          ('success' in uploadResponse && uploadResponse.success) || 
-          (!('success' in uploadResponse) && uploadResponse)
-        ) {
-          // Fetch the updated PM record with new image URLs
-          const updatedPMResponse = await preventiveMaintenanceService.getPreventiveMaintenanceById(
-            maintenanceData.pm_id
-          );
-
-          const updatedPM = extractPreventiveMaintenanceData(updatedPMResponse);
-
-          if (updatedPM && 'pm_id' in updatedPM) {
-            maintenanceData = updatedPM;
-          }
-        }
-      }
-
-      onSuccessAction(maintenanceData);
-
+  
+      onSuccessAction(finalData);
+  
       if (!maintenanceId) {
         resetForm();
       }
@@ -414,17 +401,16 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       setSubmitError(errorMessage);
     } finally {
       setSubmitLoading(false);
-      setIsImageUploading(false);
     }
   };
 
   const removeImage = (type: 'before' | 'after') => {
     if (type === 'before') {
       setBeforeImagePreview(null);
-      setFormData((prev) => ({ ...prev, before_image_file: null, before_image_id: null }));
+      setFormState((prev) => ({ ...prev, before_image_file: null, before_image_id: null }));
     } else {
       setAfterImagePreview(null);
-      setFormData((prev) => ({ ...prev, after_image_file: null, after_image_id: null }));
+      setFormState((prev) => ({ ...prev, after_image_file: null, after_image_id: null }));
     }
   };
 
@@ -458,7 +444,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
             type="text"
             id="pmtitle"
             name="pmtitle"
-            value={formData.pmtitle}
+            value={formState.pmtitle}
             onChange={handleChange}
             className="w-full p-2 border border-gray-300 rounded-md"
             placeholder="Enter maintenance title (optional)"
@@ -476,7 +462,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
             type="date"
             id="scheduled_date"
             name="scheduled_date"
-            value={formData.scheduled_date}
+            value={formState.scheduled_date}
             onChange={handleChange}
             className={`w-full p-2 border rounded-md ${
               formErrors.scheduled_date ? 'border-red-500' : 'border-gray-300'
@@ -496,7 +482,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
           <select
             id="frequency"
             name="frequency"
-            value={formData.frequency}
+            value={formState.frequency}
             onChange={handleChange}
             className={`w-full p-2 border rounded-md ${
               formErrors.frequency ? 'border-red-500' : 'border-gray-300'
@@ -515,7 +501,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
           )}
         </div>
 
-        {formData.frequency === 'custom' && (
+        {formState.frequency === 'custom' && (
           <div className="mb-6">
             <label
               htmlFor="custom_days"
@@ -529,7 +515,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
               type="number"
               min="1"
               max="365"
-              value={formData.custom_days || ''}
+              value={formState.custom_days || ''}
               onChange={handleChange}
               className={`w-full p-2 border rounded-md ${
                 formErrors.custom_days ? 'border-red-500' : 'border-gray-300'
@@ -551,7 +537,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
             id="notes"
             name="notes"
             rows={4}
-            value={formData.notes}
+            value={formState.notes}
             onChange={handleChange}
             className="w-full p-2 border border-gray-300 rounded-md"
             placeholder="Add any additional notes here..."
@@ -578,10 +564,10 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                     <input
                       type="checkbox"
                       id={`topic-${topic.id}`}
-                      checked={formData.selected_topics.includes(topic.id)}
+                      checked={formState.selected_topics.includes(topic.id)}
                       onChange={() => handleTopicChange(topic.id)}
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      aria-checked={formData.selected_topics.includes(topic.id)}
+                      aria-checked={formState.selected_topics.includes(topic.id)}
                     />
                     <label
                       htmlFor={`topic-${topic.id}`}
