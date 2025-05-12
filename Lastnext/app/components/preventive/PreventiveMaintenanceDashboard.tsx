@@ -142,7 +142,7 @@ export default function PreventiveMaintenanceDashboard() {
         <div className="text-center py-10">
           <p className="text-lg text-gray-500">No maintenance data available.</p>
           <Link 
-            href="/preventive-maintenance/create" 
+            href="/dashboard/preventive-maintenance/create" 
             className="mt-4 inline-block bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"
           >
             Create Your First Maintenance Task
