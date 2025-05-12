@@ -9,6 +9,7 @@ import {
 
 export interface CreatePreventiveMaintenanceData {
   scheduled_date: string;
+  completed_date?: string | null;
   frequency: FrequencyType;
   custom_days?: number | null;
   notes?: string;
@@ -20,6 +21,7 @@ export interface CreatePreventiveMaintenanceData {
 
 export interface UpdatePreventiveMaintenanceData {
   scheduled_date?: string;
+  completed_date?: string | null;
   frequency?: FrequencyType;
   custom_days?: number | null;
   notes?: string;
@@ -144,61 +146,61 @@ class PreventiveMaintenanceService {
     data: UploadImagesData
   ): Promise<ServiceResponse<null>> {
     console.log(`=== UPLOAD IMAGES FOR PM ${pmId} ===`);
-    
+  
     if (!pmId) {
       console.error('Cannot upload images: PM ID is undefined or empty');
       return { success: false, message: 'PM ID is required for image upload' };
     }
-    
+  
     // Skip if no images to upload
     if (!data.before_image && !data.after_image) {
       console.log('No images to upload, skipping');
       return { success: true, data: null };
     }
-    
+  
     try {
       const imageFormData = new FormData();
       let hasImages = false;
-      
-      // IMPORTANT CHANGE: The backend expects "images" (plural) and "image_types"
-      // instead of before_image and after_image
-      
+  
+      // Add the images to the form data
       if (data.before_image instanceof File) {
-        // Add the image to the images field
         imageFormData.append('images', data.before_image);
-        // Specify this is a "before" image type
         imageFormData.append('image_types', 'before');
         hasImages = true;
         console.log(`Adding before image: ${data.before_image.name}`);
       }
-      
+  
       if (data.after_image instanceof File) {
-        // Add the image to the images field
         imageFormData.append('images', data.after_image);
-        // Specify this is an "after" image type
         imageFormData.append('image_types', 'after');
         hasImages = true;
         console.log(`Adding after image: ${data.after_image.name}`);
       }
-      
+  
       if (!hasImages) {
         console.log('No valid images found, skipping upload');
         return { success: true, data: null };
       }
-      
+  
       console.log(`Uploading images to: ${this.baseUrl}/${pmId}/upload_images/`);
-      
+  
       // Log the form data entries for debugging
       console.log('FormData entries:');
       for (const [key, value] of imageFormData.entries()) {
         console.log(`  ${key}: ${value instanceof File ? value.name : value}`);
       }
-      
+  
+      // Post the form data with headers
       await apiClient.post(
         `${this.baseUrl}/${pmId}/upload_images/`,
-        imageFormData
+        imageFormData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        }
       );
-      
+  
       console.log('Images uploaded successfully');
       return { success: true, data: null };
     } catch (error: any) {
@@ -217,12 +219,18 @@ class PreventiveMaintenanceService {
       console.error('Cannot update: PM ID is undefined or empty');
       return { success: false, message: 'PM ID is required for updates' };
     }
-
+  
     try {
       const formData = new FormData();
       if (data.scheduled_date !== undefined) {
         formData.append('scheduled_date', data.scheduled_date);
       }
+      
+      // Add completed_date if it exists
+      if (data.completed_date !== undefined) {
+        formData.append('completed_date', data.completed_date !== null ? data.completed_date : '');
+      }
+      
       if (data.frequency !== undefined) {
         formData.append('frequency', validateFrequency(data.frequency));
       }
@@ -244,7 +252,7 @@ class PreventiveMaintenanceService {
           formData.append('topic_ids[]', '');
         }
       }
-
+  
       // First update the record
       console.log('Sending update request...');
       const response = await apiClient.patch<PreventiveMaintenance>(
