@@ -297,3 +297,9 @@ export interface PaginationProps {
   currentPage: number;
   onPageChange: (page: number) => void;
 }
+export interface ServiceResponse<T> {
+  success: boolean;
+  data?: T;
+  message?: string;
+  error?: string;
+}

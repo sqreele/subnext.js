@@ -1,10 +1,10 @@
 import apiClient from './api-client';
 import { handleApiError } from './api-client';
-import type { ServiceResponse } from './types';
 import {
   validateFrequency,
   type PreventiveMaintenance,
   type FrequencyType,
+  type ServiceResponse
 } from './preventiveMaintenanceModels';
 
 export interface CreatePreventiveMaintenanceData {
@@ -27,6 +27,25 @@ export interface UpdatePreventiveMaintenanceData {
   topic_ids?: number[];
   before_image?: File;
   after_image?: File;
+}
+
+interface CompletePreventiveMaintenanceData {
+  completion_notes?: string;
+  after_image?: File;
+}
+
+interface DashboardStats {
+  counts: {
+    total: number;
+    completed: number;
+    pending: number;
+    overdue: number;
+  };
+  frequency_distribution: {
+    name: string;
+    value: number;
+  }[];
+  upcoming: PreventiveMaintenance[];
 }
 
 class PreventiveMaintenanceService {
@@ -107,7 +126,7 @@ class PreventiveMaintenanceService {
       return { success: true, data: createdRecord };
     } catch (error: any) {
       console.error('Service error creating maintenance:', error);
-      throw handleApiError(error, 'Failed to create preventive maintenance');
+      throw handleApiError(error);
     }
   }
 
@@ -169,7 +188,41 @@ class PreventiveMaintenanceService {
       return { success: true, data: response.data };
     } catch (error: any) {
       console.error('Service error updating maintenance:', error);
-      throw handleApiError(error, 'Failed to update preventive maintenance');
+      throw handleApiError(error);
+    }
+  }
+
+  async completePreventiveMaintenance(
+    id: string,
+    data: CompletePreventiveMaintenanceData
+  ): Promise<ServiceResponse<PreventiveMaintenance>> {
+    console.log('=== COMPLETE PREVENTIVE MAINTENANCE ===');
+
+    try {
+      const formData = new FormData();
+      if (data.completion_notes) {
+        formData.append('completion_notes', data.completion_notes.trim());
+      }
+
+      if (data.after_image instanceof File) {
+        const imageFormData = new FormData();
+        imageFormData.append('images', data.after_image);
+        imageFormData.append('image_types', 'after');
+
+        await apiClient.post(
+          `${this.baseUrl}/${id}/upload_images/`,
+          imageFormData
+        );
+      }
+
+      const response = await apiClient.post<PreventiveMaintenance>(
+        `${this.baseUrl}/${id}/complete/`,
+        formData
+      );
+      return { success: true, data: response.data };
+    } catch (error: any) {
+      console.error('Service error completing maintenance:', error);
+      throw handleApiError(error);
     }
   }
 
@@ -183,7 +236,7 @@ class PreventiveMaintenanceService {
       return { success: true, data: response.data };
     } catch (error: any) {
       console.error('Service error fetching maintenance:', error);
-      throw handleApiError(error, 'Failed to fetch preventive maintenance');
+      throw handleApiError(error);
     }
   }
 
@@ -195,7 +248,7 @@ class PreventiveMaintenanceService {
       return { success: true, data: response.data };
     } catch (error: any) {
       console.error('Service error fetching maintenances:', error);
-      throw handleApiError(error, 'Failed to fetch preventive maintenances');
+      throw handleApiError(error);
     }
   }
 
@@ -211,7 +264,19 @@ class PreventiveMaintenanceService {
       return { success: true, data: response.data };
     } catch (error: any) {
       console.error('Service error fetching with filters:', error);
-      throw handleApiError(error, 'Failed to fetch preventive maintenances');
+      throw handleApiError(error);
+    }
+  }
+
+  async getMaintenanceStatistics(): Promise<ServiceResponse<DashboardStats>> {
+    try {
+      const response = await apiClient.get<DashboardStats>(
+        `${this.baseUrl}/statistics/`
+      );
+      return { success: true, data: response.data };
+    } catch (error: any) {
+      console.error('Service error fetching maintenance statistics:', error);
+      throw handleApiError(error);
     }
   }
 
@@ -223,7 +288,7 @@ class PreventiveMaintenanceService {
       return { success: true, data: null };
     } catch (error: any) {
       console.error('Service error deleting maintenance:', error);
-      throw handleApiError(error, 'Failed to delete preventive maintenance');
+      throw handleApiError(error);
     }
   }
 }

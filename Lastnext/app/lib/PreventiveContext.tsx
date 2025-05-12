@@ -169,7 +169,14 @@ export const PreventiveMaintenanceProvider: React.FC<PreventiveMaintenanceProvid
       const response = await topicService.getTopics();
 
       if (response.success && response.data) {
-        setTopics(response.data);
+        // Transform the data to ensure compatibility with your Topic interface
+        const transformedTopics = response.data.map(topic => ({
+          id: topic.id,
+          title: topic.title,
+          description: topic.description || '' // Ensure description is never undefined
+        }));
+        
+        setTopics(transformedTopics);
       } else {
         throw new Error(response.message || 'Failed to fetch topics');
       }
