@@ -16,6 +16,7 @@ import preventiveMaintenanceService, {
   UpdatePreventiveMaintenanceData,
 } from '@/app/lib/PreventiveMaintenanceService';
 import apiClient from '@/app/lib/api-client';
+import FileUpload from "@/app/components/jobs/FileUpload";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
@@ -194,51 +195,6 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     }
   }, [pmId, initialData]);
 
-  // Handle file change with size validation
-  const handleImageChange = (
-    event: React.ChangeEvent<HTMLInputElement>, 
-    type: 'before' | 'after',
-    setFieldValue: (field: string, value: any) => void,
-    setFieldError: (field: string, message: string) => void
-  ) => {
-    const file = event.target.files?.[0] || null;
-    
-    // Clear previous error
-    setFieldError(type === 'before' ? 'before_image_file' : 'after_image_file', '');
-    
-    if (file) {
-      // Validate file size
-      if (file.size > MAX_FILE_SIZE) {
-        const errorMsg = `File size must be less than ${MAX_FILE_SIZE / (1024 * 1024)}MB`;
-        setFieldError(type === 'before' ? 'before_image_file' : 'after_image_file', errorMsg);
-        return;
-      }
-
-      // Create preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (type === 'before') {
-          setBeforeImagePreview(reader.result as string);
-        } else {
-          setAfterImagePreview(reader.result as string);
-        }
-      };
-      reader.readAsDataURL(file);
-
-      // Set the file in form values
-      setFieldValue(type === 'before' ? 'before_image_file' : 'after_image_file', file);
-    } else {
-      // Clear preview and file if no file selected
-      if (type === 'before') {
-        setBeforeImagePreview(null);
-        setFieldValue('before_image_file', null);
-      } else {
-        setAfterImagePreview(null);
-        setFieldValue('after_image_file', null);
-      }
-    }
-  };
-
   // Helper function to extract maintenance data
   const extractMaintenanceData = (response: ServiceResponse<PreventiveMaintenance> | PreventiveMaintenance): PreventiveMaintenance => {
     if ('success' in response && response.success && response.data) {
@@ -366,17 +322,6 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       setSubmitError(errorMessage);
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  // Remove image
-  const removeImage = (type: 'before' | 'after', setFieldValue: (field: string, value: any) => void) => {
-    if (type === 'before') {
-      setBeforeImagePreview(null);
-      setFieldValue('before_image_file', null);
-    } else {
-      setAfterImagePreview(null);
-      setFieldValue('after_image_file', null);
     }
   };
 
@@ -592,112 +537,102 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              {/* Before Image */}
-              <div>
+              {/* Before Image with FileUpload */}
+              <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Before Image
                 </label>
-                <div className="flex flex-col items-center space-y-2">
-                  {beforeImagePreview ? (
-                    <div className="relative w-full h-40 bg-gray-100">
-                      <img
-                        src={beforeImagePreview}
-                        alt="Before Maintenance Preview"
-                        className="w-full h-full object-contain"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeImage('before', setFieldValue)}
-                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 w-6 h-6 flex items-center justify-center"
-                        aria-label="Remove before image"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="w-full h-40 flex flex-col items-center justify-center bg-gray-100 rounded-md cursor-pointer hover:bg-gray-200">
-                      <svg
-                        className="w-12 h-12 text-gray-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        xmlns="http://www.w3.org/2000/svg"
-                        aria-hidden="true"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                        ></path>
-                      </svg>
-                      <span className="mt-2 text-sm text-gray-500">Click to upload before image</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleImageChange(e, 'before', setFieldValue, setFieldError)}
-                        className="hidden"
-                        aria-label="Upload before image"
-                      />
-                    </label>
-                  )}
-                  {(errors as any).before_image_file && touched.before_image_file && (
-                    <p className="text-sm text-red-500">{(errors as any).before_image_file}</p>
-                  )}
-                </div>
+                <FileUpload
+                  onFileSelect={(files: File[]) => {
+                    if (files.length > 0) {
+                      setFieldValue('before_image_file', files[0]);
+                      
+                      // Create preview for the selected file
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setBeforeImagePreview(reader.result as string);
+                      };
+                      reader.readAsDataURL(files[0]);
+                    } else {
+                      setFieldValue('before_image_file', null);
+                      setBeforeImagePreview(null);
+                    }
+                  }}
+                  maxFiles={1}
+                  maxSize={5} // 5MB
+                  error={(errors as any).before_image_file}
+                  touched={touched.before_image_file as boolean | undefined}
+                  disabled={isSubmitting || isLoading}
+                />
+                {beforeImagePreview && (
+                  <div className="mt-3 relative w-full h-40 bg-gray-100 rounded-md overflow-hidden">
+                    <img
+                      src={beforeImagePreview}
+                      alt="Before Maintenance Preview"
+                      className="w-full h-full object-contain"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBeforeImagePreview(null);
+                        setFieldValue('before_image_file', null);
+                      }}
+                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 w-6 h-6 flex items-center justify-center shadow-md"
+                      aria-label="Remove before image"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {/* After Image */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">After Image</label>
-                <div className="flex flex-col items-center space-y-2">
-                  {afterImagePreview ? (
-                    <div className="relative w-full h-40 bg-gray-100">
-                      <img
-                        src={afterImagePreview}
-                        alt="After Maintenance Preview"
-                        className="w-full h-full object-contain"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeImage('after', setFieldValue)}
-                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 w-6 h-6 flex items-center justify-center"
-                        aria-label="Remove after image"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="w-full h-40 flex flex-col items-center justify-center bg-gray-100 rounded-md cursor-pointer hover:bg-gray-200">
-                      <svg
-                        className="w-12 h-12 text-gray-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        xmlns="http://www.w3.org/2000/svg"
-                        aria-hidden="true"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                        ></path>
-                      </svg>
-                      <span className="mt-2 text-sm text-gray-500">Click to upload after image</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleImageChange(e, 'after', setFieldValue, setFieldError)}
-                        className="hidden"
-                        aria-label="Upload after image"
-                      />
-                    </label>
-                  )}
-                  {(errors as any).after_image_file && touched.after_image_file && (
-                    <p className="text-sm text-red-500">{(errors as any).after_image_file}</p>
-                  )}
-                </div>
+              {/* After Image with FileUpload */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  After Image
+                </label>
+                <FileUpload
+                  onFileSelect={(files: File[]) => {
+                    if (files.length > 0) {
+                      setFieldValue('after_image_file', files[0]);
+                      
+                      // Create preview for the selected file
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setAfterImagePreview(reader.result as string);
+                      };
+                      reader.readAsDataURL(files[0]);
+                    } else {
+                      setFieldValue('after_image_file', null);
+                      setAfterImagePreview(null);
+                    }
+                  }}
+                  maxFiles={1}
+                  maxSize={5} // 5MB
+                  error={(errors as any).after_image_file}
+                  touched={touched.after_image_file as boolean | undefined}
+                  disabled={isSubmitting || isLoading}
+                />
+                {afterImagePreview && (
+                  <div className="mt-3 relative w-full h-40 bg-gray-100 rounded-md overflow-hidden">
+                    <img
+                      src={afterImagePreview}
+                      alt="After Maintenance Preview"
+                      className="w-full h-full object-contain"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAfterImagePreview(null);
+                        setFieldValue('after_image_file', null);
+                      }}
+                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 w-6 h-6 flex items-center justify-center shadow-md"
+                      aria-label="Remove after image"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
