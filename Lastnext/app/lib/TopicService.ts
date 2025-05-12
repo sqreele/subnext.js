@@ -20,7 +20,7 @@ export default class TopicService {
       return { success: true, data: response.data };
     } catch (error: any) {
       console.error('Service error fetching topics:', error);
-      throw handleApiError(error, 'Failed to fetch topics');
+      throw handleApiError(error); // Removed the second argument
     }
   }
 }
