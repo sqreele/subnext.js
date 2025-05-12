@@ -79,7 +79,7 @@ class PreventiveMaintenanceService {
           }
         : undefined,
     });
-
+  
     try {
       // Create a clean form data object without image files to avoid potential issues
       const formData = new FormData();
@@ -104,48 +104,77 @@ class PreventiveMaintenanceService {
       } else {
         formData.append('topic_ids[]', '');
       }
-
+  
       console.log('FormData entries (create):');
       for (const [key, value] of formData.entries()) {
         console.log(`  ${key}: ${value}`);
       }
-
+  
       // First create the maintenance record without images
-      const createResponse = await apiClient.post<PreventiveMaintenance>(
+      const createResponse = await apiClient.post<any>(
         `${this.baseUrl}/`,
         formData
       );
-      const createdRecord = createResponse.data;
       
-      // Check if we have a valid PM ID before attempting to upload images
-      // ภายใน createPreventiveMaintenance ในส่วนที่ตรวจสอบ PM ID
-if (createdRecord && createdRecord.pm_id) {
-  console.log(`Maintenance record created with ID: ${createdRecord.pm_id}`);
+      // ดึงข้อมูลที่ถูกต้องจาก response (ปรับปรุง)
+      const responseData = createResponse.data;
+      console.log('Raw API response:', responseData);
+      
+      // ตรวจสอบรูปแบบของข้อมูลและดึง PM ID และข้อมูลที่ถูกต้อง
+      let actualRecord: any;
+      let pmId: string | undefined;
+      
+      if (responseData) {
+        if ('data' in responseData && responseData.data) {
+          // กรณีที่ response มีรูปแบบ { message: '...', data: { pm_id: '...' } }
+          actualRecord = responseData.data;
+          pmId = actualRecord.pm_id;
+          console.log('Found record in nested data structure');
+        } else if ('pm_id' in responseData) {
+          // กรณีที่ response มีรูปแบบ { pm_id: '...' }
+          actualRecord = responseData;
+          pmId = responseData.pm_id;
+          console.log('Found record directly in response');
+        } else {
+          console.error('Unexpected response format:', responseData);
+          actualRecord = responseData;
+        }
+      } else {
+        console.error('Empty response data');
+        actualRecord = {}; // ป้องกันข้อผิดพลาดกรณีไม่มีข้อมูล
+      }
+      
+      // ตรวจสอบว่ามี PM ID หรือไม่ก่อนทำการอัปโหลดรูปภาพ
+      if (pmId) {
+        console.log(`Maintenance record created with ID: ${pmId}`);
+        
+        // Add more detailed logging here
+        console.log('Checking images for upload:');
+        console.log('before_image instanceof File:', data.before_image instanceof File);
+        console.log('after_image instanceof File:', data.after_image instanceof File);
+        
+        // If we have images, upload them separately
+        if (data.before_image instanceof File || data.after_image instanceof File) {
+          console.log('Attempting to upload images...');
+          try {
+            await this.uploadMaintenanceImages(pmId, {
+              before_image: data.before_image,
+              after_image: data.after_image
+            });
+            console.log('Image upload complete');
+          } catch (uploadError) {
+            console.error(`Error uploading images for PM ${pmId}:`, uploadError);
+            // Continue despite image upload error - the record was created successfully
+          }
+        } else {
+          console.log('No valid image files found for upload');
+        }
+      } else {
+        console.error('Created record missing PM ID:', responseData);
+      }
   
-  // Add more detailed logging here
-  console.log('Checking images for upload:');
-  console.log('before_image instanceof File:', data.before_image instanceof File);
-  console.log('after_image instanceof File:', data.after_image instanceof File);
-  
-  // If we have images, upload them separately
-  if (data.before_image instanceof File || data.after_image instanceof File) {
-    console.log('Attempting to upload images...');
-    try {
-      await this.uploadMaintenanceImages(createdRecord.pm_id, {
-        before_image: data.before_image,
-        after_image: data.after_image
-      });
-      console.log('Image upload complete');
-    } catch (uploadError) {
-      console.error(`Error uploading images for PM ${createdRecord.pm_id}:`, uploadError);
-      // Continue despite image upload error - the record was created successfully
-    }
-  } else {
-    console.log('No valid image files found for upload');
-  }
-}
-
-      return { success: true, data: createdRecord };
+      // ส่งคืนข้อมูลในรูปแบบเดิมเพื่อให้เข้ากับส่วนอื่นของโค้ด
+      return { success: true, data: responseData };
     } catch (error: any) {
       console.error('Service error creating maintenance:', error);
       throw handleApiError(error);

@@ -417,46 +417,61 @@ const uploadImagesManually = async (id: string, beforeImage: File | null, afterI
       }
   
       if (response.success && response.data) {
-        const maintenanceData = response.data;
-        console.log('Successfully saved maintenance:', maintenanceData);
-  
-        // Ensure PM ID exists
-        if (!maintenanceData
-  
-  .pm_id) {
-          console.error('Maintenance data does not have a valid PM ID');
+        // กำหนดประเภทให้หลวมขึ้นเพื่อรองรับโครงสร้างที่แตกต่างกัน
+        const responseData: any = response.data;
+        console.log('Successfully saved maintenance:', responseData);
+      
+        // ตรวจสอบรูปแบบของข้อมูลและดึง PM ID ให้ถูกต้อง
+        let pmId: string | undefined;
+        
+        // ดึงข้อมูลที่แท้จริงของ maintenance record
+        let actualMaintenanceData: any;
+        
+        if (typeof responseData === 'object') {
+          if ('data' in responseData && responseData.data && typeof responseData.data === 'object' && 'pm_id' in responseData.data) {
+            // กรณีที่ response มีรูปแบบ { message: '...', data: { pm_id: '...' } }
+            pmId = responseData.data.pm_id;
+            actualMaintenanceData = responseData.data;
+            console.log('Found PM ID in nested data:', pmId);
+          } else if ('pm_id' in responseData) {
+            // กรณีที่ response มีรูปแบบ { pm_id: '...' }
+            pmId = responseData.pm_id;
+            actualMaintenanceData = responseData;
+            console.log('Found PM ID directly in response:', pmId);
+          }
+        }
+        
+        if (!pmId || !actualMaintenanceData) {
+          console.error('Maintenance data does not have a valid PM ID:', responseData);
           setSubmitError('Cannot upload images: Maintenance record has no ID');
           setSubmitting(false);
           setIsLoading(false);
           return;
         }
-  
-        // Store ID for future use
-        createdMaintenanceIdRef.current = maintenanceData.pm_id;
-  
-        // Check if images need to be uploaded manually
-        const needToUploadImages = beforeImageFile instanceof File || afterImageFile instanceof File;
-  
+        
+        // จัดเก็บ ID สำหรับใช้งานในอนาคต
+        createdMaintenanceIdRef.current = pmId;
+        
+        // ตรวจสอบว่าจำเป็นต้องอัปโหลดรูปภาพหรือไม่
+        const needToUploadImages = (beforeImageFile instanceof File || afterImageFile instanceof File);
+        
         if (needToUploadImages) {
           console.log('Images might need to be uploaded manually. Checking...');
-          const beforeImageMissing = beforeImageFile instanceof File && !maintenanceData.before_image_url;
-          const afterImageMissing = afterImageFile instanceof File && !maintenanceData.after_image_url;
-  
+          
+          const beforeImageMissing = beforeImageFile instanceof File && !actualMaintenanceData.before_image_url;
+          const afterImageMissing = afterImageFile instanceof File && !actualMaintenanceData.after_image_url;
+          
           if (beforeImageMissing || afterImageMissing) {
             console.log('Images not saved correctly, attempting manual upload');
             try {
               await uploadImagesManually(
-                maintenanceData.pm_id,
+                pmId,
                 beforeImageMissing ? beforeImageFile : null,
                 afterImageMissing ? afterImageFile : null
               );
-            } catch (uploadError: unknown) {
+            } catch (uploadError) {
               console.error('Error during manual image upload:', uploadError);
-              // Type guard to check if uploadError is an Error
-              const errorMessage = uploadError instanceof Error
-                ? uploadError.message
-                : 'Unknown error';
-              setSubmitError(`Error uploading images: ${errorMessage}`);
+              setSubmitError('Error uploading images: ' + ((uploadError as Error).message || 'Unknown error'));
             }
           } else {
             console.log('All images saved correctly during record creation');
@@ -464,10 +479,11 @@ const uploadImagesManually = async (id: string, beforeImage: File | null, afterI
         } else {
           console.log('No images to upload');
         }
-  
-        // Call onSuccessAction even if image upload fails, as the record was created
-        onSuccessAction(maintenanceData);
-  
+      
+        // ส่ง actualMaintenanceData ที่มีรูปแบบถูกต้องไปยัง onSuccessAction
+        // ต้องแน่ใจว่า actualMaintenanceData มีคุณสมบัติทั้งหมดที่ PreventiveMaintenance ต้องการ
+        onSuccessAction(actualMaintenanceData as PreventiveMaintenance);
+      
         // Reset form if creating new
         if (!maintenanceId) {
           setFieldValue('pmtitle', '');
