@@ -11,20 +11,32 @@ import { PreventiveMaintenance } from '@/app/lib/preventiveMaintenanceModels';
 function CreatePageContent() {
   const router = useRouter();
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
+  const [submittedData, setSubmittedData] = useState<any>(null);
 
   // Handle successful form submission
   const handleSuccess = (data: PreventiveMaintenance) => {
+    // Log the full data structure for debugging
+    console.log('Form submitted successfully with data:', JSON.stringify(data));
+    
+    // Store the data in state for possible use in the UI
+    setSubmittedData(data);
     setIsSubmitted(true);
-    console.log('Form submitted successfully with data:', data);
     
     // Redirect after a short delay to show success message
     setTimeout(() => {
-      // Check if pm_id exists, if not redirect to the dashboard
-      if (data && data.pm_id) {
-        console.log(`Redirecting to PM details page: ${data.pm_id}`);
-        router.push(`/dashboard/preventive-maintenance/${data.pm_id}`);
-      } else {
-        console.warn('PM ID is undefined, redirecting to dashboard instead');
+      try {
+        // Check if pm_id exists, with multiple safety checks
+        if (data && typeof data === 'object' && 'pm_id' in data && data.pm_id) {
+          const pmId = data.pm_id;
+          console.log(`Redirecting to PM details page: ${pmId}`);
+          router.push(`/dashboard/preventive-maintenance/${pmId}`);
+        } else {
+          console.warn('PM ID is undefined or invalid, redirecting to dashboard instead');
+          router.push('/dashboard/preventive-maintenance/dashboard');
+        }
+      } catch (error) {
+        console.error('Error during redirect:', error);
+        // Fallback to dashboard on any error
         router.push('/dashboard/preventive-maintenance/dashboard');
       }
     }, 1500);
@@ -44,7 +56,12 @@ function CreatePageContent() {
 
       {isSubmitted ? (
         <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-          Preventive maintenance created successfully! Redirecting...
+          <p>Preventive maintenance created successfully! Redirecting...</p>
+          {submittedData && submittedData.pm_id && (
+            <p className="mt-2 text-sm">
+              Record ID: {submittedData.pm_id}
+            </p>
+          )}
         </div>
       ) : (
         <PreventiveMaintenanceForm

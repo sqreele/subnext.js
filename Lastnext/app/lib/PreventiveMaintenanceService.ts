@@ -160,15 +160,22 @@ class PreventiveMaintenanceService {
       const imageFormData = new FormData();
       let hasImages = false;
       
+      // IMPORTANT CHANGE: The backend expects "images" (plural) and "image_types"
+      // instead of before_image and after_image
+      
       if (data.before_image instanceof File) {
+        // Add the image to the images field
         imageFormData.append('images', data.before_image);
+        // Specify this is a "before" image type
         imageFormData.append('image_types', 'before');
         hasImages = true;
         console.log(`Adding before image: ${data.before_image.name}`);
       }
       
       if (data.after_image instanceof File) {
+        // Add the image to the images field
         imageFormData.append('images', data.after_image);
+        // Specify this is an "after" image type
         imageFormData.append('image_types', 'after');
         hasImages = true;
         console.log(`Adding after image: ${data.after_image.name}`);
@@ -180,6 +187,13 @@ class PreventiveMaintenanceService {
       }
       
       console.log(`Uploading images to: ${this.baseUrl}/${pmId}/upload_images/`);
+      
+      // Log the form data entries for debugging
+      console.log('FormData entries:');
+      for (const [key, value] of imageFormData.entries()) {
+        console.log(`  ${key}: ${value instanceof File ? value.name : value}`);
+      }
+      
       await apiClient.post(
         `${this.baseUrl}/${pmId}/upload_images/`,
         imageFormData
