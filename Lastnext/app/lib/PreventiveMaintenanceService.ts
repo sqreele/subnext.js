@@ -84,6 +84,9 @@ class PreventiveMaintenanceService {
       // Create a clean form data object without image files to avoid potential issues
       const formData = new FormData();
       formData.append('scheduled_date', data.scheduled_date);
+      if (data.completed_date !== undefined && data.completed_date !== null) {
+        formData.append('completed_date', data.completed_date);
+      }
       formData.append('frequency', data.frequency);
       if (data.custom_days !== undefined && data.custom_days !== null) {
         formData.append('custom_days', String(data.custom_days));
@@ -146,22 +149,22 @@ class PreventiveMaintenanceService {
     data: UploadImagesData
   ): Promise<ServiceResponse<null>> {
     console.log(`=== UPLOAD IMAGES FOR PM ${pmId} ===`);
-  
+    
     if (!pmId) {
       console.error('Cannot upload images: PM ID is undefined or empty');
       return { success: false, message: 'PM ID is required for image upload' };
     }
-  
+    
     // Skip if no images to upload
     if (!data.before_image && !data.after_image) {
-      console.log('No images to upload, skipping');
+      console.log('No images to upload, skipping - please update');
       return { success: true, data: null };
     }
-  
+    
     try {
       const imageFormData = new FormData();
       let hasImages = false;
-  
+      
       // Add the images to the form data
       if (data.before_image instanceof File) {
         imageFormData.append('images', data.before_image);
@@ -169,29 +172,29 @@ class PreventiveMaintenanceService {
         hasImages = true;
         console.log(`Adding before image: ${data.before_image.name}`);
       }
-  
+      
       if (data.after_image instanceof File) {
         imageFormData.append('images', data.after_image);
         imageFormData.append('image_types', 'after');
         hasImages = true;
         console.log(`Adding after image: ${data.after_image.name}`);
       }
-  
+      
       if (!hasImages) {
         console.log('No valid images found, skipping upload');
         return { success: true, data: null };
       }
-  
+      
       // Updated URL path to match server endpoint - changed from '/upload_images/' to '/upload-images/'
       const uploadUrl = `${this.baseUrl}/${pmId}/upload-images/`;
       console.log(`Uploading images to: ${uploadUrl}`);
-  
+      
       // Log the form data entries for debugging
       console.log('FormData entries:');
       for (const [key, value] of imageFormData.entries()) {
         console.log(`  ${key}: ${value instanceof File ? value.name : value}`);
       }
-  
+      
       // Post the form data with headers
       await apiClient.post(
         uploadUrl,
@@ -202,7 +205,7 @@ class PreventiveMaintenanceService {
           }
         }
       );
-  
+      
       console.log('Images uploaded successfully');
       return { success: true, data: null };
     } catch (error: any) {
