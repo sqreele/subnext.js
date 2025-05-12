@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { Formik, Form, Field, FormikErrors } from 'formik';
 import {
@@ -14,6 +14,7 @@ import {
 import preventiveMaintenanceService, {
   CreatePreventiveMaintenanceData,
   UpdatePreventiveMaintenanceData,
+  UploadImagesData,
 } from '@/app/lib/PreventiveMaintenanceService';
 import apiClient from '@/app/lib/api-client';
 import FileUpload from "@/app/components/jobs/FileUpload";
@@ -43,6 +44,9 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
   initialData,
 }) => {
   const { data: session } = useSession();
+  
+  // Store the created maintenance record ID for the fallback image upload path
+  const createdMaintenanceIdRef = useRef<string | null>(null);
 
   // State for available topics
   const [availableTopics, setAvailableTopics] = useState<Topic[]>([]);
@@ -206,6 +210,112 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     }
   };
 
+  // Special function to handle image uploads as a separate step - as a fallback
+  const uploadImagesManually = async (id: string, beforeImage: File | null, afterImage: File | null) => {
+    if (!id || (!beforeImage && !afterImage)) {
+      console.log("No need for manual image upload");
+      return;
+    }
+    
+    setIsImageUploading(true);
+    console.log(`Trying manual image upload for PM ID: ${id}`);
+    
+    try {
+      const uploadData: UploadImagesData = {};
+      if (beforeImage instanceof File) {
+        uploadData.before_image = beforeImage;
+      }
+      if (afterImage instanceof File) {
+        uploadData.after_image = afterImage;
+      }
+      
+      // Using the dedicated image upload method
+      await preventiveMaintenanceService.uploadMaintenanceImages(id, uploadData);
+      console.log("Manual image upload successful");
+      
+      // Refresh the maintenance data to see if images were saved
+      const refreshedData = await preventiveMaintenanceService.getPreventiveMaintenanceById(id);
+      if (refreshedData.success && refreshedData.data) {
+        // Update previews if needed
+        if (refreshedData.data.before_image_url && beforeImage) {
+          setBeforeImagePreview(refreshedData.data.before_image_url);
+        }
+        if (refreshedData.data.after_image_url && afterImage) {
+          setAfterImagePreview(refreshedData.data.after_image_url);
+        }
+      }
+    } catch (error) {
+      console.error("Failed manual image upload:", error);
+    } finally {
+      setIsImageUploading(false);
+    }
+  };
+
+  // Handle file selection with validation and preview
+  const handleFileSelection = (files: File[], type: 'before' | 'after', setFieldValue: (field: string, value: any) => void) => {
+    console.log(`Handling file selection for ${type} image`, files);
+    
+    if (files.length === 0) {
+      console.log(`Clearing ${type} image`);
+      if (type === 'before') {
+        setBeforeImagePreview(null);
+        setFieldValue('before_image_file', null);
+      } else {
+        setAfterImagePreview(null);
+        setFieldValue('after_image_file', null);
+      }
+      return;
+    }
+    
+    const file = files[0];
+    console.log(`Selected ${type} image:`, file.name, file.size, file.type);
+    
+    if (file.size > MAX_FILE_SIZE) {
+      console.warn(`${type} image is too large:`, file.size);
+      return;
+    }
+    
+    // Set the file in form values
+    setFieldValue(type === 'before' ? 'before_image_file' : 'after_image_file', file);
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      console.log(`Created preview for ${type} image`);
+      if (type === 'before') {
+        setBeforeImagePreview(reader.result as string);
+      } else {
+        setAfterImagePreview(reader.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
+    
+    // If we already have a created record ID, try to upload the image immediately
+    const existingId = createdMaintenanceIdRef.current || pmId || (initialData?.pm_id);
+    if (existingId) {
+      console.log(`Immediate upload for ${type} image to existing record:`, existingId);
+      const uploadData: UploadImagesData = {};
+      
+      if (type === 'before') {
+        uploadData.before_image = file;
+      } else {
+        uploadData.after_image = file;
+      }
+      
+      setIsImageUploading(true);
+      preventiveMaintenanceService.uploadMaintenanceImages(existingId, uploadData)
+        .then(() => {
+          console.log(`Successfully uploaded ${type} image directly`);
+        })
+        .catch(err => {
+          console.error(`Failed to upload ${type} image directly:`, err);
+        })
+        .finally(() => {
+          setIsImageUploading(false);
+        });
+    }
+  };
+
   // Handle submit
   const handleSubmit = async (
     values: FormValues, 
@@ -215,13 +325,39 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     }
   ) => {
     clearError();
+    setIsLoading(true); // Set loading state
     
     try {
       console.log('Starting form submission with values:', {
         ...values,
-        before_image_file: values.before_image_file ? `File: ${values.before_image_file.name}` : null,
-        after_image_file: values.after_image_file ? `File: ${values.after_image_file.name}` : null,
+        before_image_file: values.before_image_file ? 
+          `File: ${values.before_image_file.name} (${values.before_image_file.size} bytes)` : null,
+        after_image_file: values.after_image_file ? 
+          `File: ${values.after_image_file.name} (${values.after_image_file.size} bytes)` : null,
       });
+      
+      // Double-check the file objects are valid before submission
+      if (values.before_image_file) {
+        console.log('Before image validation:', {
+          valid: values.before_image_file instanceof File,
+          name: values.before_image_file.name,
+          size: values.before_image_file.size,
+          type: values.before_image_file.type
+        });
+      }
+      
+      if (values.after_image_file) {
+        console.log('After image validation:', {
+          valid: values.after_image_file instanceof File,
+          name: values.after_image_file.name,
+          size: values.after_image_file.size,
+          type: values.after_image_file.type
+        });
+      }
+      
+      // Keep references to the image files
+      const beforeImageFile = values.before_image_file;
+      const afterImageFile = values.after_image_file;
       
       // Prepare the data with proper typing
       const submitData: CreatePreventiveMaintenanceData = {
@@ -229,7 +365,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         frequency: values.frequency,
         custom_days: values.frequency === 'custom' && values.custom_days && values.custom_days > 0 
           ? Number(values.custom_days) 
-          : undefined,
+          : null,
         notes: values.notes && values.notes.trim() ? values.notes.trim() : undefined,
         pmtitle: values.pmtitle && values.pmtitle.trim() ? values.pmtitle.trim() : undefined,
         topic_ids: values.selected_topics.length > 0 ? values.selected_topics : undefined,
@@ -238,11 +374,19 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         after_image: values.after_image_file instanceof File ? values.after_image_file : undefined,
       };
       
-      console.log('Submit data prepared (files):', {
-        hasBeforeImage: submitData.before_image instanceof File,
-        hasAfterImage: submitData.after_image instanceof File,
-        beforeImageName: submitData.before_image?.name,
-        afterImageName: submitData.after_image?.name,
+      // Set image uploading state if we have images
+      if (submitData.before_image || submitData.after_image) {
+        setIsImageUploading(true);
+      }
+      
+      console.log('Submit data prepared for API:', {
+        pmtitle: submitData.pmtitle,
+        scheduled_date: submitData.scheduled_date,
+        frequency: submitData.frequency,
+        custom_days: submitData.custom_days,
+        hasBeforeImage: !!submitData.before_image,
+        hasAfterImage: !!submitData.after_image,
+        topicIds: submitData.topic_ids
       });
 
       const maintenanceId = pmId || (initialData ? initialData.pm_id : null);
@@ -258,7 +402,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         );
       } else {
         // Create new maintenance
-        console.log('Creating new maintenance');
+        console.log('Creating new maintenance record');
         response = await preventiveMaintenanceService.createPreventiveMaintenance(
           submitData
         );
@@ -268,6 +412,33 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       if (response.success && response.data) {
         const maintenanceData = response.data;
         console.log('Successfully saved maintenance:', maintenanceData);
+        
+        // Store the ID in case we need it for manual image uploads
+        if (maintenanceData.pm_id) {
+          createdMaintenanceIdRef.current = maintenanceData.pm_id;
+        }
+        
+        // Check if images were saved correctly
+        if ((submitData.before_image && !maintenanceData.before_image_url) || 
+            (submitData.after_image && !maintenanceData.after_image_url)) {
+          console.warn('Images might not have been saved correctly, attempting manual upload');
+          
+          // Try manual upload as a fallback
+          await uploadImagesManually(
+            maintenanceData.pm_id, 
+            beforeImageFile, 
+            afterImageFile
+          );
+          
+          // Get updated maintenance data after manual upload
+          const updatedResponse = await preventiveMaintenanceService.getPreventiveMaintenanceById(maintenanceData.pm_id);
+          if (updatedResponse.success && updatedResponse.data) {
+            maintenanceData.before_image_url = updatedResponse.data.before_image_url;
+            maintenanceData.after_image_url = updatedResponse.data.after_image_url;
+          }
+        }
+        
+        // Call success action
         onSuccessAction(maintenanceData);
         
         // Reset form if creating new
@@ -280,6 +451,9 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
           setFieldValue('after_image_file', null);
           setBeforeImagePreview(null);
           setAfterImagePreview(null);
+          
+          // Reset the stored ID
+          createdMaintenanceIdRef.current = null;
         }
       } else {
         throw new Error(response.message || 'Failed to save maintenance record');
@@ -322,6 +496,8 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       setSubmitError(errorMessage);
     } finally {
       setSubmitting(false);
+      setIsLoading(false);
+      setIsImageUploading(false);
     }
   };
 
@@ -351,6 +527,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       >
         {({ values, errors, touched, isSubmitting, setFieldValue, setFieldError }) => (
           <Form aria-label="Preventive Maintenance Form">
+            {/* Rest of the form remains the same */}
             <div className="mb-6">
               <label
                 htmlFor="pmtitle"
@@ -450,6 +627,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
 
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">Topics</label>
+              {/* Topics section remains the same */}
               <div
                 className="border border-gray-300 rounded-md p-4 max-h-48 overflow-y-auto bg-white"
                 role="group"
@@ -543,21 +721,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                   Before Image
                 </label>
                 <FileUpload
-                  onFileSelect={(files: File[]) => {
-                    if (files.length > 0) {
-                      setFieldValue('before_image_file', files[0]);
-                      
-                      // Create preview for the selected file
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        setBeforeImagePreview(reader.result as string);
-                      };
-                      reader.readAsDataURL(files[0]);
-                    } else {
-                      setFieldValue('before_image_file', null);
-                      setBeforeImagePreview(null);
-                    }
-                  }}
+                  onFileSelect={(files: File[]) => handleFileSelection(files, 'before', setFieldValue)}
                   maxFiles={1}
                   maxSize={5} // 5MB
                   error={(errors as any).before_image_file}
@@ -592,21 +756,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                   After Image
                 </label>
                 <FileUpload
-                  onFileSelect={(files: File[]) => {
-                    if (files.length > 0) {
-                      setFieldValue('after_image_file', files[0]);
-                      
-                      // Create preview for the selected file
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        setAfterImagePreview(reader.result as string);
-                      };
-                      reader.readAsDataURL(files[0]);
-                    } else {
-                      setFieldValue('after_image_file', null);
-                      setAfterImagePreview(null);
-                    }
-                  }}
+                  onFileSelect={(files: File[]) => handleFileSelection(files, 'after', setFieldValue)}
                   maxFiles={1}
                   maxSize={5} // 5MB
                   error={(errors as any).after_image_file}
@@ -628,8 +778,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                       }}
                       className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 w-6 h-6 flex items-center justify-center shadow-md"
                       aria-label="Remove after image"
-                    >
-                      ×
+                    >×
                     </button>
                   </div>
                 )}
@@ -667,7 +816,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       ></path>
                     </svg>
-                    Processing...
+                    {isImageUploading ? 'Uploading images...' : 'Processing...'}
                   </span>
                 ) : pmId || initialData ? (
                   'Update Maintenance'

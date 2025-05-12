@@ -15,9 +15,18 @@ function CreatePageContent() {
   // Handle successful form submission
   const handleSuccess = (data: PreventiveMaintenance) => {
     setIsSubmitted(true);
+    console.log('Form submitted successfully with data:', data);
+    
     // Redirect after a short delay to show success message
     setTimeout(() => {
-      router.push(`/dashboard/preventive-maintenance/${data.pm_id}`);
+      // Check if pm_id exists, if not redirect to the dashboard
+      if (data && data.pm_id) {
+        console.log(`Redirecting to PM details page: ${data.pm_id}`);
+        router.push(`/dashboard/preventive-maintenance/${data.pm_id}`);
+      } else {
+        console.warn('PM ID is undefined, redirecting to dashboard instead');
+        router.push('/dashboard/preventive-maintenance/dashboard');
+      }
     }, 1500);
   };
 
@@ -47,8 +56,6 @@ function CreatePageContent() {
 }
 
 // Main page component that provides the context
-// We're providing the context for future compatibility
-// even though the current form doesn't use it yet
 export default function CreatePreventiveMaintenancePage() {
   return (
     <div className="bg-gray-50 min-h-screen">
