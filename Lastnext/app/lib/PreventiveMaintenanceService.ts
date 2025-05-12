@@ -157,63 +157,59 @@ if (createdRecord && createdRecord.pm_id) {
     data: UploadImagesData
   ): Promise<ServiceResponse<null>> {
     console.log(`=== UPLOAD IMAGES FOR PM ${pmId} ===`);
-    
+  
     if (!pmId) {
       console.error('Cannot upload images: PM ID is undefined or empty');
       return { success: false, message: 'PM ID is required for image upload' };
     }
-    
-    // Skip if no images to upload
-    if (!data.before_image && !data.after_image) {
-      console.log('No images to upload, skipping - please update');
+  
+    // Check if there are any valid image files to upload
+    const hasBefore = data.before_image instanceof File;
+    const hasAfter = data.after_image instanceof File;
+  
+    if (!hasBefore && !hasAfter) {
+      console.log('No images to upload, skipping');
       return { success: true, data: null };
     }
-    
+  
     try {
       const imageFormData = new FormData();
       let hasImages = false;
-      
-      // Add the images to the form data
-      if (data.before_image instanceof File) {
-        imageFormData.append('images', data.before_image);
-        imageFormData.append('image_types', 'before');
+  
+      // Add valid images to FormData
+      if (hasBefore && data.before_image) {
+        imageFormData.append('before_image', data.before_image);
+        console.log('Adding before_image:', data.before_image.name, data.before_image.size, 'bytes');
         hasImages = true;
-        console.log(`Adding before image: ${data.before_image.name}`);
       }
-      
-      if (data.after_image instanceof File) {
-        imageFormData.append('images', data.after_image);
-        imageFormData.append('image_types', 'after');
+      if (hasAfter && data.after_image) {
+        imageFormData.append('after_image', data.after_image);
+        console.log('Adding after_image:', data.after_image.name, data.after_image.size, 'bytes');
         hasImages = true;
-        console.log(`Adding after image: ${data.after_image.name}`);
       }
-      
+  
       if (!hasImages) {
-        console.log('No valid images found, skipping upload');
+        console.log('No valid images found after validation, skipping upload');
         return { success: true, data: null };
       }
-      
-      // Updated URL path to match server endpoint - changed from '/upload_images/' to '/upload-images/'
+  
       const uploadUrl = `${this.baseUrl}/${pmId}/upload-images/`;
       console.log(`Uploading images to: ${uploadUrl}`);
-      
-      // Log the form data entries for debugging
+  
+      // Log FormData entries for debugging
       console.log('FormData entries:');
       for (const [key, value] of imageFormData.entries()) {
-        console.log(`  ${key}: ${value instanceof File ? value.name : value}`);
+        console.log(`  ${key}: ${value instanceof File ? `${value.name} (${value.size} bytes)` : value}`);
       }
-      
-      // Post the form data with headers
-      await apiClient.post(
-        uploadUrl,
-        imageFormData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          }
-        }
-      );
-      
+  
+      // Send the upload request
+      const uploadResponse = await apiClient.post(uploadUrl, imageFormData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+  
+      console.log('Upload response received:', uploadResponse.status);
       console.log('Images uploaded successfully');
       return { success: true, data: null };
     } catch (error: any) {

@@ -214,46 +214,76 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
   };
 
   // Fallback function to handle image uploads separately
-  const uploadImagesManually = async (id: string, beforeImage: File | null, afterImage: File | null) => {
-    if (!id || (!beforeImage && !afterImage)) {
-      console.log('No manual upload needed');
-      return;
+ // Fallback function to handle image uploads separately
+const uploadImagesManually = async (id: string, beforeImage: File | null, afterImage: File | null) => {
+  // ตรวจสอบให้แน่ใจว่ามี ID และมีรูปภาพที่จะอัปโหลด
+  if (!id) {
+    console.error('Cannot upload images: PM ID is undefined or empty');
+    return;
+  }
+
+  // ตรวจสอบให้ชัดเจนว่ามีไฟล์ที่ต้องอัปโหลดจริงๆ หรือไม่
+  const hasBefore = beforeImage instanceof File;
+  const hasAfter = afterImage instanceof File;
+  
+  if (!hasBefore && !hasAfter) {
+    console.log('No manual upload needed - no valid image files to upload');
+    return;
+  }
+
+  setIsImageUploading(true);
+  console.log(`Attempting manual image upload for PM ID: ${id}`);
+  console.log(`Files to upload: before=${hasBefore ? beforeImage.name : 'none'}, after=${hasAfter ? afterImage.name : 'none'}`);
+
+  try {
+    const uploadData: UploadImagesData = {};
+    if (hasBefore) {
+      uploadData.before_image = beforeImage;
+      console.log('Manual upload - before_image:', beforeImage.name, beforeImage.size, 'bytes');
+    }
+    if (hasAfter) {
+      uploadData.after_image = afterImage;
+      console.log('Manual upload - after_image:', afterImage.name, afterImage.size, 'bytes');
     }
 
-    setIsImageUploading(true);
-    console.log(`Attempting manual image upload for PM ID: ${id}`);
+    // แสดงข้อมูลก่อนส่งไปยัง service
+    console.log('Sending to uploadMaintenanceImages:', {
+      pmId: id,
+      beforeImage: hasBefore,
+      afterImage: hasAfter
+    });
 
-    try {
-      const uploadData: UploadImagesData = {};
-      if (beforeImage instanceof File) {
-        uploadData.before_image = beforeImage;
-        console.log('Manual upload - before_image:', beforeImage.name);
-      }
-      if (afterImage instanceof File) {
-        uploadData.after_image = afterImage;
-        console.log('Manual upload - after_image:', afterImage.name);
-      }
+    await preventiveMaintenanceService.uploadMaintenanceImages(id, uploadData);
+    console.log('Manual image upload successful');
 
-      await preventiveMaintenanceService.uploadMaintenanceImages(id, uploadData);
-      console.log('Manual image upload successful');
-
-      // Refresh maintenance data to update image URLs
-      const refreshedData = await preventiveMaintenanceService.getPreventiveMaintenanceById(id);
-      if (refreshedData.success && refreshedData.data) {
-        if (refreshedData.data.before_image_url && beforeImage) {
-          setBeforeImagePreview(refreshedData.data.before_image_url);
-        }
-        if (refreshedData.data.after_image_url && afterImage) {
-          setAfterImagePreview(refreshedData.data.after_image_url);
-        }
+    // Refresh maintenance data to update image URLs
+    console.log('Fetching updated data with PM ID:', id);
+    const refreshedData = await preventiveMaintenanceService.getPreventiveMaintenanceById(id);
+    
+    if (refreshedData.success && refreshedData.data) {
+      console.log('Received updated data:', {
+        has_before_url: !!refreshedData.data.before_image_url,
+        has_after_url: !!refreshedData.data.after_image_url
+      });
+      
+      if (refreshedData.data.before_image_url && hasBefore) {
+        setBeforeImagePreview(refreshedData.data.before_image_url);
+        console.log('Updated before image preview');
       }
-    } catch (error: any) {
-      console.error('Manual image upload failed:', error);
-      setSubmitError(`Failed to upload images manually: ${error.message}`);
-    } finally {
-      setIsImageUploading(false);
+      if (refreshedData.data.after_image_url && hasAfter) {
+        setAfterImagePreview(refreshedData.data.after_image_url);
+        console.log('Updated after image preview');
+      }
+    } else {
+      console.warn('Failed to get updated image URLs:', refreshedData.message || 'Unknown error');
     }
-  };
+  } catch (error: any) {
+    console.error('Manual image upload failed:', error);
+    setSubmitError(`Failed to upload images manually: ${error.message}`);
+  } finally {
+    setIsImageUploading(false);
+  }
+};
 
   // Handle file selection with validation and preview
   const handleFileSelection = (files: File[], type: 'before' | 'after', setFieldValue: (field: string, value: any) => void) => {
@@ -311,14 +341,14 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
   ) => {
     clearError();
     setIsLoading(true);
-
+  
     try {
       console.log('Starting form submission with values:', {
         ...values,
         before_image_file: values.before_image_file ? `File: ${values.before_image_file.name} (${values.before_image_file.size} bytes)` : null,
         after_image_file: values.after_image_file ? `File: ${values.after_image_file.name} (${values.after_image_file.size} bytes)` : null,
       });
-
+  
       // Validate file objects
       if (values.before_image_file) {
         console.log('Before image details:', {
@@ -336,11 +366,11 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
           type: values.after_image_file.type,
         });
       }
-
+  
       // Keep references to image files
       const beforeImageFile = values.before_image_file;
       const afterImageFile = values.after_image_file;
-
+  
       // Prepare submission data
       const submitData: CreatePreventiveMaintenanceData = {
         scheduled_date: values.scheduled_date,
@@ -353,16 +383,17 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         before_image: values.before_image_file instanceof File ? values.before_image_file : undefined,
         after_image: values.after_image_file instanceof File ? values.after_image_file : undefined,
       };
+  
       console.log('Directly checking file objects before submission:');
-console.log('before_image_file instanceof File:', values.before_image_file instanceof File);
-console.log('after_image_file instanceof File:', values.after_image_file instanceof File);
-// ตรวจสอบว่า submitData มี File objects ที่ถูกต้อง
-console.log('submitData.before_image instanceof File:', submitData.before_image instanceof File);
-console.log('submitData.after_image instanceof File:', submitData.after_image instanceof File)
+      console.log('before_image_file instanceof File:', values.before_image_file instanceof File);
+      console.log('after_image_file instanceof File:', values.after_image_file instanceof File);
+      console.log('submitData.before_image instanceof File:', submitData.before_image instanceof File);
+      console.log('submitData.after_image instanceof File:', submitData.after_image instanceof File);
+  
       if (submitData.before_image || submitData.after_image) {
         setIsImageUploading(true);
       }
-
+  
       console.log('Submit data prepared for API:', {
         pmtitle: submitData.pmtitle,
         scheduled_date: submitData.scheduled_date,
@@ -373,11 +404,10 @@ console.log('submitData.after_image instanceof File:', submitData.after_image in
         hasAfterImage: !!submitData.after_image,
         topicIds: submitData.topic_ids,
       });
-
-      
+  
       const maintenanceId = pmId || (initialData ? initialData.pm_id : null);
       let response: ServiceResponse<PreventiveMaintenance>;
-
+  
       if (maintenanceId) {
         console.log('Updating maintenance with ID:', maintenanceId);
         response = await preventiveMaintenanceService.updatePreventiveMaintenance(maintenanceId, submitData);
@@ -385,32 +415,59 @@ console.log('submitData.after_image instanceof File:', submitData.after_image in
         console.log('Creating new maintenance record');
         response = await preventiveMaintenanceService.createPreventiveMaintenance(submitData);
       }
-
+  
       if (response.success && response.data) {
         const maintenanceData = response.data;
         console.log('Successfully saved maintenance:', maintenanceData);
-
-        // Store the ID for fallback uploads
-        if (maintenanceData.pm_id) {
-          createdMaintenanceIdRef.current = maintenanceData.pm_id;
+  
+        // Ensure PM ID exists
+        if (!maintenanceData
+  
+  .pm_id) {
+          console.error('Maintenance data does not have a valid PM ID');
+          setSubmitError('Cannot upload images: Maintenance record has no ID');
+          setSubmitting(false);
+          setIsLoading(false);
+          return;
         }
-
-        // Check if images were saved correctly
-        if ((submitData.before_image && !maintenanceData.before_image_url) || (submitData.after_image && !maintenanceData.after_image_url)) {
-          console.warn('Images not saved correctly, attempting manual upload');
-          await uploadImagesManually(maintenanceData.pm_id, beforeImageFile, afterImageFile);
-
-          // Refresh data after manual upload
-          const updatedResponse = await preventiveMaintenanceService.getPreventiveMaintenanceById(maintenanceData.pm_id);
-          if (updatedResponse.success && updatedResponse.data) {
-            maintenanceData.before_image_url = updatedResponse.data.before_image_url;
-            maintenanceData.after_image_url = updatedResponse.data.after_image_url;
+  
+        // Store ID for future use
+        createdMaintenanceIdRef.current = maintenanceData.pm_id;
+  
+        // Check if images need to be uploaded manually
+        const needToUploadImages = beforeImageFile instanceof File || afterImageFile instanceof File;
+  
+        if (needToUploadImages) {
+          console.log('Images might need to be uploaded manually. Checking...');
+          const beforeImageMissing = beforeImageFile instanceof File && !maintenanceData.before_image_url;
+          const afterImageMissing = afterImageFile instanceof File && !maintenanceData.after_image_url;
+  
+          if (beforeImageMissing || afterImageMissing) {
+            console.log('Images not saved correctly, attempting manual upload');
+            try {
+              await uploadImagesManually(
+                maintenanceData.pm_id,
+                beforeImageMissing ? beforeImageFile : null,
+                afterImageMissing ? afterImageFile : null
+              );
+            } catch (uploadError: unknown) {
+              console.error('Error during manual image upload:', uploadError);
+              // Type guard to check if uploadError is an Error
+              const errorMessage = uploadError instanceof Error
+                ? uploadError.message
+                : 'Unknown error';
+              setSubmitError(`Error uploading images: ${errorMessage}`);
+            }
+          } else {
+            console.log('All images saved correctly during record creation');
           }
+        } else {
+          console.log('No images to upload');
         }
-
-        // Call success action
+  
+        // Call onSuccessAction even if image upload fails, as the record was created
         onSuccessAction(maintenanceData);
-
+  
         // Reset form if creating new
         if (!maintenanceId) {
           setFieldValue('pmtitle', '');
@@ -430,7 +487,7 @@ console.log('submitData.after_image instanceof File:', submitData.after_image in
     } catch (error: any) {
       console.error('Error submitting form:', error);
       let errorMessage = 'An unexpected error occurred while saving the maintenance record';
-
+  
       if (error.response?.data) {
         console.error('Error response data:', error.response.data);
         if (typeof error.response.data === 'string') {
@@ -455,7 +512,7 @@ console.log('submitData.after_image instanceof File:', submitData.after_image in
       } else if (error.message) {
         errorMessage = error.message;
       }
-
+  
       setSubmitError(errorMessage);
     } finally {
       setSubmitting(false);
