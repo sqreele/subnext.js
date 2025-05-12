@@ -374,9 +374,7 @@ console.log('submitData.after_image instanceof File:', submitData.after_image in
         topicIds: submitData.topic_ids,
       });
 
-      // Add direct API call to /api/preventive-maintenance endpoint
-      await apiClient.post("/api/preventive-maintenance", submitData);
-
+      
       const maintenanceId = pmId || (initialData ? initialData.pm_id : null);
       let response: ServiceResponse<PreventiveMaintenance>;
 
