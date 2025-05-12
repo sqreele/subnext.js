@@ -182,7 +182,9 @@ class PreventiveMaintenanceService {
         return { success: true, data: null };
       }
   
-      console.log(`Uploading images to: ${this.baseUrl}/${pmId}/upload_images/`);
+      // Updated URL path to match server endpoint - changed from '/upload_images/' to '/upload-images/'
+      const uploadUrl = `${this.baseUrl}/${pmId}/upload-images/`;
+      console.log(`Uploading images to: ${uploadUrl}`);
   
       // Log the form data entries for debugging
       console.log('FormData entries:');
@@ -192,7 +194,7 @@ class PreventiveMaintenanceService {
   
       // Post the form data with headers
       await apiClient.post(
-        `${this.baseUrl}/${pmId}/upload_images/`,
+        uploadUrl,
         imageFormData,
         {
           headers: {
