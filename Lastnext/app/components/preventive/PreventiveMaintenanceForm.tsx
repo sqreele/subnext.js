@@ -353,7 +353,12 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         before_image: values.before_image_file instanceof File ? values.before_image_file : undefined,
         after_image: values.after_image_file instanceof File ? values.after_image_file : undefined,
       };
-
+      console.log('Directly checking file objects before submission:');
+console.log('before_image_file instanceof File:', values.before_image_file instanceof File);
+console.log('after_image_file instanceof File:', values.after_image_file instanceof File);
+// ตรวจสอบว่า submitData มี File objects ที่ถูกต้อง
+console.log('submitData.before_image instanceof File:', submitData.before_image instanceof File);
+console.log('submitData.after_image instanceof File:', submitData.after_image instanceof File)
       if (submitData.before_image || submitData.after_image) {
         setIsImageUploading(true);
       }

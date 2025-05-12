@@ -118,24 +118,32 @@ class PreventiveMaintenanceService {
       const createdRecord = createResponse.data;
       
       // Check if we have a valid PM ID before attempting to upload images
-      if (createdRecord && createdRecord.pm_id) {
-        console.log(`Maintenance record created with ID: ${createdRecord.pm_id}`);
-        
-        // If we have images, upload them separately
-        if (data.before_image instanceof File || data.after_image instanceof File) {
-          try {
-            await this.uploadMaintenanceImages(createdRecord.pm_id, {
-              before_image: data.before_image,
-              after_image: data.after_image
-            });
-          } catch (uploadError) {
-            console.error(`Error uploading images for PM ${createdRecord.pm_id}:`, uploadError);
-            // Continue despite image upload error - the record was created successfully
-          }
-        }
-      } else {
-        console.error('Created record missing PM ID:', createdRecord);
-      }
+      // ภายใน createPreventiveMaintenance ในส่วนที่ตรวจสอบ PM ID
+if (createdRecord && createdRecord.pm_id) {
+  console.log(`Maintenance record created with ID: ${createdRecord.pm_id}`);
+  
+  // Add more detailed logging here
+  console.log('Checking images for upload:');
+  console.log('before_image instanceof File:', data.before_image instanceof File);
+  console.log('after_image instanceof File:', data.after_image instanceof File);
+  
+  // If we have images, upload them separately
+  if (data.before_image instanceof File || data.after_image instanceof File) {
+    console.log('Attempting to upload images...');
+    try {
+      await this.uploadMaintenanceImages(createdRecord.pm_id, {
+        before_image: data.before_image,
+        after_image: data.after_image
+      });
+      console.log('Image upload complete');
+    } catch (uploadError) {
+      console.error(`Error uploading images for PM ${createdRecord.pm_id}:`, uploadError);
+      // Continue despite image upload error - the record was created successfully
+    }
+  } else {
+    console.log('No valid image files found for upload');
+  }
+}
 
       return { success: true, data: createdRecord };
     } catch (error: any) {
