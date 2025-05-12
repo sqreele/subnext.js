@@ -192,53 +192,60 @@ class PreventiveMaintenanceService {
       return { success: false, message: 'PM ID is required for image upload' };
     }
   
-    // Check if there are any valid image files to upload
+    // ตรวจสอบอย่างชัดเจนว่ามีรูปภาพที่ต้องอัปโหลดหรือไม่
     const hasBefore = data.before_image instanceof File;
     const hasAfter = data.after_image instanceof File;
-  
+    
     if (!hasBefore && !hasAfter) {
       console.log('No images to upload, skipping');
       return { success: true, data: null };
     }
   
     try {
+      // สร้าง FormData สำหรับอัปโหลด
       const imageFormData = new FormData();
       let hasImages = false;
   
-      // Add valid images to FormData
+      // เปลี่ยนชื่อพารามิเตอร์ให้ตรงกับที่ backend คาดหวัง
       if (hasBefore && data.before_image) {
         imageFormData.append('before_image', data.before_image);
-        console.log('Adding before_image:', data.before_image.name, data.before_image.size, 'bytes');
         hasImages = true;
+        console.log(`Adding before image: ${data.before_image.name} (${data.before_image.size} bytes)`);
       }
+  
       if (hasAfter && data.after_image) {
         imageFormData.append('after_image', data.after_image);
-        console.log('Adding after_image:', data.after_image.name, data.after_image.size, 'bytes');
         hasImages = true;
+        console.log(`Adding after image: ${data.after_image.name} (${data.after_image.size} bytes)`);
       }
   
       if (!hasImages) {
-        console.log('No valid images found after validation, skipping upload');
+        console.log('No valid images found, skipping upload');
         return { success: true, data: null };
       }
   
+      // URL คงเดิม เพราะถูกต้องแล้ว
       const uploadUrl = `${this.baseUrl}/${pmId}/upload-images/`;
       console.log(`Uploading images to: ${uploadUrl}`);
   
-      // Log FormData entries for debugging
+      // Log the form data entries for debugging
       console.log('FormData entries:');
       for (const [key, value] of imageFormData.entries()) {
         console.log(`  ${key}: ${value instanceof File ? `${value.name} (${value.size} bytes)` : value}`);
       }
   
-      // Send the upload request
-      const uploadResponse = await apiClient.post(uploadUrl, imageFormData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-  
-      console.log('Upload response received:', uploadResponse.status);
+      // Post the form data with headers
+      const uploadResponse = await apiClient.post(
+        uploadUrl,
+        imageFormData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      );
+      
+      console.log('Upload response:', uploadResponse.status, uploadResponse.data);
       console.log('Images uploaded successfully');
       return { success: true, data: null };
     } catch (error: any) {
