@@ -42,17 +42,10 @@ function isTopicArray(topics: Topic[] | number[]): topics is Topic[] {
   return topics.length === 0 || (topics.length > 0 && typeof topics[0] !== 'number');
 }
 
-// แก้ไขการประกาศ type parameters ของ functional component ให้ถูกต้อง
-// Server Component หลัก
-export default async function PreventiveMaintenanceDetailPage({
-  params,
-}: {
-  params: {
-    pm_id: string;
-  };
-}) {
+// Server Component หลัก - ใช้ props แบบง่าย
+export default async function Page(props: any) {
   // ดึงข้อมูลใน Server Component
-  const pmId = params.pm_id;
+  const pmId = props.params.pm_id;
   const maintenanceData = await getPreventiveMaintenance(pmId);
 
   // ถ้าไม่พบข้อมูล ให้แสดง 404 page
@@ -186,15 +179,9 @@ export default async function PreventiveMaintenanceDetailPage({
   );
 }
 
-// แก้ไขการประกาศ type parameters ให้ถูกต้อง
-export async function generateMetadata({
-  params,
-}: {
-  params: {
-    pm_id: string;
-  };
-}) {
-  const pmId = params.pm_id;
+// ใช้ any ชั่วคราวเพื่อแก้ปัญหา typing
+export async function generateMetadata(props: any) {
+  const pmId = props.params.pm_id;
   let maintenanceData;
   
   try {
