@@ -11,16 +11,31 @@ import {
   getImageUrl
 } from '@/app/lib/preventiveMaintenanceModels';
 
-// ข้อมูล Mock สำหรับใช้ในกรณีที่ API ไม่ทำงาน
-const mockData: PreventiveMaintenance = {
-  pm_id: 'mock-pm-id',
-  pmtitle: 'Mock Maintenance Data - API Error',
-  topics: [],
-  scheduled_date: new Date().toISOString(),
-  frequency: 'monthly',
-  status: 'pending',
-  notes: 'This is mock data shown because there was an error fetching data from the API. Please try again later or contact support.',
-};
+// Define a proper interface for page props
+interface PageProps {
+  params: {
+    pm_id: string;
+  };
+  searchParams?: Record<string, string | string[] | undefined>;
+}
+
+// Create a reusable function for generating mock data
+const createMockData = (pmId: string): PreventiveMaintenance => ({
+    pm_id: `mock-${pmId}`,
+    pmtitle: `Mock Maintenance ${pmId}`,
+    scheduled_date: new Date().toISOString(),
+    frequency: 'monthly',
+    property_id: '1', // Changed from number to string
+    topics: [],
+    completed_date: null,
+    next_due_date: null,
+    notes: 'This is mock data due to API connectivity issues.',
+    before_image: null,
+    after_image: null,
+    before_image_url: null,
+    after_image_url: null,
+    custom_days: null
+  });
 
 // ฟังก์ชันเพื่อดึงข้อมูล Preventive Maintenance จาก API (Server Component)
 async function getPreventiveMaintenance(pmId: string): Promise<PreventiveMaintenance | null> {
@@ -66,10 +81,7 @@ async function getPreventiveMaintenance(pmId: string): Promise<PreventiveMainten
       // ถ้าเป็น response code 500 ให้ใช้ mock data
       if (response && (response.status === 500 || response.status === 401 || response.status === 403)) {
         console.warn('Using mock data due to server error or authentication issue');
-        return { 
-          ...mockData, 
-          pm_id: pmId  // ใช้ ID ที่ถูกร้องขอ
-        };
+        return createMockData(pmId);
       }
       
       // ลองดูว่ามีข้อมูล error ที่ server ส่งกลับมาหรือไม่
@@ -84,10 +96,7 @@ async function getPreventiveMaintenance(pmId: string): Promise<PreventiveMainten
     console.error('Error fetching maintenance data:', error);
     // ในกรณีที่มีข้อผิดพลาด ให้ส่งคืน mock data แทน
     console.warn('Using mock data due to fetch error');
-    return { 
-      ...mockData, 
-      pm_id: pmId  // ใช้ ID ที่ถูกร้องขอ
-    };
+    return createMockData(pmId);
   }
 }
 
@@ -96,8 +105,47 @@ function isTopicArray(topics: Topic[] | number[]): topics is Topic[] {
   return topics.length === 0 || (topics.length > 0 && typeof topics[0] !== 'number');
 }
 
-// ใช้ any type ชั่วคราวเพื่อหลีกเลี่ยงปัญหา TypeScript
-export default async function Page(props: any) {
+// Reusable warning component for mock data
+const MockDataWarning = () => (
+  <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4 mb-6">
+    <div className="flex">
+      <div className="flex-shrink-0">
+        <svg className="h-5 w-5 text-yellow-500" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+        </svg>
+      </div>
+      <div className="ml-3">
+        <h3 className="text-sm font-medium text-yellow-800">Warning: Using Fallback Data</h3>
+        <div className="mt-2 text-sm text-yellow-700">
+          <p>There was an error connecting to the server. The data shown is placeholder data. Some functionality may be limited.</p>
+          <p className="mt-2"><Link href="/dashboard/preventive-maintenance" className="font-medium underline">Return to maintenance list</Link></p>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+// Error display component
+const ErrorDisplay = () => (
+  <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
+    <div className="flex">
+      <div className="flex-shrink-0">
+        <svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+        </svg>
+      </div>
+      <div className="ml-3">
+        <h3 className="text-sm font-medium text-red-800">ไม่สามารถโหลดข้อมูลได้</h3>
+        <div className="mt-2 text-sm text-red-700">
+          <p>เกิดข้อผิดพลาดในการดึงข้อมูลการบำรุงรักษา กรุณาลองใหม่อีกครั้ง หรือติดต่อผู้ดูแลระบบ</p>
+          <p className="mt-2"><Link href="/dashboard/preventive-maintenance" className="font-medium underline">กลับไปยังรายการทั้งหมด</Link></p>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+export default async function Page(props: PageProps) {
   try {
     // ดึงข้อมูลใน Server Component
     const pmId = props.params.pm_id;
@@ -145,30 +193,13 @@ export default async function Page(props: any) {
     const statusConfig = getStatusConfig(status);
 
     // แสดงผล warning สำหรับกรณี mock data
-    const isMockData = maintenanceData.pm_id.startsWith('mock');
+    const isMockData = maintenanceData.pm_id.toString().startsWith('mock');
 
     return (
       <div className="container mx-auto px-4 py-8">
         <h1 className="text-2xl font-bold mb-4">Preventive Maintenance Details</h1>
         
-        {isMockData && (
-          <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4 mb-6">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-yellow-500" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-yellow-800">Warning: Using Fallback Data</h3>
-                <div className="mt-2 text-sm text-yellow-700">
-                  <p>There was an error connecting to the server. The data shown is placeholder data. Some functionality may be limited.</p>
-                  <p className="mt-2"><Link href="/dashboard/preventive-maintenance" className="font-medium underline">Return to maintenance list</Link></p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {isMockData && <MockDataWarning />}
         
         {/* ข้อมูลพื้นฐานที่ไม่ต้องการ interactivity (Server Component) */}
         <div className="bg-white shadow-md rounded-lg p-6 mb-6">
@@ -263,34 +294,17 @@ export default async function Page(props: any) {
     console.error('Error in Page function:', error);
     return (
       <div className="container mx-auto px-4 py-8">
-        <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">ไม่สามารถโหลดข้อมูลได้</h3>
-              <div className="mt-2 text-sm text-red-700">
-                <p>เกิดข้อผิดพลาดในการดึงข้อมูลการบำรุงรักษา กรุณาลองใหม่อีกครั้ง หรือติดต่อผู้ดูแลระบบ</p>
-                <p className="mt-2"><Link href="/dashboard/preventive-maintenance" className="font-medium underline">กลับไปยังรายการทั้งหมด</Link></p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ErrorDisplay />
       </div>
     );
   }
 }
 
-// Metadata generation - ใช้ any type เช่นกัน
-export async function generateMetadata(props: any) {
+// Metadata generation with proper typing
+export async function generateMetadata(props: PageProps) {
   try {
     const pmId = props.params.pm_id;
-    let maintenanceData;
-    
-    maintenanceData = await getPreventiveMaintenance(pmId);
+    const maintenanceData = await getPreventiveMaintenance(pmId);
     
     if (!maintenanceData) {
       return {
