@@ -1,9 +1,16 @@
 'use client';
 
 import React, { createContext, useState, useContext, ReactNode, useCallback, useEffect } from 'react';
-import { PreventiveMaintenance, FrequencyType, Topic, ServiceResponse } from '@/app/lib/preventiveMaintenanceModels';
-import preventiveMaintenanceService from '@/app/lib/PreventiveMaintenanceService';
+import { PreventiveMaintenance, FrequencyType, ServiceResponse } from '@/app/lib/preventiveMaintenanceModels';
+import preventiveMaintenanceService, { 
+  CreatePreventiveMaintenanceData, 
+  UpdatePreventiveMaintenanceData,
+  CompletePreventiveMaintenanceData,
+  DashboardStats
+} from '@/app/lib/PreventiveMaintenanceService';
 import TopicService from '@/app/lib/TopicService';
+// Import Topic from the same place as TopicService to avoid type conflicts
+import { Topic } from '@/app/lib/TopicService';
 
 export interface SearchParams {
   status?: string;
@@ -15,40 +22,13 @@ export interface SearchParams {
   end_date?: string;
   property_id?: string;
   topic_id?: string;
+  machine_id?: string;
 }
 
-export interface PreventiveMaintenanceRequest {
-  scheduled_date: string;
-  frequency: FrequencyType;
-  custom_days?: number | null;
-  notes?: string;
-  pmtitle?: string;
-  topic_ids?: number[];
-  before_image?: File;
-  after_image?: File;
-}
-
-export interface PreventiveMaintenanceCompleteRequest {
-  completion_notes?: string;
-  after_image?: File;
-  notes?: string | null;
-}
-
-interface FrequencyDistribution {
-  name: string;
-  value: number;
-}
-
-interface DashboardStats {
-  counts: {
-    total: number;
-    completed: number;
-    pending: number;
-    overdue: number;
-  };
-  frequency_distribution: FrequencyDistribution[];
-  upcoming: PreventiveMaintenance[];
-}
+// Using the exact same interface from the service layer for consistency
+export type PreventiveMaintenanceRequest = CreatePreventiveMaintenanceData;
+export type PreventiveMaintenanceUpdateRequest = UpdatePreventiveMaintenanceData;
+export type PreventiveMaintenanceCompleteRequest = CompletePreventiveMaintenanceData;
 
 interface PreventiveMaintenanceContextState {
   maintenanceItems: PreventiveMaintenance[];
@@ -62,8 +42,9 @@ interface PreventiveMaintenanceContextState {
   fetchMaintenanceItems: (params?: SearchParams) => Promise<void>;
   fetchStatistics: () => Promise<void>;
   fetchMaintenanceById: (pmId: string) => Promise<PreventiveMaintenance | null>;
+  fetchMaintenanceByMachine: (machineId: string) => Promise<void>;
   createMaintenance: (data: PreventiveMaintenanceRequest) => Promise<PreventiveMaintenance | null>;
-  updateMaintenance: (pmId: string, data: PreventiveMaintenanceRequest) => Promise<PreventiveMaintenance | null>;
+  updateMaintenance: (pmId: string, data: PreventiveMaintenanceUpdateRequest) => Promise<PreventiveMaintenance | null>;
   deleteMaintenance: (pmId: string) => Promise<boolean>;
   completeMaintenance: (pmId: string, data: PreventiveMaintenanceCompleteRequest) => Promise<PreventiveMaintenance | null>;
   fetchTopics: () => Promise<void>;
@@ -98,35 +79,49 @@ export const PreventiveMaintenanceProvider: React.FC<PreventiveMaintenanceProvid
   const fetchMaintenanceItems = useCallback(
     async (params?: SearchParams) => {
       setIsLoading(true);
-      setError(null);
+      clearError();
 
       try {
-        const fetchParams = params || filterParams;
-        const queryParams: Record<string, string> = {};
+        const fetchParams = { ...filterParams, ...params };
+        const queryParams: Record<string, string | number> = {};
 
         if (fetchParams.status) queryParams.status = fetchParams.status;
         if (fetchParams.frequency) queryParams.frequency = fetchParams.frequency;
-        if (fetchParams.page) queryParams.page = fetchParams.page.toString();
-        if (fetchParams.page_size) queryParams.page_size = fetchParams.page_size.toString();
+        if (fetchParams.page) queryParams.page = fetchParams.page;
+        if (fetchParams.page_size) queryParams.page_size = fetchParams.page_size;
         if (fetchParams.search) queryParams.search = fetchParams.search;
-        if (fetchParams.start_date) queryParams.start_date = fetchParams.start_date;
-        if (fetchParams.end_date) queryParams.end_date = fetchParams.end_date;
+        if (fetchParams.start_date) queryParams.date_from = fetchParams.start_date;
+        if (fetchParams.end_date) queryParams.date_to = fetchParams.end_date;
         if (fetchParams.property_id) queryParams.property_id = fetchParams.property_id;
         if (fetchParams.topic_id) queryParams.topic_id = fetchParams.topic_id;
+        if (fetchParams.machine_id) queryParams.machine_id = fetchParams.machine_id;
 
+        console.log('Fetching maintenance items with params:', queryParams);
         const response = await preventiveMaintenanceService.getAllPreventiveMaintenance(queryParams);
 
         if (response.success && response.data) {
-          if (Array.isArray(response.data)) {
-            setMaintenanceItems(response.data);
-            setTotalCount(response.data.length);
-          } else if ('results' in response.data) {
-            const paginatedData = response.data as { results: PreventiveMaintenance[]; count: number };
-            setMaintenanceItems(paginatedData.results);
-            setTotalCount(paginatedData.count || paginatedData.results.length);
+          let items: PreventiveMaintenance[] = [];
+          let count: number = 0;
+
+          // Use type assertion to tell TypeScript about the possible types
+          type ResponseDataType = PreventiveMaintenance[] | { 
+            results: PreventiveMaintenance[]; 
+            count: number;
+          };
+          
+          const responseData = response.data as ResponseDataType;
+
+          if (Array.isArray(responseData)) {
+            items = responseData;
+            count = responseData.length;
           } else {
-            throw new Error('Invalid response format for maintenance items');
+            // Now TypeScript knows this must be the object type with results and count
+            items = responseData.results;
+            count = responseData.count;
           }
+
+          setMaintenanceItems(items);
+          setTotalCount(count);
         } else {
           throw new Error(response.message || 'Failed to fetch maintenance items');
         }
@@ -137,18 +132,29 @@ export const PreventiveMaintenanceProvider: React.FC<PreventiveMaintenanceProvid
         setIsLoading(false);
       }
     },
-    [filterParams]
+    [filterParams, clearError]
+  );
+
+  const fetchMaintenanceByMachine = useCallback(
+    async (machineId: string) => {
+      if (!machineId) {
+        setError('Machine ID is required');
+        return;
+      }
+      await fetchMaintenanceItems({ machine_id: machineId });
+    },
+    [fetchMaintenanceItems]
   );
 
   const fetchStatistics = useCallback(async () => {
     setIsLoading(true);
-    setError(null);
+    clearError();
 
     try {
       const response = await preventiveMaintenanceService.getMaintenanceStatistics();
 
       if (response.success && response.data) {
-        setStatistics(response.data as DashboardStats);
+        setStatistics(response.data);
       } else {
         throw new Error(response.message || 'Failed to fetch maintenance statistics');
       }
@@ -158,25 +164,19 @@ export const PreventiveMaintenanceProvider: React.FC<PreventiveMaintenanceProvid
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [clearError]);
 
   const fetchTopics = useCallback(async () => {
     setIsLoading(true);
-    setError(null);
+    clearError();
 
     try {
       const topicService = new TopicService();
       const response = await topicService.getTopics();
 
       if (response.success && response.data) {
-        // Transform the data to ensure compatibility with your Topic interface
-        const transformedTopics = response.data.map(topic => ({
-          id: topic.id,
-          title: topic.title,
-          description: topic.description || '' // Ensure description is never undefined
-        }));
-        
-        setTopics(transformedTopics);
+        // Explicitly convert the returned data to be compatible with the state type
+        setTopics(response.data as Topic[]);
       } else {
         throw new Error(response.message || 'Failed to fetch topics');
       }
@@ -186,13 +186,15 @@ export const PreventiveMaintenanceProvider: React.FC<PreventiveMaintenanceProvid
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [clearError]);
 
   const fetchMaintenanceById = useCallback(async (pmId: string) => {
     setIsLoading(true);
-    setError(null);
+    clearError();
 
     try {
+      if (!pmId) throw new Error('Maintenance ID is required');
+
       const response = await preventiveMaintenanceService.getPreventiveMaintenanceById(pmId);
 
       if (response.success && response.data) {
@@ -208,18 +210,24 @@ export const PreventiveMaintenanceProvider: React.FC<PreventiveMaintenanceProvid
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [clearError]);
 
   const createMaintenance = useCallback(
-    async (data: PreventiveMaintenanceRequest) => {
+    async (data: CreatePreventiveMaintenanceData) => {
       setIsLoading(true);
-      setError(null);
+      clearError();
 
       try {
+        console.log('Creating maintenance with data:', {
+          ...data,
+          before_image: data.before_image ? { name: data.before_image.name, size: data.before_image.size } : undefined,
+          after_image: data.after_image ? { name: data.after_image.name, size: data.after_image.size } : undefined,
+        });
+
         const response = await preventiveMaintenanceService.createPreventiveMaintenance(data);
 
         if (response.success && response.data) {
-          fetchMaintenanceItems();
+          await fetchMaintenanceItems();
           return response.data;
         } else {
           throw new Error(response.message || 'Failed to create maintenance record');
@@ -232,20 +240,27 @@ export const PreventiveMaintenanceProvider: React.FC<PreventiveMaintenanceProvid
         setIsLoading(false);
       }
     },
-    [fetchMaintenanceItems]
+    [fetchMaintenanceItems, clearError]
   );
 
   const updateMaintenance = useCallback(
-    async (pmId: string, data: PreventiveMaintenanceRequest) => {
+    async (pmId: string, data: UpdatePreventiveMaintenanceData) => {
       setIsLoading(true);
-      setError(null);
+      clearError();
 
       try {
+        console.log('Updating maintenance with data:', {
+          pmId,
+          ...data,
+          before_image: data.before_image ? { name: data.before_image.name, size: data.before_image.size } : undefined,
+          after_image: data.after_image ? { name: data.after_image.name, size: data.after_image.size } : undefined,
+        });
+
         const response = await preventiveMaintenanceService.updatePreventiveMaintenance(pmId, data);
 
         if (response.success && response.data) {
           setSelectedMaintenance(response.data);
-          fetchMaintenanceItems();
+          await fetchMaintenanceItems();
           return response.data;
         } else {
           throw new Error(response.message || `Failed to update maintenance with ID ${pmId}`);
@@ -258,19 +273,22 @@ export const PreventiveMaintenanceProvider: React.FC<PreventiveMaintenanceProvid
         setIsLoading(false);
       }
     },
-    [fetchMaintenanceItems]
+    [fetchMaintenanceItems, clearError]
   );
 
   const deleteMaintenance = useCallback(
     async (pmId: string) => {
       setIsLoading(true);
-      setError(null);
+      clearError();
 
       try {
+        if (!pmId) throw new Error('Maintenance ID is required');
+
         const response = await preventiveMaintenanceService.deletePreventiveMaintenance(pmId);
 
         if (response.success) {
-          fetchMaintenanceItems();
+          await fetchMaintenanceItems();
+          if (selectedMaintenance?.pm_id === pmId) setSelectedMaintenance(null);
           return true;
         } else {
           throw new Error(response.message || `Failed to delete maintenance with ID ${pmId}`);
@@ -283,25 +301,22 @@ export const PreventiveMaintenanceProvider: React.FC<PreventiveMaintenanceProvid
         setIsLoading(false);
       }
     },
-    [fetchMaintenanceItems]
+    [fetchMaintenanceItems, selectedMaintenance, clearError]
   );
 
   const completeMaintenance = useCallback(
-    async (pmId: string, data: PreventiveMaintenanceCompleteRequest) => {
+    async (pmId: string, data: CompletePreventiveMaintenanceData) => {
       setIsLoading(true);
-      setError(null);
+      clearError();
 
       try {
-        const safeData = {
-          completion_notes: data.completion_notes,
-          after_image: data.after_image,
-        };
+        if (!pmId) throw new Error('Maintenance ID is required');
 
-        const response = await preventiveMaintenanceService.completePreventiveMaintenance(pmId, safeData);
+        const response = await preventiveMaintenanceService.completePreventiveMaintenance(pmId, data);
 
         if (response.success && response.data) {
           setSelectedMaintenance(response.data);
-          fetchMaintenanceItems();
+          await fetchMaintenanceItems();
           return response.data;
         } else {
           throw new Error(response.message || `Failed to complete maintenance with ID ${pmId}`);
@@ -314,13 +329,14 @@ export const PreventiveMaintenanceProvider: React.FC<PreventiveMaintenanceProvid
         setIsLoading(false);
       }
     },
-    [fetchMaintenanceItems]
+    [fetchMaintenanceItems, clearError]
   );
 
   useEffect(() => {
     fetchTopics();
     fetchStatistics();
-  }, [fetchTopics, fetchStatistics]);
+    fetchMaintenanceItems();
+  }, [fetchTopics, fetchStatistics, fetchMaintenanceItems]);
 
   const contextValue: PreventiveMaintenanceContextState = {
     maintenanceItems,
@@ -334,6 +350,7 @@ export const PreventiveMaintenanceProvider: React.FC<PreventiveMaintenanceProvid
     fetchMaintenanceItems,
     fetchStatistics,
     fetchMaintenanceById,
+    fetchMaintenanceByMachine,
     createMaintenance,
     updateMaintenance,
     deleteMaintenance,

@@ -1,6 +1,7 @@
+// @/app/[locale]/preventive-maintenance/PreventiveMaintenanceForm.tsx
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { Formik, Form, Field, FormikErrors } from 'formik';
 import {
@@ -14,17 +15,31 @@ import {
 import preventiveMaintenanceService, {
   CreatePreventiveMaintenanceData,
   UpdatePreventiveMaintenanceData,
-  UploadImagesData,
 } from '@/app/lib/PreventiveMaintenanceService';
 import apiClient from '@/app/lib/api-client';
 import FileUpload from '@/app/components/jobs/FileUpload';
+import { toast } from 'react-hot-toast';
+import { useProperty } from '@/app/lib/PropertyContext';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+interface Machine {
+  id: number;
+  machine_id: string;
+  name: string;
+}
+
+interface Property {
+  property_id: string;
+  name: string;
+}
 
 interface PreventiveMaintenanceFormProps {
   pmId?: string | null;
   onSuccessAction: (data: PreventiveMaintenance) => void;
   initialData?: PreventiveMaintenance | null;
+  onCancel?: () => void;
+  machineId?: string;
 }
 
 interface FormValues {
@@ -37,38 +52,54 @@ interface FormValues {
   before_image_file: File | null;
   after_image_file: File | null;
   selected_topics: number[];
+  selected_machine_ids: string[];
+  property_id: string | null;
 }
 
 const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
   pmId,
   onSuccessAction,
   initialData,
+  onCancel,
+  machineId,
 }) => {
   const { data: session } = useSession();
-
-  // Store the created maintenance record ID for the fallback image upload path
+  const { userProperties } = useProperty();
   const createdMaintenanceIdRef = useRef<string | null>(null);
-
-  // State for available topics and form status
+  const [selectedProperty, setSelectedProperty] = useState<string | null>(null);
   const [availableTopics, setAvailableTopics] = useState<Topic[]>([]);
+  const [availableMachines, setAvailableMachines] = useState<Machine[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isImageUploading, setIsImageUploading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [beforeImagePreview, setBeforeImagePreview] = useState<string | null>(null);
   const [afterImagePreview, setAfterImagePreview] = useState<string | null>(null);
+  const [loadingTopics, setLoadingTopics] = useState<boolean>(true);
+  const [loadingMachines, setLoadingMachines] = useState<boolean>(true);
 
-  // Helper function to format date for input field
-  function formatDateForInput(date: Date): string {
+  const formatDateForInput = (date: Date): string => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
-  }
+  };
 
-  // Validation function
+  const getPropertyName = useCallback(
+    (propertyId: string | null): string => {
+      if (!propertyId) return 'No Property Selected';
+      const foundProperty = userProperties?.find((p) => p.property_id === propertyId);
+      return foundProperty?.name || `Property ${propertyId}`;
+    },
+    [userProperties]
+  );
+
   const validate = (values: FormValues): FormikErrors<FormValues> => {
     const errors: FormikErrors<FormValues> = {};
+
+    if (!values.pmtitle) {
+      errors.pmtitle = 'Maintenance title is required';
+    }
 
     if (!values.scheduled_date) {
       errors.scheduled_date = 'Scheduled date is required';
@@ -82,32 +113,40 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       errors.custom_days = 'Custom days must be at least 1';
     }
 
-    // Validate file sizes
+    if (values.selected_topics.length === 0) {
+      errors.selected_topics = 'At least one topic must be selected';
+    }
+
+    if (!values.property_id) {
+      errors.property_id = 'Property selection is required';
+    }
+
     if (values.before_image_file && values.before_image_file.size > MAX_FILE_SIZE) {
-      (errors as any).before_image_file = 'Before image must be less than 5MB';
+      errors.before_image_file = 'Before image must be less than 5MB';
     }
 
     if (values.after_image_file && values.after_image_file.size > MAX_FILE_SIZE) {
-      (errors as any).after_image_file = 'After image must be less than 5MB';
+      errors.after_image_file = 'After image must be less than 5MB';
     }
 
     return errors;
   };
 
-  // Initial values
   const getInitialValues = (): FormValues => {
     if (initialData) {
-      const topicIds: number[] = [];
+      const topicIds: number[] = initialData.topics
+        ?.map((topic) => (typeof topic === 'object' && 'id' in topic ? topic.id : typeof topic === 'number' ? topic : null))
+        .filter((id): id is number => id !== null) || [];
 
-      if ('topics' in initialData && initialData.topics && Array.isArray(initialData.topics)) {
-        initialData.topics.forEach((topic) => {
-          if (typeof topic === 'object' && 'id' in topic) {
-            topicIds.push(topic.id);
-          } else if (typeof topic === 'number') {
-            topicIds.push(topic);
-          }
-        });
-      }
+      const machineIds: string[] = initialData.machines
+        ?.map((machine) =>
+          typeof machine === 'object' && 'machine_id' in machine
+            ? machine.machine_id
+            : typeof machine === 'string'
+            ? machine
+            : null
+        )
+        .filter((id): id is string => id !== null) || [];
 
       return {
         pmtitle: initialData.pmtitle || '',
@@ -118,11 +157,13 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
           ? formatDateForInput(new Date(initialData.completed_date))
           : null,
         frequency: validateFrequency(initialData.frequency || 'monthly'),
-        custom_days: initialData.custom_days !== undefined && initialData.custom_days !== null ? initialData.custom_days : '',
+        custom_days: initialData.custom_days ?? '',
         notes: initialData.notes || '',
         before_image_file: null,
         after_image_file: null,
         selected_topics: topicIds,
+        selected_machine_ids: machineId ? [machineId, ...machineIds.filter((id) => id !== machineId)] : machineIds,
+        property_id: initialData.property_id || null,
       };
     }
 
@@ -136,46 +177,61 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       before_image_file: null,
       after_image_file: null,
       selected_topics: [],
+      selected_machine_ids: machineId ? [machineId] : [],
+      property_id: null,
     };
   };
 
-  // Clear error
   const clearError = () => {
     setError(null);
     setSubmitError(null);
   };
 
-  // Fetch available topics using API client
   const fetchAvailableTopics = async () => {
+    setLoadingTopics(true);
     try {
-      const response = await apiClient.get('/api/topics/');
-      if (response.data && response.data.topics) {
-        setAvailableTopics(response.data.topics);
-      } else if (response.data) {
-        setAvailableTopics(response.data);
-      }
+      const response = await apiClient.get<Topic[]>('/api/topics/');
+      setAvailableTopics(response.data);
     } catch (err: any) {
       console.error('Error fetching available topics:', err);
       setError('Failed to load topics. Please try again.');
+    } finally {
+      setLoadingTopics(false);
     }
   };
 
-  // Initialize data
+  const fetchAvailableMachines = async (propertyId: string | null) => {
+    setLoadingMachines(true);
+    try {
+      const params = propertyId ? { property_id: propertyId } : {};
+      const response = await apiClient.get<Machine[]>('/api/machines/', { params });
+      setAvailableMachines(response.data);
+    } catch (err: any) {
+      console.error('Error fetching available machines:', err);
+      setError('Failed to load machines. Please try again.');
+    } finally {
+      setLoadingMachines(false);
+    }
+  };
+
   useEffect(() => {
     fetchAvailableTopics();
-
-    if (initialData) {
-      // Set image previews
-      if (initialData.before_image_url) {
-        setBeforeImagePreview(initialData.before_image_url);
-      }
-      if (initialData.after_image_url) {
-        setAfterImagePreview(initialData.after_image_url);
-      }
+    if (initialData?.property_id) {
+      setSelectedProperty(initialData.property_id);
+      fetchAvailableMachines(initialData.property_id);
+    } else {
+      fetchAvailableMachines(null);
     }
   }, [initialData]);
 
-  // Fetch maintenance data if pmId is provided but no initialData
+  useEffect(() => {
+    if (selectedProperty) {
+      fetchAvailableMachines(selectedProperty);
+    } else {
+      setAvailableMachines([]);
+    }
+  }, [selectedProperty]);
+
   useEffect(() => {
     if (pmId && !initialData) {
       setIsLoading(true);
@@ -184,12 +240,13 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       preventiveMaintenanceService
         .getPreventiveMaintenanceById(pmId)
         .then((response) => {
-          const data = extractMaintenanceData(response);
-          if (data.before_image_url) {
-            setBeforeImagePreview(data.before_image_url);
-          }
-          if (data.after_image_url) {
-            setAfterImagePreview(data.after_image_url);
+          if (response.success && response.data) {
+            const data = response.data;
+            if (data.before_image_url) setBeforeImagePreview(data.before_image_url);
+            if (data.after_image_url) setAfterImagePreview(data.after_image_url);
+            if (data.property_id) setSelectedProperty(data.property_id);
+          } else {
+            throw new Error(response.message || 'Failed to fetch maintenance data');
           }
         })
         .catch((err) => {
@@ -202,95 +259,12 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     }
   }, [pmId, initialData]);
 
-  // Helper function to extract maintenance data
-  const extractMaintenanceData = (response: ServiceResponse<PreventiveMaintenance> | PreventiveMaintenance): PreventiveMaintenance => {
-    if ('success' in response && response.success && response.data) {
-      return response.data;
-    } else if ('pm_id' in response) {
-      return response as PreventiveMaintenance;
-    } else {
-      throw new Error('Invalid response format');
-    }
-  };
-
-  // Fallback function to handle image uploads separately
- // Fallback function to handle image uploads separately
-const uploadImagesManually = async (id: string, beforeImage: File | null, afterImage: File | null) => {
-  // ตรวจสอบให้แน่ใจว่ามี ID และมีรูปภาพที่จะอัปโหลด
-  if (!id) {
-    console.error('Cannot upload images: PM ID is undefined or empty');
-    return;
-  }
-
-  // ตรวจสอบให้ชัดเจนว่ามีไฟล์ที่ต้องอัปโหลดจริงๆ หรือไม่
-  const hasBefore = beforeImage instanceof File;
-  const hasAfter = afterImage instanceof File;
-  
-  if (!hasBefore && !hasAfter) {
-    console.log('No manual upload needed - no valid image files to upload');
-    return;
-  }
-
-  setIsImageUploading(true);
-  console.log(`Attempting manual image upload for PM ID: ${id}`);
-  console.log(`Files to upload: before=${hasBefore ? beforeImage.name : 'none'}, after=${hasAfter ? afterImage.name : 'none'}`);
-
-  try {
-    const uploadData: UploadImagesData = {};
-    if (hasBefore) {
-      uploadData.before_image = beforeImage;
-      console.log('Manual upload - before_image:', beforeImage.name, beforeImage.size, 'bytes');
-    }
-    if (hasAfter) {
-      uploadData.after_image = afterImage;
-      console.log('Manual upload - after_image:', afterImage.name, afterImage.size, 'bytes');
-    }
-
-    // แสดงข้อมูลก่อนส่งไปยัง service
-    console.log('Sending to uploadMaintenanceImages:', {
-      pmId: id,
-      beforeImage: hasBefore,
-      afterImage: hasAfter
-    });
-
-    await preventiveMaintenanceService.uploadMaintenanceImages(id, uploadData);
-    console.log('Manual image upload successful');
-
-    // Refresh maintenance data to update image URLs
-    console.log('Fetching updated data with PM ID:', id);
-    const refreshedData = await preventiveMaintenanceService.getPreventiveMaintenanceById(id);
-    
-    if (refreshedData.success && refreshedData.data) {
-      console.log('Received updated data:', {
-        has_before_url: !!refreshedData.data.before_image_url,
-        has_after_url: !!refreshedData.data.after_image_url
-      });
-      
-      if (refreshedData.data.before_image_url && hasBefore) {
-        setBeforeImagePreview(refreshedData.data.before_image_url);
-        console.log('Updated before image preview');
-      }
-      if (refreshedData.data.after_image_url && hasAfter) {
-        setAfterImagePreview(refreshedData.data.after_image_url);
-        console.log('Updated after image preview');
-      }
-    } else {
-      console.warn('Failed to get updated image URLs:', refreshedData.message || 'Unknown error');
-    }
-  } catch (error: any) {
-    console.error('Manual image upload failed:', error);
-    setSubmitError(`Failed to upload images manually: ${error.message}`);
-  } finally {
-    setIsImageUploading(false);
-  }
-};
-
-  // Handle file selection with validation and preview
-  const handleFileSelection = (files: File[], type: 'before' | 'after', setFieldValue: (field: string, value: any) => void) => {
-    console.log(`Handling file selection for ${type} image`, files);
-
+  const handleFileSelection = (
+    files: File[],
+    type: 'before' | 'after',
+    setFieldValue: (field: string, value: any) => void
+  ) => {
     if (files.length === 0) {
-      console.log(`Clearing ${type} image`);
       if (type === 'before') {
         setBeforeImagePreview(null);
         setFieldValue('before_image_file', null);
@@ -302,27 +276,24 @@ const uploadImagesManually = async (id: string, beforeImage: File | null, afterI
     }
 
     const file = files[0];
-    console.log(`Selected ${type} image:`, {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      isFile: file instanceof File,
-    });
 
-    if (file.size > MAX_FILE_SIZE) {
-      console.warn(`${type} image is too large: ${file.size} bytes`);
-      setSubmitError(`${type} image must be less than 5MB`);
+    // Validate file type
+    const validImageTypes = ['image/jpeg', 'image/png', 'image/gif'];
+    if (!validImageTypes.includes(file.type)) {
+      toast.error(`Please upload an image file (JPEG, PNG, or GIF) for ${type === 'before' ? 'Before' : 'After'} image.`);
       return;
     }
 
-    // Set the file in form values
-    setFieldValue(type === 'before' ? 'before_image_file' : 'after_image_file', file);
-    console.log(`Set Formik field ${type}_image_file:`, file);
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error(`${type === 'before' ? 'Before' : 'After'} image must be less than 5MB`);
+      return;
+    }
 
-    // Create preview
+    setFieldValue(type === 'before' ? 'before_image_file' : 'after_image_file', file);
+
     const reader = new FileReader();
     reader.onloadend = () => {
-      console.log(`Created preview for ${type} image`);
       if (type === 'before') {
         setBeforeImagePreview(reader.result as string);
       } else {
@@ -330,171 +301,62 @@ const uploadImagesManually = async (id: string, beforeImage: File | null, afterI
       }
     };
     reader.readAsDataURL(file);
-
-    // Removed immediate upload to simplify flow and ensure files are sent with form submission
   };
 
-  // Handle form submission
   const handleSubmit = async (
     values: FormValues,
     { setSubmitting, setFieldValue }: { setSubmitting: (isSubmitting: boolean) => void; setFieldValue: (field: string, value: any) => void }
   ) => {
     clearError();
     setIsLoading(true);
-  
+
     try {
-      console.log('Starting form submission with values:', {
-        ...values,
-        before_image_file: values.before_image_file ? `File: ${values.before_image_file.name} (${values.before_image_file.size} bytes)` : null,
-        after_image_file: values.after_image_file ? `File: ${values.after_image_file.name} (${values.after_image_file.size} bytes)` : null,
-      });
-  
-      // Validate file objects
-      if (values.before_image_file) {
-        console.log('Before image details:', {
-          valid: values.before_image_file instanceof File,
-          name: values.before_image_file.name,
-          size: values.before_image_file.size,
-          type: values.before_image_file.type,
-        });
-      }
-      if (values.after_image_file) {
-        console.log('After image details:', {
-          valid: values.after_image_file instanceof File,
-          name: values.after_image_file.name,
-          size: values.after_image_file.size,
-          type: values.after_image_file.type,
-        });
-      }
-  
-      // Keep references to image files
-      const beforeImageFile = values.before_image_file;
-      const afterImageFile = values.after_image_file;
-  
-      // Prepare submission data
       const submitData: CreatePreventiveMaintenanceData = {
+        pmtitle: values.pmtitle.trim() || 'Untitled Maintenance',
         scheduled_date: values.scheduled_date,
-        completed_date: values.completed_date,
+        completed_date: values.completed_date || null,
         frequency: values.frequency,
-        custom_days: values.frequency === 'custom' && values.custom_days && values.custom_days > 0 ? Number(values.custom_days) : null,
-        notes: values.notes && values.notes.trim() ? values.notes.trim() : undefined,
-        pmtitle: values.pmtitle && values.pmtitle.trim() ? values.pmtitle.trim() : undefined,
+        custom_days: values.frequency === 'custom' && values.custom_days ? Number(values.custom_days) : null,
+        notes: values.notes?.trim(),
         topic_ids: values.selected_topics.length > 0 ? values.selected_topics : undefined,
+        machine_ids: values.selected_machine_ids.length > 0 ? values.selected_machine_ids : undefined,
         before_image: values.before_image_file instanceof File ? values.before_image_file : undefined,
         after_image: values.after_image_file instanceof File ? values.after_image_file : undefined,
+        property_id: values.property_id || undefined,
       };
-  
-      console.log('Directly checking file objects before submission:');
-      console.log('before_image_file instanceof File:', values.before_image_file instanceof File);
-      console.log('after_image_file instanceof File:', values.after_image_file instanceof File);
-      console.log('submitData.before_image instanceof File:', submitData.before_image instanceof File);
-      console.log('submitData.after_image instanceof File:', submitData.after_image instanceof File);
-  
+
       if (submitData.before_image || submitData.after_image) {
         setIsImageUploading(true);
       }
-  
-      console.log('Submit data prepared for API:', {
-        pmtitle: submitData.pmtitle,
-        scheduled_date: submitData.scheduled_date,
-        completed_date: submitData.completed_date,
-        frequency: submitData.frequency,
-        custom_days: submitData.custom_days,
-        hasBeforeImage: !!submitData.before_image,
-        hasAfterImage: !!submitData.after_image,
-        topicIds: submitData.topic_ids,
-      });
-  
-      const maintenanceId = pmId || (initialData ? initialData.pm_id : null);
+
+      const maintenanceId = pmId || (initialData?.pm_id ?? null);
       let response: ServiceResponse<PreventiveMaintenance>;
-  
+
       if (maintenanceId) {
-        console.log('Updating maintenance with ID:', maintenanceId);
+        console.log(`Updating maintenance record: ${maintenanceId}`);
         response = await preventiveMaintenanceService.updatePreventiveMaintenance(maintenanceId, submitData);
       } else {
         console.log('Creating new maintenance record');
         response = await preventiveMaintenanceService.createPreventiveMaintenance(submitData);
       }
-  
+
       if (response.success && response.data) {
-        // กำหนดประเภทให้หลวมขึ้นเพื่อรองรับโครงสร้างที่แตกต่างกัน
-        const responseData: any = response.data;
-        console.log('Successfully saved maintenance:', responseData);
-      
-        // ตรวจสอบรูปแบบของข้อมูลและดึง PM ID ให้ถูกต้อง
-        let pmId: string | undefined;
-        
-        // ดึงข้อมูลที่แท้จริงของ maintenance record
-        let actualMaintenanceData: any;
-        
-        if (typeof responseData === 'object') {
-          if ('data' in responseData && responseData.data && typeof responseData.data === 'object' && 'pm_id' in responseData.data) {
-            // กรณีที่ response มีรูปแบบ { message: '...', data: { pm_id: '...' } }
-            pmId = responseData.data.pm_id;
-            actualMaintenanceData = responseData.data;
-            console.log('Found PM ID in nested data:', pmId);
-          } else if ('pm_id' in responseData) {
-            // กรณีที่ response มีรูปแบบ { pm_id: '...' }
-            pmId = responseData.pm_id;
-            actualMaintenanceData = responseData;
-            console.log('Found PM ID directly in response:', pmId);
-          }
-        }
-        
-        if (!pmId || !actualMaintenanceData) {
-          console.error('Maintenance data does not have a valid PM ID:', responseData);
-          setSubmitError('Cannot upload images: Maintenance record has no ID');
-          setSubmitting(false);
-          setIsLoading(false);
-          return;
-        }
-        
-        // จัดเก็บ ID สำหรับใช้งานในอนาคต
-        createdMaintenanceIdRef.current = pmId;
-        
-        // ตรวจสอบว่าจำเป็นต้องอัปโหลดรูปภาพหรือไม่
-        const needToUploadImages = (beforeImageFile instanceof File || afterImageFile instanceof File);
-        
-        if (needToUploadImages) {
-          console.log('Images might need to be uploaded manually. Checking...');
-          
-          const beforeImageMissing = beforeImageFile instanceof File && !actualMaintenanceData.before_image_url;
-          const afterImageMissing = afterImageFile instanceof File && !actualMaintenanceData.after_image_url;
-          
-          if (beforeImageMissing || afterImageMissing) {
-            console.log('Images not saved correctly, attempting manual upload');
-            try {
-              await uploadImagesManually(
-                pmId,
-                beforeImageMissing ? beforeImageFile : null,
-                afterImageMissing ? afterImageFile : null
-              );
-            } catch (uploadError) {
-              console.error('Error during manual image upload:', uploadError);
-              setSubmitError('Error uploading images: ' + ((uploadError as Error).message || 'Unknown error'));
-            }
-          } else {
-            console.log('All images saved correctly during record creation');
-          }
-        } else {
-          console.log('No images to upload');
-        }
-      
-        // ส่ง actualMaintenanceData ที่มีรูปแบบถูกต้องไปยัง onSuccessAction
-        // ต้องแน่ใจว่า actualMaintenanceData มีคุณสมบัติทั้งหมดที่ PreventiveMaintenance ต้องการ
-        onSuccessAction(actualMaintenanceData as PreventiveMaintenance);
-      
-        // Reset form if creating new
+        toast.success(maintenanceId ? 'Maintenance record updated successfully' : 'Maintenance record created successfully');
+        onSuccessAction(response.data);
+
         if (!maintenanceId) {
           setFieldValue('pmtitle', '');
           setFieldValue('notes', '');
           setFieldValue('custom_days', '');
           setFieldValue('completed_date', null);
           setFieldValue('selected_topics', []);
+          setFieldValue('selected_machine_ids', machineId ? [machineId] : []);
+          setFieldValue('property_id', null);
           setFieldValue('before_image_file', null);
           setFieldValue('after_image_file', null);
           setBeforeImagePreview(null);
           setAfterImagePreview(null);
+          setSelectedProperty(null);
           createdMaintenanceIdRef.current = null;
         }
       } else {
@@ -503,7 +365,7 @@ const uploadImagesManually = async (id: string, beforeImage: File | null, afterI
     } catch (error: any) {
       console.error('Error submitting form:', error);
       let errorMessage = 'An unexpected error occurred while saving the maintenance record';
-  
+
       if (error.response?.data) {
         console.error('Error response data:', error.response.data);
         if (typeof error.response.data === 'string') {
@@ -528,8 +390,9 @@ const uploadImagesManually = async (id: string, beforeImage: File | null, afterI
       } else if (error.message) {
         errorMessage = error.message;
       }
-  
+
       setSubmitError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setSubmitting(false);
       setIsLoading(false);
@@ -564,16 +427,52 @@ const uploadImagesManually = async (id: string, beforeImage: File | null, afterI
         {({ values, errors, touched, isSubmitting, setFieldValue }) => (
           <Form aria-label="Preventive Maintenance Form">
             <div className="mb-6">
+              <label htmlFor="property_id" className="block text-sm font-medium text-gray-700 mb-1">
+                Property <span className="text-red-500">*</span>
+              </label>
+              <Field
+                as="select"
+                id="property_id"
+                name="property_id"
+                value={selectedProperty || ''}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                  const value = e.target.value;
+                  setSelectedProperty(value);
+                  setFieldValue('property_id', value || null);
+                  setFieldValue('selected_machine_ids', machineId ? [machineId] : []);
+                }}
+                className={`w-full p-2 border rounded-md ${
+                  errors.property_id && touched.property_id ? 'border-red-500' : 'border-gray-300'
+                }`}
+              >
+                <option value="">Select a Property</option>
+                {userProperties?.map((property) => (
+                  <option key={property.property_id} value={property.property_id}>
+                    {property.name}
+                  </option>
+                ))}
+              </Field>
+              {errors.property_id && touched.property_id && (
+                <p className="mt-1 text-sm text-red-500">{errors.property_id}</p>
+              )}
+            </div>
+
+            <div className="mb-6">
               <label htmlFor="pmtitle" className="block text-sm font-medium text-gray-700 mb-1">
-                Maintenance Title
+                Maintenance Title <span className="text-red-500">*</span>
               </label>
               <Field
                 type="text"
                 id="pmtitle"
                 name="pmtitle"
-                className="w-full p-2 border border-gray-300 rounded-md"
-                placeholder="Enter maintenance title (optional)"
+                className={`w-full p-2 border rounded-md ${
+                  errors.pmtitle && touched.pmtitle ? 'border-red-500' : 'border-gray-300'
+                }`}
+                placeholder="Enter maintenance title"
               />
+              {errors.pmtitle && touched.pmtitle && (
+                <p className="mt-1 text-sm text-red-500">{errors.pmtitle}</p>
+              )}
             </div>
 
             <div className="mb-6">
@@ -650,6 +549,103 @@ const uploadImagesManually = async (id: string, beforeImage: File | null, afterI
             )}
 
             <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Machines</label>
+              <div
+                className={`border rounded-md p-4 max-h-48 overflow-y-auto bg-white ${
+                  errors.selected_machine_ids && touched.selected_machine_ids ? 'border-red-500' : 'border-gray-300'
+                }`}
+                role="group"
+                aria-label="Select machines"
+              >
+                {loadingMachines ? (
+                  <div className="flex justify-center items-center h-24">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <p className="ml-2 text-sm text-gray-500">Loading machines...</p>
+                  </div>
+                ) : availableMachines.length > 0 ? (
+                  <div className="space-y-3">
+                    {availableMachines.map((machine) => (
+                      <div key={machine.machine_id} className="relative">
+                        <label className="flex items-center cursor-pointer">
+                          <Field name="selected_machine_ids">
+                            {({ field }: any) => (
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                                id={`machine-${machine.machine_id}`}
+                                checked={field.value.includes(machine.machine_id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setFieldValue('selected_machine_ids', [...field.value, machine.machine_id]);
+                                  } else {
+                                    setFieldValue('selected_machine_ids', field.value.filter((id: string) => id !== machine.machine_id));
+                                  }
+                                }}
+                                disabled={machineId === machine.machine_id}
+                              />
+                            )}
+                          </Field>
+                          <span className="ml-3 text-sm text-gray-700 flex-1">
+                            {machine.name} ({machine.machine_id})
+                          </span>
+                        </label>
+                        {values.selected_machine_ids.includes(machine.machine_id) && (
+                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-full"></div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6">
+                    <p className="text-sm text-gray-500 mb-3">
+                      {selectedProperty ? 'No machines available for this property.' : 'Please select a property to load machines.'}
+                    </p>
+                    {selectedProperty && (
+                      <button
+                        type="button"
+                        onClick={() => fetchAvailableMachines(selectedProperty)}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
+                      >
+                        Refresh Machines
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+              {values.selected_machine_ids.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-sm text-gray-600 mb-2">
+                    {values.selected_machine_ids.length} machine{values.selected_machine_ids.length > 1 ? 's' : ''} selected:
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {values.selected_machine_ids.map((machineId) => {
+                      const machine = availableMachines.find((m) => m.machine_id === machineId);
+                      return machine ? (
+                        <span
+                          key={machine.machine_id}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full"
+                        >
+                          {machine.name} ({machine.machine_id})
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFieldValue('selected_machine_ids', values.selected_machine_ids.filter((id) => id !== machine.machine_id));
+                            }}
+                            className="ml-1 text-blue-600 hover:text-blue-800"
+                            aria-label={`Remove ${machine.name}`}
+                            disabled={machineId === machine.machine_id}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mb-6">
               <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">
                 Notes
               </label>
@@ -664,14 +660,24 @@ const uploadImagesManually = async (id: string, beforeImage: File | null, afterI
             </div>
 
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Topics</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Topics <span className="text-red-500">*</span>
+              </label>
+              {errors.selected_topics && touched.selected_topics && (
+                <p className="mt-1 mb-2 text-sm text-red-500">{errors.selected_topics}</p>
+              )}
               <div
-                className="border border-gray-300 rounded-md p-4 max-h-48 overflow-y-auto bg-white"
+                className={`border rounded-md p-4 max-h-48 overflow-y-auto bg-white ${
+                  errors.selected_topics && touched.selected_topics ? 'border-red-500' : 'border-gray-300'
+                }`}
                 role="group"
                 aria-label="Select maintenance topics"
               >
-                {isLoading ? (
-                  <p className="text-sm text-gray-500 italic">Loading topics...</p>
+                {loadingTopics ? (
+                  <div className="flex justify-center items-center h-24">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <p className="ml-2 text-sm text-gray-500">Loading topics...</p>
+                  </div>
                 ) : availableTopics.length > 0 ? (
                   <div className="space-y-3">
                     {availableTopics.map((topic) => (
@@ -748,14 +754,14 @@ const uploadImagesManually = async (id: string, beforeImage: File | null, afterI
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              <div className="mb-6">
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Before Image</label>
                 <FileUpload
                   onFileSelect={(files: File[]) => handleFileSelection(files, 'before', setFieldValue)}
                   maxFiles={1}
                   maxSize={5}
-                  error={(errors as any).before_image_file}
-                  touched={touched.before_image_file as boolean | undefined}
+                  error={errors.before_image_file}
+                  touched={touched.before_image_file}
                   disabled={isSubmitting || isLoading}
                 />
                 {beforeImagePreview && (
@@ -780,14 +786,14 @@ const uploadImagesManually = async (id: string, beforeImage: File | null, afterI
                 )}
               </div>
 
-              <div className="mb-6">
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">After Image</label>
                 <FileUpload
                   onFileSelect={(files: File[]) => handleFileSelection(files, 'after', setFieldValue)}
                   maxFiles={1}
                   maxSize={5}
-                  error={(errors as any).after_image_file}
-                  touched={touched.after_image_file as boolean | undefined}
+                  error={errors.after_image_file}
+                  touched={touched.after_image_file}
                   disabled={isSubmitting || isLoading}
                 />
                 {afterImagePreview && (
@@ -813,45 +819,45 @@ const uploadImagesManually = async (id: string, beforeImage: File | null, afterI
               </div>
             </div>
 
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={isSubmitting || isLoading || isImageUploading}
-                className={`px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                  isSubmitting || isLoading || isImageUploading ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-                aria-label={pmId || initialData ? 'Update maintenance' : 'Create maintenance'}
-              >
-                {isSubmitting || isImageUploading ? (
-                  <span className="flex items-center">
-                    <svg
-                      className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      ></circle>
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      ></path>
-                    </svg>
-                    {isImageUploading ? 'Uploading images...' : 'Processing...'}
-                  </span>
-                ) : pmId || initialData ? (
-                  'Update Maintenance'
-                ) : (
-                  'Create Maintenance'
+            <div className="flex flex-wrap justify-between mt-8 gap-4">
+              {onCancel && (
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="px-6 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-md shadow-sm hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-300 transition-colors"
+                  disabled={isSubmitting || isLoading}
+                >
+                  Cancel
+                </button>
+              )}
+
+              <div className="flex space-x-4">
+                {isImageUploading && (
+                  <div className="flex items-center space-x-2 text-blue-600">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current"></div>
+                    <span className="text-sm">Uploading images...</span>
+                  </div>
                 )}
-              </button>
+
+                <button
+                  type="submit"
+                  className={`px-6 py-2.5 ${
+                    isSubmitting || isLoading
+                      ? 'bg-blue-400 cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  } text-white font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors`}
+                  disabled={isSubmitting || isLoading}
+                >
+                  {isSubmitting || isLoading ? (
+                    <div className="flex items-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      <span>{pmId || initialData ? 'Updating...' : 'Creating...'}</span>
+                    </div>
+                  ) : (
+                    <span>{pmId || initialData ? 'Update Maintenance' : 'Create Maintenance'}</span>
+                  )}
+                </button>
+              </div>
             </div>
           </Form>
         )}

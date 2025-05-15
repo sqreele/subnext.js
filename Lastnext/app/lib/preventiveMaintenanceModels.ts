@@ -39,6 +39,11 @@ export interface Topic {
   export interface PreventiveMaintenance {
     pm_id: string;
     pmtitle?: string;
+    
+    // Machine relationship fields
+    machine_id?: string;  // Added field to link to specific machine
+    name?: string;        // Added machine name for display purposes
+    machines?: Array<{machine_id: string, name?: string}> | string[];
     topics: Topic[] | number[];
     scheduled_date: string; 
     completed_date?: string | null;
@@ -51,11 +56,16 @@ export interface Topic {
     after_image_url?: string | null;
     notes?: string;
     status?: string;
+    property_id: string;
   }
   
   // Request structure for creating/updating maintenance
   export interface PreventiveMaintenanceRequest {
     pmtitle?: string;
+    
+    // Added machine relationship fields
+    machine_id?: string;  // Added to associate maintenance with a specific machine
+    
     scheduled_date: string;
     frequency: FrequencyType;
     custom_days?: number | null;
@@ -69,6 +79,10 @@ export interface Topic {
   export interface PMFormErrors {
     [key: string]: string | undefined;
     pmtitle?: string;
+    
+    // Added machine-related error fields
+    machine_id?: string;  // Validation error for machine selection
+    
     scheduled_date?: string;
     frequency?: string;
     custom_days?: string;
@@ -167,9 +181,25 @@ export interface Topic {
     previous: string | null;
     filters?: {
       pm_id: string;
+      
+      // Added machine-related filters
+      machine_id?: string;  // Filter by specific machine
+      
       status: string;
       topic_id: string;
       date_from: string;
       date_to: string;
     };
+  }
+  
+  // Helper to get machine display name
+  export function getMachineDisplayName(item: PreventiveMaintenance): string {
+    if (item.name && item.machine_id) {
+      return `${item.name} (${item.machine_id})`;
+    } else if (item.name) {
+      return item.name;
+    } else if (item.machine_id) {
+      return item.machine_id;
+    }
+    return 'Unknown Machine';
   }

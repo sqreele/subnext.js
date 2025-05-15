@@ -4,39 +4,33 @@ import {
   validateFrequency,
   type PreventiveMaintenance,
   type FrequencyType,
-  type ServiceResponse
+  type ServiceResponse,
 } from './preventiveMaintenanceModels';
 
 export interface CreatePreventiveMaintenanceData {
+  pmtitle?: string;
   scheduled_date: string;
   completed_date?: string | null;
   frequency: FrequencyType;
   custom_days?: number | null;
   notes?: string;
-  pmtitle?: string;
   topic_ids?: number[];
+  machine_ids?: string[]; // Array for multiple machine IDs
   before_image?: File;
   after_image?: File;
+  property_id?: string;
 }
 
-export interface UpdatePreventiveMaintenanceData {
-  scheduled_date?: string;
-  completed_date?: string | null;
-  frequency?: FrequencyType;
-  custom_days?: number | null;
-  notes?: string;
-  pmtitle?: string;
-  topic_ids?: number[];
-  before_image?: File;
-  after_image?: File;
+export interface UpdatePreventiveMaintenanceData extends Partial<CreatePreventiveMaintenanceData> {
+  machine_ids?: string[]; // Consistent with create, supports multiple machine IDs
 }
 
-interface CompletePreventiveMaintenanceData {
+export interface CompletePreventiveMaintenanceData {
   completion_notes?: string;
   after_image?: File;
 }
 
-interface DashboardStats {
+export interface DashboardStats {
   counts: {
     total: number;
     completed: number;
@@ -46,6 +40,11 @@ interface DashboardStats {
   frequency_distribution: {
     name: string;
     value: number;
+  }[];
+  machine_distribution?: {
+    machine_id: string;
+    name: string;
+    count: number;
   }[];
   upcoming: PreventiveMaintenance[];
 }
@@ -65,116 +64,77 @@ class PreventiveMaintenanceService {
     console.log('Input data:', {
       ...data,
       before_image: data.before_image
-        ? {
-            name: data.before_image.name,
-            size: data.before_image.size,
-            type: data.before_image.type,
-          }
+        ? { name: data.before_image.name, size: data.before_image.size, type: data.before_image.type }
         : undefined,
       after_image: data.after_image
-        ? {
-            name: data.after_image.name,
-            size: data.after_image.size,
-            type: data.after_image.type,
-          }
+        ? { name: data.after_image.name, size: data.after_image.size, type: data.after_image.type }
         : undefined,
     });
-  
+
     try {
-      // Create a clean form data object without image files to avoid potential issues
       const formData = new FormData();
+      if (data.pmtitle?.trim()) formData.append('pmtitle', data.pmtitle.trim());
       formData.append('scheduled_date', data.scheduled_date);
-      if (data.completed_date !== undefined && data.completed_date !== null) {
-        formData.append('completed_date', data.completed_date);
-      }
+      if (data.completed_date) formData.append('completed_date', data.completed_date);
       formData.append('frequency', data.frequency);
-      if (data.custom_days !== undefined && data.custom_days !== null) {
-        formData.append('custom_days', String(data.custom_days));
-      }
-      if (data.notes?.trim()) {
-        formData.append('notes', data.notes.trim());
-      }
-      if (data.pmtitle?.trim()) {
-        formData.append('pmtitle', data.pmtitle.trim());
-      }
-      if (data.topic_ids && data.topic_ids.length > 0) {
-        data.topic_ids.forEach((topicId) =>
-          formData.append('topic_ids[]', String(topicId))
-        );
+      if (data.custom_days != null) formData.append('custom_days', String(data.custom_days));
+      if (data.notes?.trim()) formData.append('notes', data.notes.trim());
+      if (data.topic_ids?.length) {
+        data.topic_ids.forEach((id) => formData.append('topic_ids[]', String(id)));
       } else {
         formData.append('topic_ids[]', '');
       }
-  
+      if (data.machine_ids?.length) {
+        data.machine_ids.forEach((id) => formData.append('machine_ids[]', id));
+      }
+      if (data.property_id) formData.append('property_id', data.property_id);
+
       console.log('FormData entries (create):');
       for (const [key, value] of formData.entries()) {
         console.log(`  ${key}: ${value}`);
       }
-  
-      // First create the maintenance record without images
-      const createResponse = await apiClient.post<any>(
-        `${this.baseUrl}/`,
-        formData
-      );
-      
-      // ดึงข้อมูลที่ถูกต้องจาก response (ปรับปรุง)
+
+      const createResponse = await apiClient.post<any>(`${this.baseUrl}/`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
       const responseData = createResponse.data;
       console.log('Raw API response:', responseData);
-      
-      // ตรวจสอบรูปแบบของข้อมูลและดึง PM ID และข้อมูลที่ถูกต้อง
-      let actualRecord: any;
+
       let pmId: string | undefined;
-      
-      if (responseData) {
-        if ('data' in responseData && responseData.data) {
-          // กรณีที่ response มีรูปแบบ { message: '...', data: { pm_id: '...' } }
-          actualRecord = responseData.data;
-          pmId = actualRecord.pm_id;
-          console.log('Found record in nested data structure');
-        } else if ('pm_id' in responseData) {
-          // กรณีที่ response มีรูปแบบ { pm_id: '...' }
-          actualRecord = responseData;
-          pmId = responseData.pm_id;
-          console.log('Found record directly in response');
-        } else {
-          console.error('Unexpected response format:', responseData);
-          actualRecord = responseData;
-        }
+      let actualRecord: PreventiveMaintenance;
+
+      if ('data' in responseData && responseData.data && 'pm_id' in responseData.data) {
+        actualRecord = responseData.data;
+        pmId = actualRecord.pm_id;
+        console.log('Found record in nested data structure:', pmId);
+      } else if ('pm_id' in responseData) {
+        actualRecord = responseData;
+        pmId = responseData.pm_id;
+        console.log('Found record directly in response:', pmId);
       } else {
-        console.error('Empty response data');
-        actualRecord = {}; // ป้องกันข้อผิดพลาดกรณีไม่มีข้อมูล
+        console.error('Unexpected response format:', responseData);
+        throw new Error('Invalid response format: Missing pm_id');
       }
-      
-      // ตรวจสอบว่ามี PM ID หรือไม่ก่อนทำการอัปโหลดรูปภาพ
-      if (pmId) {
-        console.log(`Maintenance record created with ID: ${pmId}`);
-        
-        // Add more detailed logging here
-        console.log('Checking images for upload:');
-        console.log('before_image instanceof File:', data.before_image instanceof File);
-        console.log('after_image instanceof File:', data.after_image instanceof File);
-        
-        // If we have images, upload them separately
-        if (data.before_image instanceof File || data.after_image instanceof File) {
-          console.log('Attempting to upload images...');
-          try {
-            await this.uploadMaintenanceImages(pmId, {
-              before_image: data.before_image,
-              after_image: data.after_image
-            });
-            console.log('Image upload complete');
-          } catch (uploadError) {
-            console.error(`Error uploading images for PM ${pmId}:`, uploadError);
-            // Continue despite image upload error - the record was created successfully
+
+      if (pmId && (data.before_image instanceof File || data.after_image instanceof File)) {
+        console.log(`Attempting to upload images for PM ${pmId}`);
+        try {
+          await this.uploadMaintenanceImages(pmId, {
+            before_image: data.before_image,
+            after_image: data.after_image,
+          });
+          // Refresh record to get updated image URLs
+          const refreshedResponse = await this.getPreventiveMaintenanceById(pmId);
+          if (refreshedResponse.success && refreshedResponse.data) {
+            actualRecord = refreshedResponse.data;
           }
-        } else {
-          console.log('No valid image files found for upload');
+        } catch (uploadError) {
+          console.error(`Error uploading images for PM ${pmId}:`, uploadError);
         }
-      } else {
-        console.error('Created record missing PM ID:', responseData);
       }
-  
-      // ส่งคืนข้อมูลในรูปแบบเดิมเพื่อให้เข้ากับส่วนอื่นของโค้ด
-      return { success: true, data: responseData };
+
+      return { success: true, data: actualRecord, message: 'Maintenance created successfully' };
     } catch (error: any) {
       console.error('Service error creating maintenance:', error);
       throw handleApiError(error);
@@ -186,68 +146,42 @@ class PreventiveMaintenanceService {
     data: UploadImagesData
   ): Promise<ServiceResponse<null>> {
     console.log(`=== UPLOAD IMAGES FOR PM ${pmId} ===`);
-  
+
     if (!pmId) {
       console.error('Cannot upload images: PM ID is undefined or empty');
       return { success: false, message: 'PM ID is required for image upload' };
     }
-  
-    // ตรวจสอบอย่างชัดเจนว่ามีรูปภาพที่ต้องอัปโหลดหรือไม่
+
     const hasBefore = data.before_image instanceof File;
     const hasAfter = data.after_image instanceof File;
-    
+
     if (!hasBefore && !hasAfter) {
-      console.log('No images to upload, skipping');
-      return { success: true, data: null };
+      console.log('No images to upload');
+      return { success: true, data: null, message: 'No images provided' };
     }
-  
+
     try {
-      // สร้าง FormData สำหรับอัปโหลด
       const imageFormData = new FormData();
-      let hasImages = false;
-  
-      // เปลี่ยนชื่อพารามิเตอร์ให้ตรงกับที่ backend คาดหวัง
-      if (hasBefore && data.before_image) {
-        imageFormData.append('before_image', data.before_image);
-        hasImages = true;
-        console.log(`Adding before image: ${data.before_image.name} (${data.before_image.size} bytes)`);
+      if (hasBefore) {
+        imageFormData.append('before_image', data.before_image!);
+        console.log(`Adding before image: ${data.before_image!.name} (${data.before_image!.size} bytes)`);
       }
-  
-      if (hasAfter && data.after_image) {
-        imageFormData.append('after_image', data.after_image);
-        hasImages = true;
-        console.log(`Adding after image: ${data.after_image.name} (${data.after_image.size} bytes)`);
+      if (hasAfter) {
+        imageFormData.append('after_image', data.after_image!);
+        console.log(`Adding after image: ${data.after_image!.name} (${data.after_image!.size} bytes)`);
       }
-  
-      if (!hasImages) {
-        console.log('No valid images found, skipping upload');
-        return { success: true, data: null };
-      }
-  
-      // URL คงเดิม เพราะถูกต้องแล้ว
-      const uploadUrl = `${this.baseUrl}/${pmId}/upload-images/`;
-      console.log(`Uploading images to: ${uploadUrl}`);
-  
-      // Log the form data entries for debugging
+
       console.log('FormData entries:');
       for (const [key, value] of imageFormData.entries()) {
         console.log(`  ${key}: ${value instanceof File ? `${value.name} (${value.size} bytes)` : value}`);
       }
-  
-      // Post the form data with headers
-      const uploadResponse = await apiClient.post(
-        uploadUrl,
-        imageFormData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          }
-        }
-      );
-      
-      console.log('Upload response:', uploadResponse.status, uploadResponse.data);
+
+      await apiClient.post(`${this.baseUrl}/${pmId}/upload-images/`, imageFormData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
       console.log('Images uploaded successfully');
-      return { success: true, data: null };
+      return { success: true, data: null, message: 'Images uploaded successfully' };
     } catch (error: any) {
       console.error(`Service error uploading images for PM ${pmId}:`, error);
       throw handleApiError(error);
@@ -259,66 +193,79 @@ class PreventiveMaintenanceService {
     data: UpdatePreventiveMaintenanceData
   ): Promise<ServiceResponse<PreventiveMaintenance>> {
     console.log('=== UPDATE PREVENTIVE MAINTENANCE ===');
-    
+    console.log('Update data:', {
+      ...data,
+      before_image: data.before_image
+        ? { name: data.before_image.name, size: data.before_image.size, type: data.before_image.type }
+        : undefined,
+      after_image: data.after_image
+        ? { name: data.after_image.name, size: data.after_image.size, type: data.after_image.type }
+        : undefined,
+    });
+
     if (!id) {
       console.error('Cannot update: PM ID is undefined or empty');
       return { success: false, message: 'PM ID is required for updates' };
     }
-  
+
     try {
       const formData = new FormData();
-      if (data.scheduled_date !== undefined) {
-        formData.append('scheduled_date', data.scheduled_date);
-      }
-      
-      // Add completed_date if it exists
+      if (data.pmtitle !== undefined) formData.append('pmtitle', data.pmtitle.trim() || 'Untitled Maintenance');
+      if (data.scheduled_date !== undefined) formData.append('scheduled_date', data.scheduled_date);
       if (data.completed_date !== undefined) {
-        formData.append('completed_date', data.completed_date !== null ? data.completed_date : '');
+        formData.append('completed_date', data.completed_date || '');
       }
-      
-      if (data.frequency !== undefined) {
-        formData.append('frequency', validateFrequency(data.frequency));
-      }
+      if (data.frequency !== undefined) formData.append('frequency', validateFrequency(data.frequency));
       if (data.custom_days !== undefined) {
-        formData.append('custom_days', data.custom_days !== null ? String(data.custom_days) : '');
+        formData.append('custom_days', data.custom_days != null ? String(data.custom_days) : '');
       }
-      if (data.notes !== undefined) {
-        formData.append('notes', data.notes.trim());
-      }
-      if (data.pmtitle !== undefined) {
-        formData.append('pmtitle', data.pmtitle.trim());
-      }
+      if (data.notes !== undefined) formData.append('notes', data.notes?.trim() || '');
       if (data.topic_ids !== undefined) {
-        if (data.topic_ids.length > 0) {
-          data.topic_ids.forEach((topicId) =>
-            formData.append('topic_ids[]', String(topicId))
-          );
+        if (data.topic_ids.length) {
+          data.topic_ids.forEach((id) => formData.append('topic_ids[]', String(id)));
         } else {
           formData.append('topic_ids[]', '');
         }
       }
-  
-      // First update the record
-      console.log('Sending update request...');
-      const response = await apiClient.patch<PreventiveMaintenance>(
+      if (data.machine_ids !== undefined) {
+        if (data.machine_ids.length) {
+          data.machine_ids.forEach((id) => formData.append('machine_ids[]', id));
+        } else {
+          formData.append('machine_ids[]', '');
+        }
+      }
+      if (data.property_id !== undefined) {
+        formData.append('property_id', data.property_id || '');
+      }
+
+      console.log('FormData entries (update):');
+      for (const [key, value] of formData.entries()) {
+        console.log(`  ${key}: ${value}`);
+      }
+
+      const response = await apiClient.put<PreventiveMaintenance>(
         `${this.baseUrl}/${id}/`,
-        formData
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
       );
-      
-      // Then handle image uploads separately
+
       if (data.before_image instanceof File || data.after_image instanceof File) {
         try {
           await this.uploadMaintenanceImages(id, {
             before_image: data.before_image,
-            after_image: data.after_image
+            after_image: data.after_image,
           });
+          // Refresh record to get updated image URLs
+          const refreshedResponse = await this.getPreventiveMaintenanceById(id);
+          if (refreshedResponse.success && refreshedResponse.data) {
+            return { success: true, data: refreshedResponse.data, message: 'Maintenance updated successfully' };
+          }
         } catch (uploadError) {
           console.error(`Error uploading images during update for PM ${id}:`, uploadError);
-          // Continue despite image upload error - the update was successful
         }
       }
-      
-      return { success: true, data: response.data };
+
+      return { success: true, data: response.data, message: 'Maintenance updated successfully' };
     } catch (error: any) {
       console.error('Service error updating maintenance:', error);
       throw handleApiError(error);
@@ -330,7 +277,7 @@ class PreventiveMaintenanceService {
     data: CompletePreventiveMaintenanceData
   ): Promise<ServiceResponse<PreventiveMaintenance>> {
     console.log('=== COMPLETE PREVENTIVE MAINTENANCE ===');
-    
+
     if (!id) {
       console.error('Cannot complete: PM ID is undefined or empty');
       return { success: false, message: 'PM ID is required to mark as complete' };
@@ -338,29 +285,30 @@ class PreventiveMaintenanceService {
 
     try {
       const formData = new FormData();
-      if (data.completion_notes) {
+      if (data.completion_notes?.trim()) {
         formData.append('completion_notes', data.completion_notes.trim());
       }
 
-      // First make the completion request
       const response = await apiClient.post<PreventiveMaintenance>(
         `${this.baseUrl}/${id}/complete/`,
-        formData
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
       );
-      
-      // Then handle after image upload if present
+
       if (data.after_image instanceof File) {
         try {
-          await this.uploadMaintenanceImages(id, {
-            after_image: data.after_image
-          });
+          await this.uploadMaintenanceImages(id, { after_image: data.after_image });
+          // Refresh record to get updated image URLs
+          const refreshedResponse = await this.getPreventiveMaintenanceById(id);
+          if (refreshedResponse.success && refreshedResponse.data) {
+            return { success: true, data: refreshedResponse.data, message: 'Maintenance completed successfully' };
+          }
         } catch (uploadError) {
           console.error(`Error uploading after image during completion for PM ${id}:`, uploadError);
-          // Continue despite image upload error - the completion was successful
         }
       }
-      
-      return { success: true, data: response.data };
+
+      return { success: true, data: response.data, message: 'Maintenance completed successfully' };
     } catch (error: any) {
       console.error('Service error completing maintenance:', error);
       throw handleApiError(error);
@@ -374,12 +322,10 @@ class PreventiveMaintenanceService {
       console.error('Cannot fetch: PM ID is undefined or empty');
       return { success: false, message: 'PM ID is required to fetch details' };
     }
-    
+
     try {
-      const response = await apiClient.get<PreventiveMaintenance>(
-        `${this.baseUrl}/${id}/`
-      );
-      return { success: true, data: response.data };
+      const response = await apiClient.get<PreventiveMaintenance>(`${this.baseUrl}/${id}/`);
+      return { success: true, data: response.data, message: 'Maintenance fetched successfully' };
     } catch (error: any) {
       console.error('Service error fetching maintenance:', error);
       throw handleApiError(error);
@@ -388,10 +334,8 @@ class PreventiveMaintenanceService {
 
   async getPreventiveMaintenances(): Promise<ServiceResponse<PreventiveMaintenance[]>> {
     try {
-      const response = await apiClient.get<PreventiveMaintenance[]>(
-        `${this.baseUrl}/`
-      );
-      return { success: true, data: response.data };
+      const response = await apiClient.get<PreventiveMaintenance[]>(`${this.baseUrl}/`);
+      return { success: true, data: response.data, message: 'Maintenances fetched successfully' };
     } catch (error: any) {
       console.error('Service error fetching maintenances:', error);
       throw handleApiError(error);
@@ -403,40 +347,53 @@ class PreventiveMaintenanceService {
   ): Promise<ServiceResponse<PreventiveMaintenance[]>> {
     try {
       console.log('Fetching preventive maintenances with params:', params);
-      const response = await apiClient.get<PreventiveMaintenance[]>(
-        `${this.baseUrl}/`,
-        { params }
-      );
-      return { success: true, data: response.data };
+      const response = await apiClient.get<PreventiveMaintenance[]>(`${this.baseUrl}/`, { params });
+      return { success: true, data: response.data, message: 'Maintenances fetched successfully' };
     } catch (error: any) {
       console.error('Service error fetching with filters:', error);
       throw handleApiError(error);
     }
   }
 
+  async getPreventiveMaintenanceByMachine(
+    machineId: string
+  ): Promise<ServiceResponse<PreventiveMaintenance[]>> {
+    if (!machineId) {
+      console.error('Cannot fetch: Machine ID is undefined or empty');
+      return { success: false, message: 'Machine ID is required to fetch related maintenance' };
+    }
+
+    try {
+      console.log(`Fetching preventive maintenances for machine: ${machineId}`);
+      const response = await apiClient.get<PreventiveMaintenance[]>(`${this.baseUrl}/`, {
+        params: { machine_id: machineId },
+      });
+      return { success: true, data: response.data, message: 'Maintenances fetched successfully' };
+    } catch (error: any) {
+      console.error(`Service error fetching maintenance for machine ${machineId}:`, error);
+      throw handleApiError(error);
+    }
+  }
+
   async getMaintenanceStatistics(): Promise<ServiceResponse<DashboardStats>> {
     try {
-      const response = await apiClient.get<DashboardStats>(
-        `${this.baseUrl}/statistics/`
-      );
-      return { success: true, data: response.data };
+      const response = await apiClient.get<DashboardStats>(`${this.baseUrl}/statistics/`);
+      return { success: true, data: response.data, message: 'Statistics fetched successfully' };
     } catch (error: any) {
       console.error('Service error fetching maintenance statistics:', error);
       throw handleApiError(error);
     }
   }
 
-  async deletePreventiveMaintenance(
-    id: string
-  ): Promise<ServiceResponse<null>> {
+  async deletePreventiveMaintenance(id: string): Promise<ServiceResponse<null>> {
     if (!id) {
       console.error('Cannot delete: PM ID is undefined or empty');
       return { success: false, message: 'PM ID is required for deletion' };
     }
-    
+
     try {
       await apiClient.delete(`${this.baseUrl}/${id}/`);
-      return { success: true, data: null };
+      return { success: true, data: null, message: 'Maintenance deleted successfully' };
     } catch (error: any) {
       console.error('Service error deleting maintenance:', error);
       throw handleApiError(error);
