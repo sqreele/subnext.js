@@ -138,14 +138,8 @@ const ErrorDisplay = () => (
   </div>
 );
 
-// PAGE COMPONENT - Fixed type definition to comply with Next.js PageProps
-export default async function Page({
-  params,
-  searchParams,
-}: {
-  params: { pm_id: string };
-  searchParams: { [key: string]: string | string[] | undefined };
-}) {
+// PAGE COMPONENT - Next.js 14 App Router pattern
+export default async function Page({ params }: { params: { pm_id: string } }) {
   try {
     // Get data in Server Component
     const pmId = params.pm_id;
