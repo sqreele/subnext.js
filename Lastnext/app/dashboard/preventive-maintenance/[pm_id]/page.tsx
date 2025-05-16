@@ -2,6 +2,7 @@
 
 import { Suspense } from 'react';
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import PreventiveMaintenanceClient from './PreventiveMaintenanceClient';
 import { notFound } from 'next/navigation';
 import { Topic } from '@/app/lib/types';
@@ -302,7 +303,7 @@ export default async function Page({ params, searchParams }: PageProps) {
 }
 
 // Metadata generation with proper typing for Next.js 14
-export async function generateMetadata({ params }: PageProps) {
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   try {
     const pmId = params.pm_id;
     const maintenanceData = await getPreventiveMaintenance(pmId);
