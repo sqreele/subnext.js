@@ -1,3 +1,5 @@
+// app/dashboard/preventive-maintenance/[pm_id]/page.tsx
+
 import { Suspense } from 'react';
 import Link from 'next/link';
 import type { Metadata } from 'next';
@@ -12,29 +14,32 @@ import {
 
 // Create a reusable function for generating mock data
 const createMockData = (pmId: string): PreventiveMaintenance => ({
-    pm_id: `mock-${pmId}`,
-    pmtitle: `Mock Maintenance ${pmId}`,
-    scheduled_date: new Date().toISOString(),
-    frequency: 'monthly',
-    property_id: '1',
-    topics: [],
-    completed_date: null,
-    next_due_date: null,
-    notes: 'This is mock data due to API connectivity issues.',
-    before_image: null,
-    after_image: null,
-    before_image_url: null,
-    after_image_url: null,
-    custom_days: null
+  pm_id: `mock-${pmId}`,
+  pmtitle: `Mock Maintenance ${pmId}`,
+  scheduled_date: new Date().toISOString(),
+  frequency: 'monthly',
+  property_id: '1', // Changed from number to string
+  topics: [],
+  completed_date: null,
+  next_due_date: null,
+  notes: 'This is mock data due to API connectivity issues.',
+  before_image: null,
+  after_image: null,
+  before_image_url: null,
+  after_image_url: null,
+  custom_days: null
 });
 
 // Function to fetch Preventive Maintenance data from API (Server Component)
 async function getPreventiveMaintenance(pmId: string): Promise<PreventiveMaintenance | null> {
   try {
+    // Replace with your API URL
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://pmcs.site';
+    
     console.log(`Fetching data from: ${apiUrl}/api/preventive-maintenance/${pmId}/`);
     
-    const MAX_RETRIES = 1;
+    // Retry logic to try again if API doesn't respond
+    const MAX_RETRIES = 1; // Reduced retries to avoid waiting too long
     let retries = 0;
     let response;
     
@@ -47,26 +52,32 @@ async function getPreventiveMaintenance(pmId: string): Promise<PreventiveMainten
           },
           credentials: 'include',
         });
+        
+        // If fetch succeeds, exit the loop
         break;
       } catch (err) {
         retries++;
         if (retries > MAX_RETRIES) throw err;
+        // Wait a moment before retrying
         await new Promise(resolve => setTimeout(resolve, 300));
       }
     }
 
     if (!response || !response.ok) {
+      // If response is not successful (e.g., 404, 500)
       if (response && response.status === 404) {
-        return null;
+        return null; // Will call notFound() later
       }
       
       console.error(`API Error: Status ${response?.status}`);
       
+      // If response code is 500, use mock data
       if (response && (response.status === 500 || response.status === 401 || response.status === 403)) {
         console.warn('Using mock data due to server error or authentication issue');
         return createMockData(pmId);
       }
       
+      // Check if there's error data sent back from the server
       const errorText = response ? await response.text() : 'No response';
       throw new Error(`Failed to fetch maintenance data: ${response?.statusText || 'No response'}. Details: ${errorText}`);
     }
@@ -76,6 +87,7 @@ async function getPreventiveMaintenance(pmId: string): Promise<PreventiveMainten
     return data;
   } catch (error) {
     console.error('Error fetching maintenance data:', error);
+    // In case of an error, return mock data instead
     console.warn('Using mock data due to fetch error');
     return createMockData(pmId);
   }
@@ -126,26 +138,28 @@ const ErrorDisplay = () => (
   </div>
 );
 
-// Define Props type manually to handle Promise params
-type Props = {
-  params: Promise<{ pm_id: string }>;
+// PAGE COMPONENT - Fixed type definition to comply with Next.js PageProps
+export default async function Page({
+  params,
+  searchParams,
+}: {
+  params: { pm_id: string };
   searchParams: { [key: string]: string | string[] | undefined };
-};
-
-// Page function with Next.js 14 App Router pattern
-export default async function Page({ params, searchParams }: Props) {
+}) {
   try {
-    // Await params since it is a Promise
-    const pmId = (await params).pm_id;
+    // Get data in Server Component
+    const pmId = params.pm_id;
     
     console.log('Fetching maintenance data for PM ID:', pmId);
     const maintenanceData = await getPreventiveMaintenance(pmId);
 
+    // If data not found, show 404 page
     if (!maintenanceData) {
       console.log('Maintenance data not found, showing 404 page');
       notFound();
     }
 
+    // Format dates nicely with a utility function
     const formatDate = (dateString: string | null | undefined): string => {
       if (!dateString) return 'N/A';
       try {
@@ -159,8 +173,10 @@ export default async function Page({ params, searchParams }: Props) {
       }
     };
 
+    // Use function from model to find status
     const status = determinePMStatus(maintenanceData);
 
+    // Map status to Thai language and set color
     const getStatusConfig = (status: string) => {
       switch (status) {
         case 'completed':
@@ -175,6 +191,8 @@ export default async function Page({ params, searchParams }: Props) {
     };
 
     const statusConfig = getStatusConfig(status);
+
+    // Show warning for mock data case
     const isMockData = maintenanceData.pm_id.toString().startsWith('mock');
 
     return (
@@ -183,6 +201,7 @@ export default async function Page({ params, searchParams }: Props) {
         
         {isMockData && <MockDataWarning />}
         
+        {/* Basic information that doesn't require interactivity (Server Component) */}
         <div className="bg-white shadow-md rounded-lg p-6 mb-6">
           <h2 className="text-xl font-semibold mb-2">{maintenanceData.pmtitle || 'Untitled Maintenance'}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -218,6 +237,8 @@ export default async function Page({ params, searchParams }: Props) {
                 </p>
               </div>
             )}
+            
+            {/* Add status indicator */}
             <div>
               <p className="text-gray-600 text-sm">Status:</p>
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusConfig.className}`}>
@@ -237,7 +258,9 @@ export default async function Page({ params, searchParams }: Props) {
             <div>
               <p className="text-gray-600 text-sm mb-1">Topics:</p>
               <div className="flex flex-wrap gap-2">
+                {/* Check type of topics and display accordingly */}
                 {isTopicArray(maintenanceData.topics) ? (
+                  // If Topic[]
                   maintenanceData.topics.map((topic: Topic) => (
                     <span 
                       key={topic.id} 
@@ -247,6 +270,7 @@ export default async function Page({ params, searchParams }: Props) {
                     </span>
                   ))
                 ) : (
+                  // If number[] (topic IDs)
                   maintenanceData.topics.map((topicId: number) => (
                     <span 
                       key={topicId} 
@@ -261,10 +285,12 @@ export default async function Page({ params, searchParams }: Props) {
           )}
         </div>
 
+        {/* Client Component for parts that require interactivity */}
         <PreventiveMaintenanceClient maintenanceData={maintenanceData} />
       </div>
     );
   } catch (error) {
+    // Show improved error page
     console.error('Error in Page function:', error);
     return (
       <div className="container mx-auto px-4 py-8">
@@ -276,10 +302,10 @@ export default async function Page({ params, searchParams }: Props) {
 
 // Metadata generation with proper typing for Next.js 14
 export async function generateMetadata(
-  { params }: { params: Promise<{ pm_id: string }> }
+  { params }: { params: { pm_id: string } }
 ): Promise<Metadata> {
   try {
-    const pmId = (await params).pm_id;
+    const pmId = params.pm_id;
     const maintenanceData = await getPreventiveMaintenance(pmId);
     
     if (!maintenanceData) {
