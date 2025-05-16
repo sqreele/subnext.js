@@ -11,12 +11,12 @@ import {
   getImageUrl
 } from '@/app/lib/preventiveMaintenanceModels';
 
-// Define a proper interface for page props
+// Define a proper interface for page props that follows Next.js 14 conventions
 interface PageProps {
   params: {
     pm_id: string;
   };
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams: Record<string, string | string[] | undefined>;
 }
 
 // Create a reusable function for generating mock data
@@ -37,16 +37,16 @@ const createMockData = (pmId: string): PreventiveMaintenance => ({
     custom_days: null
   });
 
-// ฟังก์ชันเพื่อดึงข้อมูล Preventive Maintenance จาก API (Server Component)
+// Function to fetch Preventive Maintenance data from API (Server Component)
 async function getPreventiveMaintenance(pmId: string): Promise<PreventiveMaintenance | null> {
   try {
-    // เปลี่ยนเป็น URL ของ API ของคุณ
+    // Replace with your API URL
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://pmcs.site';
     
     console.log(`Fetching data from: ${apiUrl}/api/preventive-maintenance/${pmId}/`);
     
-    // ทำ retry logic เพื่อลองใหม่ถ้า API ไม่ตอบสนอง
-    const MAX_RETRIES = 1; // ลดจำนวน retries เพื่อไม่ให้รอนานเกินไป
+    // Retry logic to try again if API doesn't respond
+    const MAX_RETRIES = 1; // Reduced retries to avoid waiting too long
     let retries = 0;
     let response;
     
@@ -60,31 +60,31 @@ async function getPreventiveMaintenance(pmId: string): Promise<PreventiveMainten
           credentials: 'include',
         });
         
-        // ถ้า fetch สำเร็จ ให้ออกจาก loop
+        // If fetch succeeds, exit the loop
         break;
       } catch (err) {
         retries++;
         if (retries > MAX_RETRIES) throw err;
-        // รอสักครู่ก่อนที่จะลองใหม่
+        // Wait a moment before retrying
         await new Promise(resolve => setTimeout(resolve, 300));
       }
     }
 
     if (!response || !response.ok) {
-      // ถ้า response ไม่สำเร็จ (เช่น 404, 500)
+      // If response is not successful (e.g., 404, 500)
       if (response && response.status === 404) {
-        return null; // จะเรียกใช้ notFound() ในภายหลัง
+        return null; // Will call notFound() later
       }
       
       console.error(`API Error: Status ${response?.status}`);
       
-      // ถ้าเป็น response code 500 ให้ใช้ mock data
+      // If response code is 500, use mock data
       if (response && (response.status === 500 || response.status === 401 || response.status === 403)) {
         console.warn('Using mock data due to server error or authentication issue');
         return createMockData(pmId);
       }
       
-      // ลองดูว่ามีข้อมูล error ที่ server ส่งกลับมาหรือไม่
+      // Check if there's error data sent back from the server
       const errorText = response ? await response.text() : 'No response';
       throw new Error(`Failed to fetch maintenance data: ${response?.statusText || 'No response'}. Details: ${errorText}`);
     }
@@ -94,13 +94,13 @@ async function getPreventiveMaintenance(pmId: string): Promise<PreventiveMainten
     return data;
   } catch (error) {
     console.error('Error fetching maintenance data:', error);
-    // ในกรณีที่มีข้อผิดพลาด ให้ส่งคืน mock data แทน
+    // In case of an error, return mock data instead
     console.warn('Using mock data due to fetch error');
     return createMockData(pmId);
   }
 }
 
-// ฟังก์ชันตรวจสอบว่า topics เป็น Topic[] หรือไม่
+// Function to check if topics is Topic[]
 function isTopicArray(topics: Topic[] | number[]): topics is Topic[] {
   return topics.length === 0 || (topics.length > 0 && typeof topics[0] !== 'number');
 }
@@ -145,15 +145,16 @@ const ErrorDisplay = () => (
   </div>
 );
 
-export default async function Page(props: PageProps) {
+// Page function with proper typing for Next.js 14
+export default async function Page({ params, searchParams }: PageProps) {
   try {
-    // ดึงข้อมูลใน Server Component
-    const pmId = props.params.pm_id;
+    // Get data in Server Component
+    const pmId = params.pm_id;
     
     console.log('Fetching maintenance data for PM ID:', pmId);
     const maintenanceData = await getPreventiveMaintenance(pmId);
 
-    // ถ้าไม่พบข้อมูล ให้แสดง 404 page
+    // If data not found, show 404 page
     if (!maintenanceData) {
       console.log('Maintenance data not found, showing 404 page');
       notFound();
@@ -173,10 +174,10 @@ export default async function Page(props: PageProps) {
       }
     };
 
-    // ใช้ฟังก์ชันจาก model เพื่อหาสถานะ
+    // Use function from model to find status
     const status = determinePMStatus(maintenanceData);
 
-    // Map สถานะเป็นภาษาไทยและกำหนดสี
+    // Map status to Thai language and set color
     const getStatusConfig = (status: string) => {
       switch (status) {
         case 'completed':
@@ -192,7 +193,7 @@ export default async function Page(props: PageProps) {
 
     const statusConfig = getStatusConfig(status);
 
-    // แสดงผล warning สำหรับกรณี mock data
+    // Show warning for mock data case
     const isMockData = maintenanceData.pm_id.toString().startsWith('mock');
 
     return (
@@ -201,7 +202,7 @@ export default async function Page(props: PageProps) {
         
         {isMockData && <MockDataWarning />}
         
-        {/* ข้อมูลพื้นฐานที่ไม่ต้องการ interactivity (Server Component) */}
+        {/* Basic information that doesn't require interactivity (Server Component) */}
         <div className="bg-white shadow-md rounded-lg p-6 mb-6">
           <h2 className="text-xl font-semibold mb-2">{maintenanceData.pmtitle || 'Untitled Maintenance'}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -258,9 +259,9 @@ export default async function Page(props: PageProps) {
             <div>
               <p className="text-gray-600 text-sm mb-1">Topics:</p>
               <div className="flex flex-wrap gap-2">
-                {/* ตรวจสอบประเภทของ topics และแสดงผลตามนั้น */}
+                {/* Check type of topics and display accordingly */}
                 {isTopicArray(maintenanceData.topics) ? (
-                  // ถ้าเป็น Topic[]
+                  // If Topic[]
                   maintenanceData.topics.map((topic: Topic) => (
                     <span 
                       key={topic.id} 
@@ -270,7 +271,7 @@ export default async function Page(props: PageProps) {
                     </span>
                   ))
                 ) : (
-                  // ถ้าเป็น number[] (topic IDs)
+                  // If number[] (topic IDs)
                   maintenanceData.topics.map((topicId: number) => (
                     <span 
                       key={topicId} 
@@ -285,12 +286,12 @@ export default async function Page(props: PageProps) {
           )}
         </div>
 
-        {/* Client Component สำหรับส่วนที่ต้องการ interactivity */}
+        {/* Client Component for parts that require interactivity */}
         <PreventiveMaintenanceClient maintenanceData={maintenanceData} />
       </div>
     );
   } catch (error) {
-    // แสดงหน้า error ที่ดูดีขึ้น
+    // Show improved error page
     console.error('Error in Page function:', error);
     return (
       <div className="container mx-auto px-4 py-8">
@@ -300,10 +301,10 @@ export default async function Page(props: PageProps) {
   }
 }
 
-// Metadata generation with proper typing
-export async function generateMetadata(props: PageProps) {
+// Metadata generation with proper typing for Next.js 14
+export async function generateMetadata({ params }: PageProps) {
   try {
-    const pmId = props.params.pm_id;
+    const pmId = params.pm_id;
     const maintenanceData = await getPreventiveMaintenance(pmId);
     
     if (!maintenanceData) {
