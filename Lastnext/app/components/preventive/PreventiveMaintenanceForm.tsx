@@ -18,7 +18,7 @@ import preventiveMaintenanceService, {
 } from '@/app/lib/PreventiveMaintenanceService';
 import apiClient from '@/app/lib/api-client';
 import FileUpload from '@/app/components/jobs/FileUpload';
-import { toast } from 'react-hot-toast';
+import { useToast } from '@/app/lib/hooks/use-toast'; 
 import { useProperty } from '@/app/lib/PropertyContext';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -63,6 +63,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
   onCancel,
   machineId,
 }) => {
+  const { toast } = useToast();
   const { data: session } = useSession();
   const { userProperties } = useProperty();
   const createdMaintenanceIdRef = useRef<string | null>(null);
