@@ -12,14 +12,6 @@ import {
   getImageUrl
 } from '@/app/lib/preventiveMaintenanceModels';
 
-// Define a proper interface for page props that follows Next.js 14 conventions
-interface PageProps {
-  params: {
-    pm_id: string;
-  };
-  searchParams: Record<string, string | string[] | undefined>;
-}
-
 // Create a reusable function for generating mock data
 const createMockData = (pmId: string): PreventiveMaintenance => ({
     pm_id: `mock-${pmId}`,
@@ -146,11 +138,16 @@ const ErrorDisplay = () => (
   </div>
 );
 
-// Page function with proper typing for Next.js 14
-export default async function Page({ params, searchParams }: PageProps) {
+type Props = {
+  params: { pm_id: string };
+  searchParams: { [key: string]: string | string[] | undefined };
+};
+
+// Page function with Next.js 14 App Router pattern
+export default async function Page(props: Props) {
   try {
     // Get data in Server Component
-    const pmId = params.pm_id;
+    const pmId = props.params.pm_id;
     
     console.log('Fetching maintenance data for PM ID:', pmId);
     const maintenanceData = await getPreventiveMaintenance(pmId);
@@ -303,7 +300,9 @@ export default async function Page({ params, searchParams }: PageProps) {
 }
 
 // Metadata generation with proper typing for Next.js 14
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata(
+  { params }: { params: { pm_id: string } }
+): Promise<Metadata> {
   try {
     const pmId = params.pm_id;
     const maintenanceData = await getPreventiveMaintenance(pmId);
