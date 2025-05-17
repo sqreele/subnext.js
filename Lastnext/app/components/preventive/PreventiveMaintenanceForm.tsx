@@ -10,9 +10,8 @@ import {
   FrequencyType,
   Topic,
   ServiceResponse,
-  PreventiveMaintenanceRequest, // Ensure this type includes all fields below
+
 } from '@/app/lib/preventiveMaintenanceModels';
-';
 import apiClient from '@/app/lib/api-client';
 import FileUpload from '@/app/components/jobs/FileUpload';
 import { useToast } from '@/app/lib/hooks/use-toast';
