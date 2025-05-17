@@ -301,106 +301,84 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     };
     reader.readAsDataURL(file);
   };
-
-
-
-const handleSubmit = async (
-  values: FormValues, // FormValues from your form
-  formikHelpers: FormikHelpers<FormValues>
-) => {
-  const { setSubmitting, resetForm } = formikHelpers;
-
-  clearError();
-  setSubmitError(null);
-  setIsLoading(true); // For the overall submission process
-
-  const hasBeforeImageFile = values.before_image_file instanceof File;
-  const hasAfterImageFile = values.after_image_file instanceof File;
-
-  if (hasBeforeImageFile || hasAfterImageFile) {
-    setIsImageUploading(true); // Indicate that an image processing step is expected
-  }
-
-  try {
-    // 1. Log the raw form values to see if File objects are present
-    console.log('[FORM] handleSubmit - Raw form values:', JSON.stringify(values, (key, value) => {
-      if (value instanceof File) {
-        return { name: value.name, size: value.size, type: value.type, _isAFile: true };
-      }
-      return value;
-    }, 2));
-
-    // 2. Prepare the dataForService object. This object will be passed to your service.
-    // Your service's CreatePreventiveMaintenanceData/UpdatePreventiveMaintenanceData types
-    // should define before_image?: File and after_image?: File.
-    const dataForService: CreatePreventiveMaintenanceData = { // Use the base type for construction
-      pmtitle: values.pmtitle.trim() || 'Untitled Maintenance',
-      scheduled_date: values.scheduled_date,
-      frequency: values.frequency,
-      custom_days: values.frequency === 'custom' && values.custom_days ? Number(values.custom_days) : null,
-      notes: values.notes?.trim() || undefined,
-      property_id: values.property_id || undefined,
-      topic_ids: values.selected_topics && values.selected_topics.length > 0 ? values.selected_topics : undefined,
-      machine_ids: values.selected_machine_ids && values.selected_machine_ids.length > 0 ? values.selected_machine_ids : undefined,
-      completed_date: values.completed_date || undefined,
-      // Crucially, pass the File objects if they exist
-      before_image: hasBeforeImageFile ? values.before_image_file! : undefined,
-      after_image: hasAfterImageFile ? values.after_image_file! : undefined,
-    };
-
-    // 3. Log the data object being sent to the service
-    console.log('[FORM] handleSubmit - Data prepared for service:', JSON.stringify(dataForService, (key, value) => {
+  const handleSubmit = async (
+    values: FormValues,
+    formikHelpers: FormikHelpers<FormValues>
+  ) => {
+    const { setSubmitting, resetForm } = formikHelpers;
+  
+    clearError();
+    setSubmitError(null);
+    setIsLoading(true);
+  
+    const hasBeforeImageFile = values.before_image_file instanceof File;
+    const hasAfterImageFile = values.after_image_file instanceof File;
+  
+    if (hasBeforeImageFile || hasAfterImageFile) {
+      setIsImageUploading(true);
+    }
+  
+    try {
+      // Prepare the dataForService object
+      const dataForService: CreatePreventiveMaintenanceData = {
+        pmtitle: values.pmtitle.trim() || 'Untitled Maintenance',
+        scheduled_date: values.scheduled_date,
+        frequency: values.frequency,
+        custom_days: values.frequency === 'custom' && values.custom_days ? Number(values.custom_days) : null,
+        notes: values.notes?.trim() || undefined,
+        property_id: values.property_id || undefined,
+        topic_ids: values.selected_topics && values.selected_topics.length > 0 ? values.selected_topics : undefined,
+        machine_ids: values.selected_machine_ids && values.selected_machine_ids.length > 0 ? values.selected_machine_ids : undefined,
+        completed_date: values.completed_date || undefined,
+        // Pass the File objects directly
+        before_image: hasBeforeImageFile ? values.before_image_file! : undefined,
+        after_image: hasAfterImageFile ? values.after_image_file! : undefined,
+      };
+  
+      console.log('[FORM] handleSubmit - Data prepared for service:', JSON.stringify(dataForService, (key, value) => {
         if (value instanceof File) {
           return { name: value.name, size: value.size, type: value.type, _isAFile: true };
         }
         return value;
       }, 2));
-
-
-    const maintenanceIdToUpdate = pmId || (actualInitialData?.pm_id ?? null);
-    let response: ServiceResponse<PreventiveMaintenance>;
-
-    if (maintenanceIdToUpdate) {
-      response = await preventiveMaintenanceService.updatePreventiveMaintenance(
-        maintenanceIdToUpdate,
-        dataForService as UpdatePreventiveMaintenanceData // Cast for update
-      );
-    } else {
-      response = await preventiveMaintenanceService.createPreventiveMaintenance(
-        dataForService // Already matches CreatePreventiveMaintenanceData
-      );
-    }
-
-    // 4. Log the service response
-    console.log('[FORM] handleSubmit - Service response:', response);
-
-    if (response.success && response.data) {
-      toast.success(maintenanceIdToUpdate ? 'Maintenance record updated successfully' : 'Maintenance record created successfully');
-      if (onSuccessAction) {
-        onSuccessAction(response.data);
+  
+      const maintenanceIdToUpdate = pmId || (actualInitialData?.pm_id ?? null);
+      let response: ServiceResponse<PreventiveMaintenance>;
+  
+      if (maintenanceIdToUpdate) {
+        response = await preventiveMaintenanceService.updatePreventiveMaintenance(
+          maintenanceIdToUpdate,
+          dataForService as UpdatePreventiveMaintenanceData
+        );
+      } else {
+        response = await preventiveMaintenanceService.createPreventiveMaintenance(
+          dataForService
+        );
       }
-
-      if (!maintenanceIdToUpdate) { // New creation
-        resetForm({ values: getInitialValues() });
-        setBeforeImagePreview(null);
-        setAfterImagePreview(null);
-      } else { // Update
-        // The service already tries to refresh the record after image upload.
-        // So, response.data should ideally contain the latest image URLs.
-        setBeforeImagePreview(response.data.before_image_url || null);
-        setAfterImagePreview(response.data.after_image_url || null);
-        // If a file was just uploaded but the URL isn't in response.data yet,
-        // the preview might not update until a full page refresh/refetch.
-        // The service's refresh logic is key here.
+  
+      console.log('[FORM] handleSubmit - Service response:', response);
+  
+      if (response.success && response.data) {
+        toast.success(maintenanceIdToUpdate ? 'Maintenance record updated successfully' : 'Maintenance record created successfully');
+        if (onSuccessAction) {
+          onSuccessAction(response.data);
+        }
+  
+        if (!maintenanceIdToUpdate) {
+          resetForm({ values: getInitialValues() });
+          setBeforeImagePreview(null);
+          setAfterImagePreview(null);
+        } else {
+          setBeforeImagePreview(response.data.before_image_url || null);
+          setAfterImagePreview(response.data.after_image_url || null);
+        }
+      } else {
+        const errMsg = response.message || (response.error ? JSON.stringify(response.error) : 'Failed to save maintenance record');
+        throw new Error(errMsg);
       }
-    } else {
-      const errMsg = response.message || (response.error ? JSON.stringify(response.error) : 'Failed to save maintenance record');
-      throw new Error(errMsg);
-    }
-  } catch (error: any) {
-    console.error('[FORM] handleSubmit - Error submitting form:', error);
-    // ... (your existing detailed error message parsing) ...
-    let errorMessage = 'An unexpected error occurred.';
+    } catch (error: any) {
+      console.error('[FORM] handleSubmit - Error submitting form:', error);
+      let errorMessage = 'An unexpected error occurred.';
       if (error.response?.data) {
         const responseData = error.response.data;
         if (typeof responseData === 'string') errorMessage = responseData;
@@ -415,14 +393,14 @@ const handleSubmit = async (
       } else if (error.message) {
         errorMessage = error.message;
       }
-    setSubmitError(errorMessage);
-    toast.error(errorMessage);
-  } finally {
-    setSubmitting(false);
-    setIsLoading(false);
-    setIsImageUploading(false);
-  }
-};
+      setSubmitError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setSubmitting(false);
+      setIsLoading(false);
+      setIsImageUploading(false);
+    }
+  };
 
   if (isLoading && (pmId && !actualInitialData)) { // Adjusted loading condition
       return <div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>;
