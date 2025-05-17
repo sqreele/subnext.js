@@ -7,19 +7,19 @@ import {
   type ServiceResponse,
 } from './preventiveMaintenanceModels';
 
-export interface CreatePreventiveMaintenanceData {
-  pmtitle?: string;
+export type CreatePreventiveMaintenanceData = {
+  pmtitle: string;
   scheduled_date: string;
-  completed_date?: string | null;
   frequency: FrequencyType;
-  custom_days?: number | null;
+  custom_days: number | null;
   notes?: string;
+  property_id?: string;
   topic_ids?: number[];
-  machine_ids?: string[]; // Array for multiple machine IDs
+  machine_ids?: string[];
+  completed_date?: string;
   before_image?: File;
   after_image?: File;
-  property_id?: string;
-}
+};
 
 export interface UpdatePreventiveMaintenanceData extends Partial<CreatePreventiveMaintenanceData> {
   machine_ids?: string[]; // Consistent with create, supports multiple machine IDs
@@ -73,25 +73,40 @@ class PreventiveMaintenanceService {
 
     try {
       const formData = new FormData();
+      
+      // Add basic fields
       if (data.pmtitle?.trim()) formData.append('pmtitle', data.pmtitle.trim());
       formData.append('scheduled_date', data.scheduled_date);
       if (data.completed_date) formData.append('completed_date', data.completed_date);
       formData.append('frequency', data.frequency);
       if (data.custom_days != null) formData.append('custom_days', String(data.custom_days));
       if (data.notes?.trim()) formData.append('notes', data.notes.trim());
+      
+      // Add array fields - FIXED: removed [] from field names
       if (data.topic_ids?.length) {
-        data.topic_ids.forEach((id) => formData.append('topic_ids[]', String(id)));
-      } else {
-        formData.append('topic_ids[]', '');
+        data.topic_ids.forEach((id) => formData.append('topic_ids', String(id)));
       }
+      
       if (data.machine_ids?.length) {
-        data.machine_ids.forEach((id) => formData.append('machine_ids[]', id));
+        data.machine_ids.forEach((id) => formData.append('machine_ids', id));
       }
+      
       if (data.property_id) formData.append('property_id', data.property_id);
+
+      // Add image files directly to the initial request
+      if (data.before_image instanceof File) {
+        formData.append('before_image', data.before_image);
+        console.log(`Adding before image: ${data.before_image.name} (${data.before_image.size} bytes)`);
+      }
+      
+      if (data.after_image instanceof File) {
+        formData.append('after_image', data.after_image);
+        console.log(`Adding after image: ${data.after_image.name} (${data.after_image.size} bytes)`);
+      }
 
       console.log('FormData entries (create):');
       for (const [key, value] of formData.entries()) {
-        console.log(`  ${key}: ${value}`);
+        console.log(`  ${key}: ${value instanceof File ? `${value.name} (${value.size} bytes)` : value}`);
       }
 
       const createResponse = await apiClient.post<any>(`${this.baseUrl}/`, formData, {
@@ -101,37 +116,17 @@ class PreventiveMaintenanceService {
       const responseData = createResponse.data;
       console.log('Raw API response:', responseData);
 
-      let pmId: string | undefined;
       let actualRecord: PreventiveMaintenance;
 
       if ('data' in responseData && responseData.data && 'pm_id' in responseData.data) {
         actualRecord = responseData.data;
-        pmId = actualRecord.pm_id;
-        console.log('Found record in nested data structure:', pmId);
+        console.log('Found record in nested data structure:', actualRecord.pm_id);
       } else if ('pm_id' in responseData) {
         actualRecord = responseData;
-        pmId = responseData.pm_id;
-        console.log('Found record directly in response:', pmId);
+        console.log('Found record directly in response:', actualRecord.pm_id);
       } else {
         console.error('Unexpected response format:', responseData);
         throw new Error('Invalid response format: Missing pm_id');
-      }
-
-      if (pmId && (data.before_image instanceof File || data.after_image instanceof File)) {
-        console.log(`Attempting to upload images for PM ${pmId}`);
-        try {
-          await this.uploadMaintenanceImages(pmId, {
-            before_image: data.before_image,
-            after_image: data.after_image,
-          });
-          // Refresh record to get updated image URLs
-          const refreshedResponse = await this.getPreventiveMaintenanceById(pmId);
-          if (refreshedResponse.success && refreshedResponse.data) {
-            actualRecord = refreshedResponse.data;
-          }
-        } catch (uploadError) {
-          console.error(`Error uploading images for PM ${pmId}:`, uploadError);
-        }
       }
 
       return { success: true, data: actualRecord, message: 'Maintenance created successfully' };
@@ -210,6 +205,8 @@ class PreventiveMaintenanceService {
 
     try {
       const formData = new FormData();
+      
+      // Add basic fields
       if (data.pmtitle !== undefined) formData.append('pmtitle', data.pmtitle.trim() || 'Untitled Maintenance');
       if (data.scheduled_date !== undefined) formData.append('scheduled_date', data.scheduled_date);
       if (data.completed_date !== undefined) {
@@ -220,27 +217,38 @@ class PreventiveMaintenanceService {
         formData.append('custom_days', data.custom_days != null ? String(data.custom_days) : '');
       }
       if (data.notes !== undefined) formData.append('notes', data.notes?.trim() || '');
+      
+      // Add array fields - FIXED: removed [] from field names
       if (data.topic_ids !== undefined) {
         if (data.topic_ids.length) {
-          data.topic_ids.forEach((id) => formData.append('topic_ids[]', String(id)));
-        } else {
-          formData.append('topic_ids[]', '');
+          data.topic_ids.forEach((id) => formData.append('topic_ids', String(id)));
         }
       }
+      
       if (data.machine_ids !== undefined) {
         if (data.machine_ids.length) {
-          data.machine_ids.forEach((id) => formData.append('machine_ids[]', id));
-        } else {
-          formData.append('machine_ids[]', '');
+          data.machine_ids.forEach((id) => formData.append('machine_ids', id));
         }
       }
+      
       if (data.property_id !== undefined) {
         formData.append('property_id', data.property_id || '');
+      }
+      
+      // Add image files directly to the formData
+      if (data.before_image instanceof File) {
+        formData.append('before_image', data.before_image);
+        console.log(`Adding before image: ${data.before_image.name} (${data.before_image.size} bytes)`);
+      }
+      
+      if (data.after_image instanceof File) {
+        formData.append('after_image', data.after_image);
+        console.log(`Adding after image: ${data.after_image.name} (${data.after_image.size} bytes)`);
       }
 
       console.log('FormData entries (update):');
       for (const [key, value] of formData.entries()) {
-        console.log(`  ${key}: ${value}`);
+        console.log(`  ${key}: ${value instanceof File ? `${value.name} (${value.size} bytes)` : value}`);
       }
 
       const response = await apiClient.put<PreventiveMaintenance>(
@@ -248,22 +256,6 @@ class PreventiveMaintenanceService {
         formData,
         { headers: { 'Content-Type': 'multipart/form-data' } }
       );
-
-      if (data.before_image instanceof File || data.after_image instanceof File) {
-        try {
-          await this.uploadMaintenanceImages(id, {
-            before_image: data.before_image,
-            after_image: data.after_image,
-          });
-          // Refresh record to get updated image URLs
-          const refreshedResponse = await this.getPreventiveMaintenanceById(id);
-          if (refreshedResponse.success && refreshedResponse.data) {
-            return { success: true, data: refreshedResponse.data, message: 'Maintenance updated successfully' };
-          }
-        } catch (uploadError) {
-          console.error(`Error uploading images during update for PM ${id}:`, uploadError);
-        }
-      }
 
       return { success: true, data: response.data, message: 'Maintenance updated successfully' };
     } catch (error: any) {
@@ -288,25 +280,23 @@ class PreventiveMaintenanceService {
       if (data.completion_notes?.trim()) {
         formData.append('completion_notes', data.completion_notes.trim());
       }
+      
+      // Add after image directly to the completion request
+      if (data.after_image instanceof File) {
+        formData.append('after_image', data.after_image);
+        console.log(`Adding after image: ${data.after_image.name} (${data.after_image.size} bytes)`);
+      }
+
+      console.log('FormData entries (complete):');
+      for (const [key, value] of formData.entries()) {
+        console.log(`  ${key}: ${value instanceof File ? `${value.name} (${value.size} bytes)` : value}`);
+      }
 
       const response = await apiClient.post<PreventiveMaintenance>(
         `${this.baseUrl}/${id}/complete/`,
         formData,
         { headers: { 'Content-Type': 'multipart/form-data' } }
       );
-
-      if (data.after_image instanceof File) {
-        try {
-          await this.uploadMaintenanceImages(id, { after_image: data.after_image });
-          // Refresh record to get updated image URLs
-          const refreshedResponse = await this.getPreventiveMaintenanceById(id);
-          if (refreshedResponse.success && refreshedResponse.data) {
-            return { success: true, data: refreshedResponse.data, message: 'Maintenance completed successfully' };
-          }
-        } catch (uploadError) {
-          console.error(`Error uploading after image during completion for PM ${id}:`, uploadError);
-        }
-      }
 
       return { success: true, data: response.data, message: 'Maintenance completed successfully' };
     } catch (error: any) {
