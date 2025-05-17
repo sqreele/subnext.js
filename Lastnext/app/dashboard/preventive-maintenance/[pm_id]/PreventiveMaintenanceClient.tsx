@@ -10,7 +10,8 @@ import {
   PreventiveMaintenance, 
   getImageUrl 
 } from '@/app/lib/preventiveMaintenanceModels';
-import { AlertCircle, X, ZoomIn } from 'lucide-react';
+// Modify the import statement to include Wrench instead of Tools
+import { AlertCircle, Calendar, Clipboard, Wrench, X, ZoomIn } from 'lucide-react';
 
 interface PreventiveMaintenanceClientProps {
   maintenanceData: PreventiveMaintenance;
@@ -24,6 +25,9 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [currentImageAlt, setCurrentImageAlt] = useState<string>('');
+  
+  // State for completion functionality (if needed)
+  const [isCompleting, setIsCompleting] = useState(false);
 
   // ฟังก์ชันสำหรับการยืนยันการลบ
   const handleDelete = async () => {
@@ -54,6 +58,41 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
       setError(err.message || 'An error occurred while deleting');
     } finally {
       setIsLoading(false);
+    }
+  };
+  
+  // Function to mark maintenance as complete (if needed)
+  const handleMarkComplete = async () => {
+    if (!window.confirm('Mark this maintenance task as completed?')) {
+      return;
+    }
+
+    setIsCompleting(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/preventive-maintenance/${maintenanceData.pm_id}/complete/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          completed_date: new Date().toISOString()
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || 'Failed to complete maintenance record');
+      }
+
+      // Refresh the page to show updated data
+      router.refresh();
+    } catch (err: any) {
+      console.error('Error completing maintenance:', err);
+      setError(err.message || 'An error occurred while marking as complete');
+    } finally {
+      setIsCompleting(false);
     }
   };
 
@@ -103,12 +142,123 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
   // ตัวแปรสำหรับ URL รูปภาพ
   const beforeImageUrl = getBeforeImageUrl();
   const afterImageUrl = getAfterImageUrl();
+  
+  // Helper function to format dates
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('th-TH', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+  
+  // Determine if maintenance is overdue
+  const isOverdue = !maintenanceData.completed_date && 
+    new Date(maintenanceData.scheduled_date) < new Date();
+    
+  // Determine status text and color
+  const getStatusText = () => {
+    if (maintenanceData.completed_date) {
+      return { text: 'Completed', color: 'bg-green-100 text-green-800' };
+    } else if (isOverdue) {
+      return { text: 'Overdue', color: 'bg-red-100 text-red-800' };
+    } else {
+      return { text: 'Scheduled', color: 'bg-yellow-100 text-yellow-800' };
+    }
+  };
+  
+  const statusInfo = getStatusText();
+
+  // Render machine list helper function
+// Render machine list helper function
+const renderMachines = () => {
+  if (!maintenanceData.machines || maintenanceData.machines.length === 0) {
+    return <p className="text-gray-500 italic">No machines assigned</p>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {maintenanceData.machines.map((machine, index) => {
+        // Handle different machine data formats
+        const machineId = typeof machine === 'object' ? machine.machine_id : machine;
+        const machineName = typeof machine === 'object' ? machine.name : null;
+        
+        return (
+          <div 
+            key={index} 
+            className="flex items-center px-3 py-2 bg-gray-100 text-gray-800 text-sm rounded-lg"
+          >
+            <Wrench className="h-4 w-4 mr-2 text-gray-600" /> {/* Changed from Tools to Wrench */}
+            {machineName ? `${machineName} (${machineId})` : machineId}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
 
   return (
     <>
       <div className="bg-white shadow-md rounded-lg p-6">
-        <h2 className="text-xl font-semibold mb-4">Images</h2>
+        <div className="border-b pb-4 mb-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold">Maintenance Details</h2>
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusInfo.color}`}>
+              {statusInfo.text}
+            </span>
+          </div>
+          
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Maintenance ID and Property ID row */}
+            <div className="flex items-center">
+              <Clipboard className="h-4 w-4 mr-2 text-gray-600" />
+              <span className="text-gray-600 mr-2">Maintenance ID:</span>
+              <span className="font-medium">{maintenanceData.pm_id}</span>
+            </div>
+            
+            {maintenanceData.property_id && (
+              <div className="flex items-center">
+                <Clipboard className="h-4 w-4 mr-2 text-gray-600" />
+                <span className="text-gray-600 mr-2">Property ID:</span>
+                <span className="font-medium">{maintenanceData.property_id}</span>
+              </div>
+            )}
+            
+            {/* Scheduled and Completed Date row */}
+            <div className="flex items-center">
+              <Calendar className="h-4 w-4 mr-2 text-gray-600" />
+              <span className="text-gray-600 mr-2">Scheduled:</span>
+              <span className="font-medium">{formatDate(maintenanceData.scheduled_date)}</span>
+            </div>
+            
+            {maintenanceData.completed_date && (
+              <div className="flex items-center">
+                <Calendar className="h-4 w-4 mr-2 text-gray-600" />
+                <span className="text-gray-600 mr-2">Completed:</span>
+                <span className="font-medium">{formatDate(maintenanceData.completed_date)}</span>
+              </div>
+            )}
+            
+            {/* Next Due Date (if present) */}
+            {maintenanceData.next_due_date && (
+              <div className="flex items-center">
+                <Calendar className="h-4 w-4 mr-2 text-gray-600" />
+                <span className="text-gray-600 mr-2">Next Due:</span>
+                <span className="font-medium">{formatDate(maintenanceData.next_due_date)}</span>
+              </div>
+            )}
+          </div>
+        </div>
         
+        {/* Associated Machines Section */}
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold mb-3">Associated Machines</h3>
+          {renderMachines()}
+        </div>
+        
+        {/* Images Section */}
+        <h3 className="text-lg font-semibold mb-3">Maintenance Images</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           {beforeImageUrl ? (
             <div>
@@ -177,6 +327,19 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
           </Link>
 
           <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+            {/* Complete button - show only if not already completed */}
+            {!maintenanceData.completed_date && (
+              <button
+                onClick={handleMarkComplete}
+                disabled={isCompleting}
+                className={`px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+                  isCompleting ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+              >
+                {isCompleting ? 'Completing...' : 'Mark Complete'}
+              </button>
+            )}
+            
             <Link
               href={`/dashboard/preventive-maintenance/edit/${maintenanceData.pm_id}`}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-center"

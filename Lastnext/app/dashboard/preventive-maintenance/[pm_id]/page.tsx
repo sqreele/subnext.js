@@ -9,6 +9,32 @@ function isTopicArray(topics: Topic[] | number[]): topics is Topic[] {
   return topics.length === 0 || (topics.length > 0 && typeof topics[0] !== 'number');
 }
 
+// Helper function to handle machines array
+function renderMachines(machines: any[] | null | undefined) {
+  if (!machines || machines.length === 0) {
+    return <p className="text-gray-500 italic">No machines assigned</p>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {machines.map((machine, index) => {
+        // Handle both object format and string format
+        const machineId = typeof machine === 'object' ? machine.machine_id : machine;
+        const machineName = typeof machine === 'object' ? machine.name : null;
+        
+        return (
+          <span 
+            key={index} 
+            className="inline-flex items-center px-3 py-1 bg-gray-100 text-gray-800 text-sm rounded-full"
+          >
+            {machineName ? `${machineName} (${machineId})` : machineId}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 // ฟังก์ชันเพื่อดึงข้อมูล Preventive Maintenance จาก API (Server Component)
 async function getPreventiveMaintenance(pmId: string): Promise<PreventiveMaintenance | null> {
   try {
@@ -80,7 +106,7 @@ export default async function PreventiveMaintenanceDetailPage(props: {
           </div>
           <div>
             <p className="text-gray-600 text-sm">Property ID:</p>
-            <p className="font-medium">{maintenanceData.property_id}</p>
+            <p className="font-medium">{maintenanceData.property_id || 'Not assigned'}</p>
           </div>
           <div>
             <p className="text-gray-600 text-sm">Frequency:</p>
@@ -128,6 +154,12 @@ export default async function PreventiveMaintenanceDetailPage(props: {
           </div>
         </div>
         
+        {/* Add Associated Machines section */}
+        <div className="mt-6 mb-4">
+          <h3 className="text-lg font-semibold mb-2">Associated Machines</h3>
+          {renderMachines(maintenanceData.machines)}
+        </div>
+        
         {maintenanceData.notes && (
           <div className="mb-4">
             <p className="text-gray-600 text-sm">Notes:</p>
@@ -157,6 +189,40 @@ export default async function PreventiveMaintenanceDetailPage(props: {
                     Topic ID: {topicId}
                   </span>
                 ))
+              )}
+            </div>
+          </div>
+        )}
+        
+        {/* Display Before/After Images if available */}
+        {(maintenanceData.before_image_url || maintenanceData.after_image_url) && (
+          <div className="mt-6">
+            <h3 className="text-lg font-semibold mb-2">Maintenance Images</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {maintenanceData.before_image_url && (
+                <div>
+                  <p className="text-gray-600 text-sm mb-1">Before Image:</p>
+                  <div className="h-48 bg-gray-100 rounded-md overflow-hidden">
+                    <img 
+                      src={maintenanceData.before_image_url} 
+                      alt="Before maintenance" 
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {maintenanceData.after_image_url && (
+                <div>
+                  <p className="text-gray-600 text-sm mb-1">After Image:</p>
+                  <div className="h-48 bg-gray-100 rounded-md overflow-hidden">
+                    <img 
+                      src={maintenanceData.after_image_url} 
+                      alt="After maintenance" 
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                </div>
               )}
             </div>
           </div>
