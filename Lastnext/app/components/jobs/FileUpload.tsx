@@ -15,6 +15,7 @@ export interface FileUploadProps {
   error?: string | undefined;
   touched?: boolean | undefined;
   disabled?: boolean;
+  accept?: string;
 }
 
 const FileUpload: React.FC<FileUploadProps> = ({

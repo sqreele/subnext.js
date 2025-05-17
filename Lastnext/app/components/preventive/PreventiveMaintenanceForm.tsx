@@ -11,11 +11,9 @@ import {
   FrequencyType,
   Topic,
   ServiceResponse,
+  PreventiveMaintenanceRequest,
 } from '@/app/lib/preventiveMaintenanceModels';
-import preventiveMaintenanceService, {
-  CreatePreventiveMaintenanceData,
-  UpdatePreventiveMaintenanceData,
-} from '@/app/lib/PreventiveMaintenanceService';
+import preventiveMaintenanceService from '@/app/lib/PreventiveMaintenanceService';
 import apiClient from '@/app/lib/api-client';
 import FileUpload from '@/app/components/jobs/FileUpload';
 import { useToast } from '@/app/lib/hooks/use-toast'; 
@@ -42,6 +40,7 @@ interface PreventiveMaintenanceFormProps {
   machineId?: string;
 }
 
+// Updated to better align with PreventiveMaintenance model
 interface FormValues {
   pmtitle: string;
   scheduled_date: string;
@@ -95,6 +94,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     [userProperties]
   );
 
+  // Enhanced validation to match model constraints
   const validate = (values: FormValues): FormikErrors<FormValues> => {
     const errors: FormikErrors<FormValues> = {};
 
@@ -108,6 +108,8 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
 
     if (!values.frequency) {
       errors.frequency = 'Frequency is required';
+    } else if (!FREQUENCY_OPTIONS.find(option => option.value === values.frequency)) {
+      errors.frequency = 'Invalid frequency value';
     }
 
     if (values.frequency === 'custom' && (!values.custom_days || Number(values.custom_days) < 1)) {
@@ -135,19 +137,28 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
 
   const getInitialValues = (): FormValues => {
     if (initialData) {
+      // Extract topic IDs correctly based on model definition
       const topicIds: number[] = initialData.topics
         ?.map((topic) => (typeof topic === 'object' && 'id' in topic ? topic.id : typeof topic === 'number' ? topic : null))
         .filter((id): id is number => id !== null) || [];
 
-      const machineIds: string[] = initialData.machines
-        ?.map((machine) =>
-          typeof machine === 'object' && 'machine_id' in machine
-            ? machine.machine_id
-            : typeof machine === 'string'
-            ? machine
-            : null
-        )
-        .filter((id): id is string => id !== null) || [];
+      // Extract machine IDs correctly based on model definition
+      let machineIds: string[] = [];
+      
+      if (initialData.machines) {
+        machineIds = initialData.machines
+          .map((machine) =>
+            typeof machine === 'object' && 'machine_id' in machine
+              ? machine.machine_id
+              : typeof machine === 'string'
+              ? machine
+              : null
+          )
+          .filter((id): id is string => id !== null);
+      } else if (initialData.machine_id) {
+        // Handle single machine_id field from model
+        machineIds = [initialData.machine_id];
+      }
 
       return {
         pmtitle: initialData.pmtitle || '',
@@ -304,6 +315,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     reader.readAsDataURL(file);
   };
 
+  // Updated to match the model's PreventiveMaintenanceRequest structure
   const handleSubmit = async (
     values: FormValues,
     { setSubmitting, setFieldValue }: { setSubmitting: (isSubmitting: boolean) => void; setFieldValue: (field: string, value: any) => void }
@@ -312,21 +324,42 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     setIsLoading(true);
 
     try {
-      const submitData: CreatePreventiveMaintenanceData = {
+      // Align with the PreventiveMaintenanceRequest interface from the model
+      const submitData: PreventiveMaintenanceRequest = {
         pmtitle: values.pmtitle.trim() || 'Untitled Maintenance',
         scheduled_date: values.scheduled_date,
-        completed_date: values.completed_date || null,
         frequency: values.frequency,
         custom_days: values.frequency === 'custom' && values.custom_days ? Number(values.custom_days) : null,
         notes: values.notes?.trim(),
         topic_ids: values.selected_topics.length > 0 ? values.selected_topics : undefined,
-        machine_ids: values.selected_machine_ids.length > 0 ? values.selected_machine_ids : undefined,
-        before_image: values.before_image_file instanceof File ? values.before_image_file : undefined,
-        after_image: values.after_image_file instanceof File ? values.after_image_file : undefined,
-        property_id: values.property_id || undefined,
       };
 
-      if (submitData.before_image || submitData.after_image) {
+      // Add machine_id if only one machine is selected, to match the model
+      if (values.selected_machine_ids.length === 1) {
+        submitData.machine_id = values.selected_machine_ids[0];
+      } else if (values.selected_machine_ids.length > 0) {
+        // Handle multiple machines (we'll need to ensure the service can handle this)
+        (submitData as any).machine_ids = values.selected_machine_ids;
+      }
+
+      // Add property_id from the model
+      if (values.property_id) {
+        (submitData as any).property_id = values.property_id;
+      }
+
+      // Handle completed_date if provided
+      if (values.completed_date) {
+        (submitData as any).completed_date = values.completed_date;
+      }
+
+      // Handle image files
+      if (values.before_image_file instanceof File) {
+        (submitData as any).before_image = values.before_image_file;
+        setIsImageUploading(true);
+      }
+      
+      if (values.after_image_file instanceof File) {
+        (submitData as any).after_image = values.after_image_file;
         setIsImageUploading(true);
       }
 
@@ -559,122 +592,6 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                 aria-label="Select machines"
               >
                 {loadingMachines ? (
-                  <div className="flex justify-center items-center h-24">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                    <p className="ml-2 text-sm text-gray-500">Loading machines...</p>
-                  </div>
-                ) : availableMachines.length > 0 ? (
-                  <div className="space-y-3">
-                    {availableMachines.map((machine) => (
-                      <div key={machine.machine_id} className="relative">
-                        <label className="flex items-center cursor-pointer">
-                          <Field name="selected_machine_ids">
-                            {({ field }: any) => (
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
-                                id={`machine-${machine.machine_id}`}
-                                checked={field.value.includes(machine.machine_id)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setFieldValue('selected_machine_ids', [...field.value, machine.machine_id]);
-                                  } else {
-                                    setFieldValue('selected_machine_ids', field.value.filter((id: string) => id !== machine.machine_id));
-                                  }
-                                }}
-                                disabled={machineId === machine.machine_id}
-                              />
-                            )}
-                          </Field>
-                          <span className="ml-3 text-sm text-gray-700 flex-1">
-                            {machine.name} ({machine.machine_id})
-                          </span>
-                        </label>
-                        {values.selected_machine_ids.includes(machine.machine_id) && (
-                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-full"></div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-6">
-                    <p className="text-sm text-gray-500 mb-3">
-                      {selectedProperty ? 'No machines available for this property.' : 'Please select a property to load machines.'}
-                    </p>
-                    {selectedProperty && (
-                      <button
-                        type="button"
-                        onClick={() => fetchAvailableMachines(selectedProperty)}
-                        className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
-                      >
-                        Refresh Machines
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-              {values.selected_machine_ids.length > 0 && (
-                <div className="mt-3">
-                  <p className="text-sm text-gray-600 mb-2">
-                    {values.selected_machine_ids.length} machine{values.selected_machine_ids.length > 1 ? 's' : ''} selected:
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {values.selected_machine_ids.map((machineId) => {
-                      const machine = availableMachines.find((m) => m.machine_id === machineId);
-                      return machine ? (
-                        <span
-                          key={machine.machine_id}
-                          className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full"
-                        >
-                          {machine.name} ({machine.machine_id})
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFieldValue('selected_machine_ids', values.selected_machine_ids.filter((id) => id !== machine.machine_id));
-                            }}
-                            className="ml-1 text-blue-600 hover:text-blue-800"
-                            aria-label={`Remove ${machine.name}`}
-                            disabled={machineId === machine.machine_id}
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ) : null;
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="mb-6">
-              <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">
-                Notes
-              </label>
-              <Field
-                as="textarea"
-                id="notes"
-                name="notes"
-                rows={4}
-                className="w-full p-2 border border-gray-300 rounded-md"
-                placeholder="Add any additional notes here..."
-              />
-            </div>
-
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Topics <span className="text-red-500">*</span>
-              </label>
-              {errors.selected_topics && touched.selected_topics && (
-                <p className="mt-1 mb-2 text-sm text-red-500">{errors.selected_topics}</p>
-              )}
-              <div
-                className={`border rounded-md p-4 max-h-48 overflow-y-auto bg-white ${
-                  errors.selected_topics && touched.selected_topics ? 'border-red-500' : 'border-gray-300'
-                }`}
-                role="group"
-                aria-label="Select maintenance topics"
-              >
-                {loadingTopics ? (
                   <div className="flex justify-center items-center h-24">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                     <p className="ml-2 text-sm text-gray-500">Loading topics...</p>
