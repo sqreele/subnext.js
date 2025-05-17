@@ -62,17 +62,19 @@ export interface Topic {
   // Request structure for creating/updating maintenance
   export interface PreventiveMaintenanceRequest {
     pmtitle?: string;
-    
+    property_id?: string; 
+   
     // Added machine relationship fields
     machine_id?: string;  // Added to associate maintenance with a specific machine
-    
+    machine_ids?: string[];
     scheduled_date: string;
     frequency: FrequencyType;
     custom_days?: number | null;
     notes?: string;
-    before_image_id?: number | null;
-    after_image_id?: number | null;
     topic_ids?: number[];
+    completed_date?: string; // Add this if you use it
+    before_image?: File;     // Add this if you use it
+    after_image?: File;
   }
   
   // Form errors interface

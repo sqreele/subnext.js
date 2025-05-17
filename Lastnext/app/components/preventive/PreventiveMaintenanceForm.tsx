@@ -1,9 +1,8 @@
-// @/app/[locale]/preventive-maintenance/PreventiveMaintenanceForm.tsx
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { Formik, Form, Field, FormikErrors } from 'formik';
+import { Formik, Form, Field, FormikErrors, useFormikContext, FormikHelpers } from 'formik';
 import {
   PreventiveMaintenance,
   FREQUENCY_OPTIONS,
@@ -11,12 +10,12 @@ import {
   FrequencyType,
   Topic,
   ServiceResponse,
-  PreventiveMaintenanceRequest,
+  PreventiveMaintenanceRequest, // Ensure this type includes all fields below
 } from '@/app/lib/preventiveMaintenanceModels';
 import preventiveMaintenanceService from '@/app/lib/PreventiveMaintenanceService';
 import apiClient from '@/app/lib/api-client';
 import FileUpload from '@/app/components/jobs/FileUpload';
-import { useToast } from '@/app/lib/hooks/use-toast'; 
+import { useToast } from '@/app/lib/hooks/use-toast';
 import { useProperty } from '@/app/lib/PropertyContext';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -27,20 +26,14 @@ interface Machine {
   name: string;
 }
 
-interface Property {
-  property_id: string;
-  name: string;
-}
-
 interface PreventiveMaintenanceFormProps {
   pmId?: string | null;
   onSuccessAction: (data: PreventiveMaintenance) => void;
   initialData?: PreventiveMaintenance | null;
   onCancel?: () => void;
-  machineId?: string;
+  machineId?: string; // Pre-select a machine if provided
 }
 
-// Updated to better align with PreventiveMaintenance model
 interface FormValues {
   pmtitle: string;
   scheduled_date: string;
@@ -55,18 +48,44 @@ interface FormValues {
   property_id: string | null;
 }
 
+// Helper component to handle effects based on Formik's values
+const FormEffects: React.FC<{
+  propertyId: string | null;
+  fetchMachines: (pid: string | null) => void;
+  setAvailableMachinesState: React.Dispatch<React.SetStateAction<Machine[]>>;
+}> = ({ propertyId, fetchMachines, setAvailableMachinesState }) => {
+  useEffect(() => {
+    if (propertyId) {
+      fetchMachines(propertyId);
+    } else {
+      setAvailableMachinesState([]); // Clear machines if no property is selected
+    }
+  }, [propertyId, fetchMachines, setAvailableMachinesState]);
+
+  return null; // This component does not render anything
+};
+
+
 const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
   pmId,
   onSuccessAction,
-  initialData,
+  initialData: initialDataProp, // Rename prop to avoid conflict if we fetch/update it
   onCancel,
   machineId,
 }) => {
   const { toast } = useToast();
   const { data: session } = useSession();
-  const { userProperties } = useProperty();
+  const {
+    userProperties,
+    selectedProperty: contextSelectedProperty,
+    setSelectedProperty: setContextSelectedProperty,
+  } = useProperty();
+
+  const [fetchedInitialData, setFetchedInitialData] = useState<PreventiveMaintenance | null>(null);
+  const actualInitialData = initialDataProp || fetchedInitialData;
+
   const createdMaintenanceIdRef = useRef<string | null>(null);
-  const [selectedProperty, setSelectedProperty] = useState<string | null>(null);
+
   const [availableTopics, setAvailableTopics] = useState<Topic[]>([]);
   const [availableMachines, setAvailableMachines] = useState<Machine[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -77,6 +96,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
   const [afterImagePreview, setAfterImagePreview] = useState<string | null>(null);
   const [loadingTopics, setLoadingTopics] = useState<boolean>(true);
   const [loadingMachines, setLoadingMachines] = useState<boolean>(true);
+
 
   const formatDateForInput = (date: Date): string => {
     const year = date.getFullYear();
@@ -94,60 +114,36 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     [userProperties]
   );
 
-  // Enhanced validation to match model constraints
   const validate = (values: FormValues): FormikErrors<FormValues> => {
     const errors: FormikErrors<FormValues> = {};
-
-    if (!values.pmtitle) {
-      errors.pmtitle = 'Maintenance title is required';
-    }
-
-    if (!values.scheduled_date) {
-      errors.scheduled_date = 'Scheduled date is required';
-    }
-
-    if (!values.frequency) {
-      errors.frequency = 'Frequency is required';
-    } else if (!FREQUENCY_OPTIONS.find(option => option.value === values.frequency)) {
-      errors.frequency = 'Invalid frequency value';
-    }
-
-    if (values.frequency === 'custom' && (!values.custom_days || Number(values.custom_days) < 1)) {
-      errors.custom_days = 'Custom days must be at least 1';
-    }
-
-    if (values.selected_topics.length === 0) {
-      errors.selected_topics = 'At least one topic must be selected';
-    }
-
-    if (!values.property_id) {
-      errors.property_id = 'Property selection is required';
-    }
-
-    if (values.before_image_file && values.before_image_file.size > MAX_FILE_SIZE) {
-      errors.before_image_file = 'Before image must be less than 5MB';
-    }
-
-    if (values.after_image_file && values.after_image_file.size > MAX_FILE_SIZE) {
-      errors.after_image_file = 'After image must be less than 5MB';
-    }
-
+    if (!values.pmtitle) errors.pmtitle = 'Maintenance title is required';
+    if (!values.scheduled_date) errors.scheduled_date = 'Scheduled date is required';
+    if (!values.frequency) errors.frequency = 'Frequency is required';
+    else if (!FREQUENCY_OPTIONS.find(option => option.value === values.frequency)) errors.frequency = 'Invalid frequency value';
+    if (values.frequency === 'custom' && (!values.custom_days || Number(values.custom_days) < 1)) errors.custom_days = 'Custom days must be at least 1';
+    if (values.selected_topics.length === 0) errors.selected_topics = 'At least one topic must be selected';
+    if (!values.property_id) errors.property_id = 'Property selection is required';
+    // Consider adding validation for machine selection if it's mandatory:
+    // if (!values.selected_machine_ids || values.selected_machine_ids.length === 0) {
+    //   errors.selected_machine_ids = 'At least one machine must be selected';
+    // }
+    if (values.before_image_file && values.before_image_file.size > MAX_FILE_SIZE) errors.before_image_file = 'Before image must be less than 5MB';
+    if (values.after_image_file && values.after_image_file.size > MAX_FILE_SIZE) errors.after_image_file = 'After image must be less than 5MB';
     return errors;
   };
 
-  const getInitialValues = (): FormValues => {
-    if (initialData) {
-      // Extract topic IDs correctly based on model definition
-      const topicIds: number[] = initialData.topics
-        ?.map((topic) => (typeof topic === 'object' && 'id' in topic ? topic.id : typeof topic === 'number' ? topic : null))
+  const getInitialValues = useCallback((): FormValues => {
+    const currentData = actualInitialData;
+
+    if (currentData) {
+      const topicIds: number[] = currentData.topics
+        ?.map((topic: any) => (typeof topic === 'object' && 'id' in topic ? topic.id : typeof topic === 'number' ? topic : null))
         .filter((id): id is number => id !== null) || [];
 
-      // Extract machine IDs correctly based on model definition
-      let machineIds: string[] = [];
-      
-      if (initialData.machines) {
-        machineIds = initialData.machines
-          .map((machine) =>
+      let machineIdsFromData: string[] = [];
+      if (currentData.machines) {
+        machineIdsFromData = currentData.machines
+          .map((machine: any) =>
             typeof machine === 'object' && 'machine_id' in machine
               ? machine.machine_id
               : typeof machine === 'string'
@@ -155,27 +151,30 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
               : null
           )
           .filter((id): id is string => id !== null);
-      } else if (initialData.machine_id) {
-        // Handle single machine_id field from model
-        machineIds = [initialData.machine_id];
+      } else if (currentData.machine_id) {
+        machineIdsFromData = [currentData.machine_id];
       }
+      
+      const finalMachineIds = machineId // machineId from props
+         ? Array.from(new Set([machineId, ...machineIdsFromData])) // Ensure prop machineId is included and unique
+         : machineIdsFromData;
 
       return {
-        pmtitle: initialData.pmtitle || '',
-        scheduled_date: initialData.scheduled_date
-          ? formatDateForInput(new Date(initialData.scheduled_date))
+        pmtitle: currentData.pmtitle || '',
+        scheduled_date: currentData.scheduled_date
+          ? formatDateForInput(new Date(currentData.scheduled_date))
           : formatDateForInput(new Date()),
-        completed_date: initialData.completed_date
-          ? formatDateForInput(new Date(initialData.completed_date))
+        completed_date: currentData.completed_date
+          ? formatDateForInput(new Date(currentData.completed_date))
           : null,
-        frequency: validateFrequency(initialData.frequency || 'monthly'),
-        custom_days: initialData.custom_days ?? '',
-        notes: initialData.notes || '',
+        frequency: validateFrequency(currentData.frequency || 'monthly'),
+        custom_days: currentData.custom_days ?? '',
+        notes: currentData.notes || '',
         before_image_file: null,
         after_image_file: null,
         selected_topics: topicIds,
-        selected_machine_ids: machineId ? [machineId, ...machineIds.filter((id) => id !== machineId)] : machineIds,
-        property_id: initialData.property_id || null,
+        selected_machine_ids: finalMachineIds,
+        property_id: currentData.property_id || contextSelectedProperty || null,
       };
     }
 
@@ -189,17 +188,18 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       before_image_file: null,
       after_image_file: null,
       selected_topics: [],
-      selected_machine_ids: machineId ? [machineId] : [],
-      property_id: null,
+      selected_machine_ids: machineId ? [machineId] : [], // machineId from props
+      property_id: contextSelectedProperty || null,
     };
-  };
+  }, [actualInitialData, contextSelectedProperty, machineId]);
+
 
   const clearError = () => {
     setError(null);
     setSubmitError(null);
   };
 
-  const fetchAvailableTopics = async () => {
+  const fetchAvailableTopics = useCallback(async () => {
     setLoadingTopics(true);
     try {
       const response = await apiClient.get<Topic[]>('/api/topics/');
@@ -210,53 +210,43 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     } finally {
       setLoadingTopics(false);
     }
-  };
+  }, []);
 
-  const fetchAvailableMachines = async (propertyId: string | null) => {
+  const fetchAvailableMachines = useCallback(async (propertyId: string | null) => {
+    if (!propertyId) {
+      setAvailableMachines([]);
+      setLoadingMachines(false);
+      return;
+    }
     setLoadingMachines(true);
     try {
-      const params = propertyId ? { property_id: propertyId } : {};
+      const params = { property_id: propertyId };
       const response = await apiClient.get<Machine[]>('/api/machines/', { params });
       setAvailableMachines(response.data);
     } catch (err: any) {
       console.error('Error fetching available machines:', err);
-      setError('Failed to load machines. Please try again.');
+      setError('Failed to load machines for the selected property. Please try again.');
+      setAvailableMachines([]);
     } finally {
       setLoadingMachines(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchAvailableTopics();
-    if (initialData?.property_id) {
-      setSelectedProperty(initialData.property_id);
-      fetchAvailableMachines(initialData.property_id);
-    } else {
-      fetchAvailableMachines(null);
-    }
-  }, [initialData]);
+  }, [fetchAvailableTopics]);
 
   useEffect(() => {
-    if (selectedProperty) {
-      fetchAvailableMachines(selectedProperty);
-    } else {
-      setAvailableMachines([]);
-    }
-  }, [selectedProperty]);
-
-  useEffect(() => {
-    if (pmId && !initialData) {
+    if (pmId && !initialDataProp) {
       setIsLoading(true);
       clearError();
-
       preventiveMaintenanceService
         .getPreventiveMaintenanceById(pmId)
         .then((response) => {
           if (response.success && response.data) {
-            const data = response.data;
-            if (data.before_image_url) setBeforeImagePreview(data.before_image_url);
-            if (data.after_image_url) setAfterImagePreview(data.after_image_url);
-            if (data.property_id) setSelectedProperty(data.property_id);
+            setFetchedInitialData(response.data);
+            if (response.data.before_image_url) setBeforeImagePreview(response.data.before_image_url);
+            if (response.data.after_image_url) setAfterImagePreview(response.data.after_image_url);
           } else {
             throw new Error(response.message || 'Failed to fetch maintenance data');
           }
@@ -264,12 +254,17 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         .catch((err) => {
           console.error('Error fetching maintenance data:', err);
           setError(err.message || 'Failed to fetch maintenance data');
+          setFetchedInitialData(null);
         })
         .finally(() => {
           setIsLoading(false);
         });
+    } else if (initialDataProp) {
+        if (initialDataProp.before_image_url) setBeforeImagePreview(initialDataProp.before_image_url);
+        if (initialDataProp.after_image_url) setAfterImagePreview(initialDataProp.after_image_url);
     }
-  }, [pmId, initialData]);
+  }, [pmId, initialDataProp]);
+
 
   const handleFileSelection = (
     files: File[],
@@ -286,45 +281,34 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       }
       return;
     }
-
     const file = files[0];
-
-    // Validate file type
     const validImageTypes = ['image/jpeg', 'image/png', 'image/gif'];
     if (!validImageTypes.includes(file.type)) {
       toast.error(`Please upload an image file (JPEG, PNG, or GIF) for ${type === 'before' ? 'Before' : 'After'} image.`);
       return;
     }
-
-    // Validate file size
     if (file.size > MAX_FILE_SIZE) {
       toast.error(`${type === 'before' ? 'Before' : 'After'} image must be less than 5MB`);
       return;
     }
-
     setFieldValue(type === 'before' ? 'before_image_file' : 'after_image_file', file);
-
     const reader = new FileReader();
     reader.onloadend = () => {
-      if (type === 'before') {
-        setBeforeImagePreview(reader.result as string);
-      } else {
-        setAfterImagePreview(reader.result as string);
-      }
+      if (type === 'before') setBeforeImagePreview(reader.result as string);
+      else setAfterImagePreview(reader.result as string);
     };
     reader.readAsDataURL(file);
   };
 
-  // Updated to match the model's PreventiveMaintenanceRequest structure
   const handleSubmit = async (
     values: FormValues,
-    { setSubmitting, setFieldValue }: { setSubmitting: (isSubmitting: boolean) => void; setFieldValue: (field: string, value: any) => void }
+    formikHelpers: FormikHelpers<FormValues>
   ) => {
+    const { setSubmitting, resetForm } = formikHelpers; // Removed setFieldValue as it's not directly used here
+  
     clearError();
     setIsLoading(true);
-
     try {
-      // Align with the PreventiveMaintenanceRequest interface from the model
       const submitData: PreventiveMaintenanceRequest = {
         pmtitle: values.pmtitle.trim() || 'Untitled Maintenance',
         scheduled_date: values.scheduled_date,
@@ -332,66 +316,60 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         custom_days: values.frequency === 'custom' && values.custom_days ? Number(values.custom_days) : null,
         notes: values.notes?.trim(),
         topic_ids: values.selected_topics.length > 0 ? values.selected_topics : undefined,
+        property_id: values.property_id || undefined,
+        // machine_id and machine_ids will be added below
       };
-
-      // Add machine_id if only one machine is selected, to match the model
-      if (values.selected_machine_ids.length === 1) {
+  
+      // Add machine_id if only one machine is selected, or machine_ids for multiple.
+      // Ensure your PreventiveMaintenanceRequest type includes machine_id?: string; and machine_ids?: string[];
+      if (values.selected_machine_ids && values.selected_machine_ids.length === 1) {
         submitData.machine_id = values.selected_machine_ids[0];
-      } else if (values.selected_machine_ids.length > 0) {
-        // Handle multiple machines (we'll need to ensure the service can handle this)
-        (submitData as any).machine_ids = values.selected_machine_ids;
+      } else if (values.selected_machine_ids && values.selected_machine_ids.length > 1) {
+        submitData.machine_ids = values.selected_machine_ids;
       }
-
-      // Add property_id from the model
-      if (values.property_id) {
-        (submitData as any).property_id = values.property_id;
-      }
-
+      // If values.selected_machine_ids is empty, neither field will be added.
+      // If your backend requires a machine, add validation in the `validate` function.
+  
       // Handle completed_date if provided
+      // Ensure PreventiveMaintenanceRequest includes completed_date?: string;
       if (values.completed_date) {
-        (submitData as any).completed_date = values.completed_date;
+        submitData.completed_date = values.completed_date;
       }
-
+  
       // Handle image files
+      // Ensure PreventiveMaintenanceRequest includes before_image?: File; and after_image?: File;
       if (values.before_image_file instanceof File) {
-        (submitData as any).before_image = values.before_image_file;
-        setIsImageUploading(true);
+        submitData.before_image = values.before_image_file;
+        // setIsImageUploading(true); // This state can be managed based on whether these files exist
       }
-      
       if (values.after_image_file instanceof File) {
-        (submitData as any).after_image = values.after_image_file;
+        submitData.after_image = values.after_image_file;
+        // setIsImageUploading(true);
+      }
+      // Consolidate isImageUploading state setting
+      if (values.before_image_file || values.after_image_file) {
         setIsImageUploading(true);
       }
 
-      const maintenanceId = pmId || (initialData?.pm_id ?? null);
+      console.log('Submitting data:', submitData); // For debugging
+  
+      const maintenanceIdToUpdate = pmId || (actualInitialData?.pm_id ?? null);
       let response: ServiceResponse<PreventiveMaintenance>;
-
-      if (maintenanceId) {
-        console.log(`Updating maintenance record: ${maintenanceId}`);
-        response = await preventiveMaintenanceService.updatePreventiveMaintenance(maintenanceId, submitData);
+  
+      if (maintenanceIdToUpdate) {
+        response = await preventiveMaintenanceService.updatePreventiveMaintenance(maintenanceIdToUpdate, submitData);
       } else {
-        console.log('Creating new maintenance record');
         response = await preventiveMaintenanceService.createPreventiveMaintenance(submitData);
       }
-
+  
       if (response.success && response.data) {
-        toast.success(maintenanceId ? 'Maintenance record updated successfully' : 'Maintenance record created successfully');
+        toast.success(maintenanceIdToUpdate ? 'Maintenance record updated successfully' : 'Maintenance record created successfully');
         onSuccessAction(response.data);
-
-        if (!maintenanceId) {
-          setFieldValue('pmtitle', '');
-          setFieldValue('notes', '');
-          setFieldValue('custom_days', '');
-          setFieldValue('completed_date', null);
-          setFieldValue('selected_topics', []);
-          setFieldValue('selected_machine_ids', machineId ? [machineId] : []);
-          setFieldValue('property_id', null);
-          setFieldValue('before_image_file', null);
-          setFieldValue('after_image_file', null);
+  
+        if (!maintenanceIdToUpdate) {
+          resetForm({ values: getInitialValues() });
           setBeforeImagePreview(null);
           setAfterImagePreview(null);
-          setSelectedProperty(null);
-          createdMaintenanceIdRef.current = null;
         }
       } else {
         throw new Error(response.message || 'Failed to save maintenance record');
@@ -399,9 +377,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     } catch (error: any) {
       console.error('Error submitting form:', error);
       let errorMessage = 'An unexpected error occurred while saving the maintenance record';
-
       if (error.response?.data) {
-        console.error('Error response data:', error.response.data);
         if (typeof error.response.data === 'string') {
           errorMessage = error.response.data;
         } else if (error.response.data.detail) {
@@ -411,20 +387,15 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         } else {
           const fieldErrors = Object.entries(error.response.data)
             .map(([field, errorList]) => {
-              if (Array.isArray(errorList)) {
-                return `${field}: ${errorList.join(', ')}`;
-              }
+              if (Array.isArray(errorList)) return `${field}: ${errorList.join(', ')}`;
               return `${field}: ${errorList}`;
             })
             .join('; ');
-          if (fieldErrors) {
-            errorMessage = `Validation errors: ${fieldErrors}`;
-          }
+          if (fieldErrors) errorMessage = `Validation errors: ${fieldErrors}`;
         }
       } else if (error.message) {
         errorMessage = error.message;
       }
-
       setSubmitError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -434,20 +405,17 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
     }
   };
 
+  if (isLoading && (pmId && !actualInitialData)) { // Adjusted loading condition
+      return <div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>;
+  }
+
   return (
     <div className="bg-white shadow-md rounded-lg p-6">
       {(error || submitError) && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
           <div className="flex justify-between">
             <p className="whitespace-pre-wrap">{error || submitError}</p>
-            <button
-              onClick={clearError}
-              className="text-red-700"
-              type="button"
-              aria-label="Close error message"
-            >
-              ×
-            </button>
+            <button onClick={clearError} className="text-red-700" type="button" aria-label="Close error message">×</button>
           </div>
         </div>
       )}
@@ -460,6 +428,11 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
       >
         {({ values, errors, touched, isSubmitting, setFieldValue }) => (
           <Form aria-label="Preventive Maintenance Form">
+            <FormEffects
+              propertyId={values.property_id}
+              fetchMachines={fetchAvailableMachines}
+              setAvailableMachinesState={setAvailableMachines}
+            />
             <div className="mb-6">
               <label htmlFor="property_id" className="block text-sm font-medium text-gray-700 mb-1">
                 Property <span className="text-red-500">*</span>
@@ -468,16 +441,16 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                 as="select"
                 id="property_id"
                 name="property_id"
-                value={selectedProperty || ''}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                  const value = e.target.value;
-                  setSelectedProperty(value);
-                  setFieldValue('property_id', value || null);
-                  setFieldValue('selected_machine_ids', machineId ? [machineId] : []);
+                  const newPropertyId = e.target.value || null;
+                  setFieldValue('property_id', newPropertyId);
+                  if (newPropertyId && setContextSelectedProperty) {
+                    setContextSelectedProperty(newPropertyId);
+                  }
+                  // Reset selected machines when property changes
+                  setFieldValue('selected_machine_ids', []); 
                 }}
-                className={`w-full p-2 border rounded-md ${
-                  errors.property_id && touched.property_id ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full p-2 border rounded-md ${errors.property_id && touched.property_id ? 'border-red-500' : 'border-gray-300'}`}
               >
                 <option value="">Select a Property</option>
                 {userProperties?.map((property) => (
@@ -491,6 +464,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
               )}
             </div>
 
+            {/* Maintenance Title */}
             <div className="mb-6">
               <label htmlFor="pmtitle" className="block text-sm font-medium text-gray-700 mb-1">
                 Maintenance Title <span className="text-red-500">*</span>
@@ -499,16 +473,13 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                 type="text"
                 id="pmtitle"
                 name="pmtitle"
-                className={`w-full p-2 border rounded-md ${
-                  errors.pmtitle && touched.pmtitle ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full p-2 border rounded-md ${errors.pmtitle && touched.pmtitle ? 'border-red-500' : 'border-gray-300'}`}
                 placeholder="Enter maintenance title"
               />
-              {errors.pmtitle && touched.pmtitle && (
-                <p className="mt-1 text-sm text-red-500">{errors.pmtitle}</p>
-              )}
+              {errors.pmtitle && touched.pmtitle && (<p className="mt-1 text-sm text-red-500">{errors.pmtitle}</p>)}
             </div>
 
+            {/* Scheduled Date */}
             <div className="mb-6">
               <label htmlFor="scheduled_date" className="block text-sm font-medium text-gray-700 mb-1">
                 Scheduled Date <span className="text-red-500">*</span>
@@ -517,15 +488,12 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                 type="date"
                 id="scheduled_date"
                 name="scheduled_date"
-                className={`w-full p-2 border rounded-md ${
-                  errors.scheduled_date && touched.scheduled_date ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full p-2 border rounded-md ${errors.scheduled_date && touched.scheduled_date ? 'border-red-500' : 'border-gray-300'}`}
               />
-              {errors.scheduled_date && touched.scheduled_date && (
-                <p className="mt-1 text-sm text-red-500">{errors.scheduled_date}</p>
-              )}
+              {errors.scheduled_date && touched.scheduled_date && (<p className="mt-1 text-sm text-red-500">{errors.scheduled_date}</p>)}
             </div>
 
+            {/* Completed Date */}
             <div className="mb-6">
               <label htmlFor="completed_date" className="block text-sm font-medium text-gray-700 mb-1">
                 Completed Date
@@ -538,6 +506,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
               />
             </div>
 
+            {/* Maintenance Frequency */}
             <div className="mb-6">
               <label htmlFor="frequency" className="block text-sm font-medium text-gray-700 mb-1">
                 Maintenance Frequency <span className="text-red-500">*</span>
@@ -546,21 +515,14 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                 as="select"
                 id="frequency"
                 name="frequency"
-                className={`w-full p-2 border rounded-md ${
-                  errors.frequency && touched.frequency ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full p-2 border rounded-md ${errors.frequency && touched.frequency ? 'border-red-500' : 'border-gray-300'}`}
               >
-                {FREQUENCY_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
+                {FREQUENCY_OPTIONS.map((option) => (<option key={option.value} value={option.value}>{option.label}</option>))}
               </Field>
-              {errors.frequency && touched.frequency && (
-                <p className="mt-1 text-sm text-red-500">{errors.frequency}</p>
-              )}
+              {errors.frequency && touched.frequency && (<p className="mt-1 text-sm text-red-500">{errors.frequency}</p>)}
             </div>
 
+            {/* Custom Days Interval */}
             {values.frequency === 'custom' && (
               <div className="mb-6">
                 <label htmlFor="custom_days" className="block text-sm font-medium text-gray-700 mb-1">
@@ -570,28 +532,98 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                   type="number"
                   id="custom_days"
                   name="custom_days"
-                  min="1"
-                  max="365"
-                  className={`w-full p-2 border rounded-md ${
-                    errors.custom_days && touched.custom_days ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                  min="1" max="365" // Consider making max configurable or removing it
+                  className={`w-full p-2 border rounded-md ${errors.custom_days && touched.custom_days ? 'border-red-500' : 'border-gray-300'}`}
                 />
-                {errors.custom_days && touched.custom_days && (
-                  <p className="mt-1 text-sm text-red-500">{errors.custom_days}</p>
-                )}
+                {errors.custom_days && touched.custom_days && (<p className="mt-1 text-sm text-red-500">{errors.custom_days}</p>)}
               </div>
             )}
-
+            
+            {/* Notes */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Machines</label>
+                <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">
+                    Notes
+                </label>
+                <Field
+                    as="textarea"
+                    id="notes"
+                    name="notes"
+                    rows={4}
+                    className="w-full p-2 border border-gray-300 rounded-md"
+                    placeholder="Enter any notes for this maintenance task"
+                />
+            </div>
+
+
+            {/* Machines Selection */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Machines {loadingMachines && <span className="text-xs text-gray-500">(Loading...)</span>}
+              </label>
               <div
-                className={`border rounded-md p-4 max-h-48 overflow-y-auto bg-white ${
-                  errors.selected_machine_ids && touched.selected_machine_ids ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`border rounded-md p-4 max-h-60 overflow-y-auto bg-white ${errors.selected_machine_ids && touched.selected_machine_ids ? 'border-red-500' : 'border-gray-300'}`}
                 role="group"
                 aria-label="Select machines"
               >
-                {loadingMachines ? (
+                {!values.property_id ? (
+                    <p className="text-sm text-gray-500">Please select a property to see available machines.</p>
+                ) : loadingMachines ? (
+                  <div className="flex justify-center items-center h-24">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <p className="ml-2 text-sm text-gray-500">Loading machines...</p>
+                  </div>
+                ) : availableMachines.length > 0 ? (
+                  <div className="space-y-3">
+                    {availableMachines.map((machineItem) => (
+                      <div key={machineItem.machine_id} className="relative">
+                        <label className="flex items-center cursor-pointer">
+                          <Field name="selected_machine_ids">
+                            {({ field: { value: selectedMachinesValue }, form: { setFieldValue: setMachineFieldValue } }: any) => (
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                                id={`machine-${machineItem.machine_id}`}
+                                checked={selectedMachinesValue.includes(machineItem.machine_id)}
+                                onChange={(e) => {
+                                  const currentSelection = selectedMachinesValue || [];
+                                  if (e.target.checked) {
+                                    setMachineFieldValue('selected_machine_ids', [...currentSelection, machineItem.machine_id]);
+                                  } else {
+                                    setMachineFieldValue('selected_machine_ids', currentSelection.filter((id: string) => id !== machineItem.machine_id));
+                                  }
+                                }}
+                              />
+                            )}
+                          </Field>
+                          <span className="ml-3 text-sm text-gray-700 flex-1">{machineItem.name} ({machineItem.machine_id})</span>
+                        </label>
+                         {values.selected_machine_ids.includes(machineItem.machine_id) && (
+                           <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-full"></div>
+                         )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6">
+                    <p className="text-sm text-gray-500 mb-3">No machines available for this property.</p>
+                    {values.property_id && !error && <button type="button" onClick={() => fetchAvailableMachines(values.property_id)} className="text-blue-600 hover:text-blue-800 text-sm font-medium">Refresh Machines</button>}
+                  </div>
+                )}
+              </div>
+              {errors.selected_machine_ids && touched.selected_machine_ids && (<p className="mt-1 text-sm text-red-500">{errors.selected_machine_ids}</p>)}
+            </div>
+
+            {/* Topics Selection */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Topics <span className="text-red-500">*</span> {loadingTopics && <span className="text-xs text-gray-500">(Loading...)</span>}
+              </label>
+              <div
+                className={`border rounded-md p-4 max-h-60 overflow-y-auto bg-white ${errors.selected_topics && touched.selected_topics ? 'border-red-500' : 'border-gray-300'}`}
+                role="group"
+                aria-label="Select topics"
+              >
+                {loadingTopics ? (
                   <div className="flex justify-center items-center h-24">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                     <p className="ml-2 text-sm text-gray-500">Loading topics...</p>
@@ -602,17 +634,18 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                       <div key={topic.id} className="relative">
                         <label className="flex items-center cursor-pointer">
                           <Field name="selected_topics">
-                            {({ field }: any) => (
+                             {({ field: { value: selectedTopicsValue }, form: { setFieldValue: setTopicFieldValue } }: any) => (
                               <input
                                 type="checkbox"
                                 className="h-4 w-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
                                 id={`topic-${topic.id}`}
-                                checked={field.value.includes(topic.id)}
+                                checked={selectedTopicsValue.includes(topic.id)}
                                 onChange={(e) => {
+                                  const currentSelection = selectedTopicsValue || [];
                                   if (e.target.checked) {
-                                    setFieldValue('selected_topics', [...field.value, topic.id]);
+                                    setTopicFieldValue('selected_topics', [...currentSelection, topic.id]);
                                   } else {
-                                    setFieldValue('selected_topics', field.value.filter((id: number) => id !== topic.id));
+                                    setTopicFieldValue('selected_topics', currentSelection.filter((id: number) => id !== topic.id));
                                   }
                                 }}
                               />
@@ -629,40 +662,21 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
                 ) : (
                   <div className="text-center py-6">
                     <p className="text-sm text-gray-500 mb-3">No topics available.</p>
-                    <button
-                      type="button"
-                      onClick={fetchAvailableTopics}
-                      className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
-                    >
-                      Refresh Topics
-                    </button>
+                    {!error && <button type="button" onClick={fetchAvailableTopics} className="text-blue-600 hover:text-blue-800 text-sm font-medium">Refresh Topics</button>}
                   </div>
                 )}
               </div>
+              {errors.selected_topics && touched.selected_topics && (<p className="mt-1 text-sm text-red-500">{errors.selected_topics}</p>)}
               {values.selected_topics.length > 0 && (
                 <div className="mt-3">
-                  <p className="text-sm text-gray-600 mb-2">
-                    {values.selected_topics.length} topic{values.selected_topics.length > 1 ? 's' : ''} selected:
-                  </p>
+                  <p className="text-sm text-gray-600 mb-2">{values.selected_topics.length} topic{values.selected_topics.length > 1 ? 's' : ''} selected:</p>
                   <div className="flex flex-wrap gap-2">
                     {values.selected_topics.map((topicId) => {
                       const topic = availableTopics.find((t) => t.id === topicId);
                       return topic ? (
-                        <span
-                          key={topic.id}
-                          className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full"
-                        >
+                        <span key={topic.id} className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">
                           {topic.title}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFieldValue('selected_topics', values.selected_topics.filter((id) => id !== topic.id));
-                            }}
-                            className="ml-1 text-blue-600 hover:text-blue-800"
-                            aria-label={`Remove ${topic.title}`}
-                          >
-                            ×
-                          </button>
+                          <button type="button" onClick={() => { setFieldValue('selected_topics', values.selected_topics.filter((id) => id !== topic.id)); }} className="ml-1 text-blue-600 hover:text-blue-800" aria-label={`Remove ${topic.title}`}>×</button>
                         </span>
                       ) : null;
                     })}
@@ -671,109 +685,27 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
               )}
             </div>
 
+            {/* Image Uploads */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Before Image</label>
-                <FileUpload
-                  onFileSelect={(files: File[]) => handleFileSelection(files, 'before', setFieldValue)}
-                  maxFiles={1}
-                  maxSize={5}
-                  error={errors.before_image_file}
-                  touched={touched.before_image_file}
-                  disabled={isSubmitting || isLoading}
-                />
-                {beforeImagePreview && (
-                  <div className="mt-3 relative w-full h-40 bg-gray-100 rounded-md overflow-hidden">
-                    <img
-                      src={beforeImagePreview}
-                      alt="Before Maintenance Preview"
-                      className="w-full h-full object-contain"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBeforeImagePreview(null);
-                        setFieldValue('before_image_file', null);
-                      }}
-                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 w-6 h-6 flex items-center justify-center shadow-md"
-                      aria-label="Remove before image"
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
+                <FileUpload onFileSelect={(files) => handleFileSelection(files, 'before', setFieldValue)} maxFiles={1} maxSize={5} error={errors.before_image_file as string} touched={touched.before_image_file} disabled={isSubmitting || isLoading} />
+                {beforeImagePreview && ( <div className="mt-3 relative w-full h-40 bg-gray-100 rounded-md overflow-hidden"> <img src={beforeImagePreview} alt="Before Maintenance Preview" className="w-full h-full object-contain" /> <button type="button" onClick={() => { setBeforeImagePreview(null); setFieldValue('before_image_file', null); }} className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 w-6 h-6 flex items-center justify-center shadow-md" aria-label="Remove before image">×</button> </div> )}
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">After Image</label>
-                <FileUpload
-                  onFileSelect={(files: File[]) => handleFileSelection(files, 'after', setFieldValue)}
-                  maxFiles={1}
-                  maxSize={5}
-                  error={errors.after_image_file}
-                  touched={touched.after_image_file}
-                  disabled={isSubmitting || isLoading}
-                />
-                {afterImagePreview && (
-                  <div className="mt-3 relative w-full h-40 bg-gray-100 rounded-md overflow-hidden">
-                    <img
-                      src={afterImagePreview}
-                      alt="After Maintenance Preview"
-                      className="w-full h-full object-contain"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAfterImagePreview(null);
-                        setFieldValue('after_image_file', null);
-                      }}
-                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 w-6 h-6 flex items-center justify-center shadow-md"
-                      aria-label="Remove after image"
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
+                <FileUpload onFileSelect={(files) => handleFileSelection(files, 'after', setFieldValue)} maxFiles={1} maxSize={5} error={errors.after_image_file as string} touched={touched.after_image_file} disabled={isSubmitting || isLoading} />
+                {afterImagePreview && ( <div className="mt-3 relative w-full h-40 bg-gray-100 rounded-md overflow-hidden"> <img src={afterImagePreview} alt="After Maintenance Preview" className="w-full h-full object-contain" /> <button type="button" onClick={() => { setAfterImagePreview(null); setFieldValue('after_image_file', null); }} className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 w-6 h-6 flex items-center justify-center shadow-md" aria-label="Remove after image">×</button> </div> )}
               </div>
             </div>
 
+            {/* Action Buttons */}
             <div className="flex flex-wrap justify-between mt-8 gap-4">
-              {onCancel && (
-                <button
-                  type="button"
-                  onClick={onCancel}
-                  className="px-6 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-md shadow-sm hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-300 transition-colors"
-                  disabled={isSubmitting || isLoading}
-                >
-                  Cancel
-                </button>
-              )}
-
+              {onCancel && ( <button type="button" onClick={onCancel} className="px-6 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-md shadow-sm hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-300 transition-colors" disabled={isSubmitting || isLoading}>Cancel</button> )}
               <div className="flex space-x-4">
-                {isImageUploading && (
-                  <div className="flex items-center space-x-2 text-blue-600">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current"></div>
-                    <span className="text-sm">Uploading images...</span>
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  className={`px-6 py-2.5 ${
-                    isSubmitting || isLoading
-                      ? 'bg-blue-400 cursor-not-allowed'
-                      : 'bg-blue-600 hover:bg-blue-700'
-                  } text-white font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors`}
-                  disabled={isSubmitting || isLoading}
-                >
-                  {isSubmitting || isLoading ? (
-                    <div className="flex items-center">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      <span>{pmId || initialData ? 'Updating...' : 'Creating...'}</span>
-                    </div>
-                  ) : (
-                    <span>{pmId || initialData ? 'Update Maintenance' : 'Create Maintenance'}</span>
-                  )}
+                {isImageUploading && ( <div className="flex items-center space-x-2 text-blue-600"> <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current"></div><span className="text-sm">Uploading images...</span></div> )}
+                <button type="submit" className={`px-6 py-2.5 ${isSubmitting || isLoading ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors`} disabled={isSubmitting || isLoading}>
+                  {isSubmitting || isLoading ? ( <div className="flex items-center"><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div><span>{pmId || actualInitialData ? 'Updating...' : 'Creating...'}</span></div> ) : ( <span>{pmId || actualInitialData ? 'Update Maintenance' : 'Create Maintenance'}</span> )}
                 </button>
               </div>
             </div>
