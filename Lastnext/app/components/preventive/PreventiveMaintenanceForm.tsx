@@ -20,6 +20,7 @@ import preventiveMaintenanceService, {
   type CreatePreventiveMaintenanceData, // <<< THIS IMPORT IS NEEDED
   type UpdatePreventiveMaintenanceData   // <<< THIS IMPORT IS LIKELY NEEDED TOO
 } from '@/app/lib/PreventiveMaintenanceService';
+import { getPropertyDetails } from '@/app/lib/preventiveMaintenanceModels';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 interface Machine {
@@ -176,7 +177,7 @@ const PreventiveMaintenanceForm: React.FC<PreventiveMaintenanceFormProps> = ({
         after_image_file: null,
         selected_topics: topicIds,
         selected_machine_ids: finalMachineIds,
-        property_id: currentData.property_id || contextSelectedProperty || null,
+        property_id: getPropertyDetails(currentData.property_id).id,
       };
     }
 

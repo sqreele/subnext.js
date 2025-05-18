@@ -1,15 +1,20 @@
+// Fix for the Server Component (PreventiveMaintenanceDetailPage.tsx)
+
 import { Suspense } from 'react';
 import PreventiveMaintenanceClient from '@/app/dashboard/preventive-maintenance/[pm_id]/PreventiveMaintenanceClient';
 import { notFound } from 'next/navigation';
 import { Topic } from '@/app/lib/types';
-import { PreventiveMaintenance } from '@/app/lib/preventiveMaintenanceModels';
+import { 
+  PreventiveMaintenance,
+  getMachineDetails 
+} from '@/app/lib/preventiveMaintenanceModels';
 
-// ฟังก์ชันเพื่อตรวจสอบว่า topics เป็น Topic[]
+// Function to check if topics is a Topic[]
 function isTopicArray(topics: Topic[] | number[]): topics is Topic[] {
   return topics.length === 0 || (topics.length > 0 && typeof topics[0] !== 'number');
 }
 
-// Helper function to handle machines array
+// Helper function to handle machines array - FIXED
 function renderMachines(machines: any[] | null | undefined) {
   if (!machines || machines.length === 0) {
     return <p className="text-gray-500 italic">No machines assigned</p>;
@@ -18,9 +23,8 @@ function renderMachines(machines: any[] | null | undefined) {
   return (
     <div className="flex flex-wrap gap-2">
       {machines.map((machine, index) => {
-        // Handle both object format and string format
-        const machineId = typeof machine === 'object' ? machine.machine_id : machine;
-        const machineName = typeof machine === 'object' ? machine.name : null;
+        // Use helper function for consistent machine details
+        const { id: machineId, name: machineName } = getMachineDetails(machine);
         
         return (
           <span 
@@ -35,27 +39,27 @@ function renderMachines(machines: any[] | null | undefined) {
   );
 }
 
-// ฟังก์ชันเพื่อดึงข้อมูล Preventive Maintenance จาก API (Server Component)
+// Function to fetch Preventive Maintenance from API (Server Component)
 async function getPreventiveMaintenance(pmId: string): Promise<PreventiveMaintenance | null> {
   try {
-    // เปลี่ยนเป็น URL ของ API ของคุณ
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://pmcs.site';
     const response = await fetch(`${apiUrl}/api/preventive-maintenance/${pmId}/`, {
-      cache: 'no-store', // หรือใช้ { next: { revalidate: 60 } } เพื่อ revalidate ทุก 60 วินาที
+      cache: 'no-store',
       headers: {
         'Content-Type': 'application/json',
       },
     });
 
     if (!response.ok) {
-      // ถ้า response ไม่สำเร็จ (เช่น 404, 500)
       if (response.status === 404) {
-        return null; // จะเรียกใช้ notFound() ในภายหลัง
+        return null;
       }
       throw new Error(`Failed to fetch maintenance data: ${response.statusText}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    console.log("Received maintenance data:", JSON.stringify(data, null, 2));
+    return data;
   } catch (error) {
     console.error('Error fetching maintenance data:', error);
     throw error;
@@ -66,18 +70,16 @@ async function getPreventiveMaintenance(pmId: string): Promise<PreventiveMainten
 type Params = Promise<{ pm_id: string }>;
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
-// Server Component หลัก
+// Main Server Component
 export default async function PreventiveMaintenanceDetailPage(props: {
   params: Params;
   searchParams: SearchParams;
 }) {
-  // ดึงข้อมูลใน Server Component
   const params = await props.params;
   const searchParams = await props.searchParams;
   const pmId = params.pm_id;
   const maintenanceData = await getPreventiveMaintenance(pmId);
 
-  // ถ้าไม่พบข้อมูล ให้แสดง 404 page
   if (!maintenanceData) {
     notFound();
   }
@@ -96,7 +98,7 @@ export default async function PreventiveMaintenanceDetailPage(props: {
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-2xl font-bold mb-4">Preventive Maintenance Details</h1>
       
-      {/* ข้อมูลพื้นฐานที่ไม่ต้องการ interactivity (Server Component) */}
+      {/* Basic info that doesn't need interactivity (Server Component) */}
       <div className="bg-white shadow-md rounded-lg p-6 mb-6">
         <h2 className="text-xl font-semibold mb-2">{maintenanceData.pmtitle}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -104,13 +106,22 @@ export default async function PreventiveMaintenanceDetailPage(props: {
             <p className="text-gray-600 text-sm">ID:</p>
             <p className="font-medium">{maintenanceData.pm_id}</p>
           </div>
+          
+          {/* FIXED: Property ID display with more robust handling */}
           <div>
             <p className="text-gray-600 text-sm">Property ID:</p>
-            <p className="font-medium">{maintenanceData.property_id || 'Not assigned'}</p>
+            <p className="font-medium">
+              {maintenanceData.property_id ? 
+                (typeof maintenanceData.property_id === 'object' ? 
+                  JSON.stringify(maintenanceData.property_id) : 
+                  maintenanceData.property_id) : 
+                'Not assigned'}
+            </p>
           </div>
+          
           <div>
             <p className="text-gray-600 text-sm">Frequency:</p>
-            <p className="font-medium">{maintenanceData.frequency}</p>
+            <p className="font-medium">{maintenanceData.frequency || 'Not specified'}</p>
           </div>
           <div>
             <p className="text-gray-600 text-sm">Scheduled Date:</p>
@@ -154,9 +165,15 @@ export default async function PreventiveMaintenanceDetailPage(props: {
           </div>
         </div>
         
-        {/* Add Associated Machines section */}
+        {/* Add Associated Machines section - FIXED */}
         <div className="mt-6 mb-4">
           <h3 className="text-lg font-semibold mb-2">Associated Machines</h3>
+          {/* Debug output to see what data is coming in */}
+          <div className="text-xs text-gray-400 mb-2">
+            {maintenanceData.machines ? 
+              `Debug - Found ${maintenanceData.machines.length} machines` : 
+              'Debug - No machines data found'}
+          </div>
           {renderMachines(maintenanceData.machines)}
         </div>
         
@@ -229,9 +246,9 @@ export default async function PreventiveMaintenanceDetailPage(props: {
         )}
       </div>
 
-      {/* Suspense สำหรับ loading state ของ Client Component */}
+      {/* Suspense for loading state of Client Component */}
       <Suspense fallback={<div className="text-center py-4">Loading interactive components...</div>}>
-        {/* Client Component สำหรับส่วนที่ต้องการ interactivity */}
+        {/* Client Component for parts that need interactivity */}
         <PreventiveMaintenanceClient maintenanceData={maintenanceData} />
       </Suspense>
     </div>

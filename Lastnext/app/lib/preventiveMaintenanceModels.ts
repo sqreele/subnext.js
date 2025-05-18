@@ -35,6 +35,22 @@ export interface Topic {
       : 'monthly';
   }
   
+  // Property details interface
+  export interface PropertyDetails {
+    id?: string;
+    property_id?: string;
+    name?: string;
+    [key: string]: any; // Allow any other properties
+  }
+  
+  // Machine details interface
+  export interface MachineDetails {
+    id?: string;
+    machine_id?: string;
+    name?: string;
+    [key: string]: any; // Allow any other properties
+  }
+  
   // Preventive Maintenance main interface
   export interface PreventiveMaintenance {
     pm_id: string;
@@ -43,8 +59,8 @@ export interface Topic {
     // Machine relationship fields
     machine_id?: string;  // Added field to link to specific machine
     name?: string;        // Added machine name for display purposes
-    machines?: Array<{machine_id: string, name?: string}> | string[];
-    topics: Topic[] | number[];
+    machines?: Array<MachineDetails | string> | null;
+    topics?: Topic[] | number[] | null;
     scheduled_date: string; 
     completed_date?: string | null;
     frequency: FrequencyType;
@@ -56,13 +72,13 @@ export interface Topic {
     after_image_url?: string | null;
     notes?: string;
     status?: string;
-    property_id: string;
+    property_id?: string | PropertyDetails | null;
   }
   
   // Request structure for creating/updating maintenance
   export interface PreventiveMaintenanceRequest {
     pmtitle?: string;
-    property_id?: string; 
+    property_id?: string | PropertyDetails | null; 
    
     // Added machine relationship fields
     machine_id?: string;  // Added to associate maintenance with a specific machine
@@ -152,18 +168,28 @@ export interface Topic {
     return 'pending';
   }
   
-  // Helper to get image URL from various formats
-  export function getImageUrl(image: MaintenanceImage | null | undefined): string | null {
+  // Enhanced helper to get image URL from various formats
+  export function getImageUrl(image: MaintenanceImage | any | null | undefined): string | null {
     if (!image) return null;
     
-    // First try to get direct URL property
-    if (typeof image === 'object' && 'image_url' in image && image.image_url) {
-      return image.image_url;
-    }
-    
-    // If no direct URL but we have an ID, construct URL
-    if (typeof image === 'object' && 'id' in image && image.id) {
-      return `/api/images/${image.id}`;
+    // First try to get direct URL property from various possible fields
+    if (typeof image === 'object') {
+      // Check various possible URL fields
+      if ('image_url' in image && image.image_url) {
+        return image.image_url;
+      }
+      if ('url' in image && image.url) {
+        return image.url;
+      }
+      if ('path' in image && image.path) {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://pmcs.site';
+        return `${apiUrl}${image.path}`;
+      }
+      
+      // If no direct URL but we have an ID, construct URL
+      if ('id' in image && image.id) {
+        return `/api/images/${image.id}`;
+      }
     }
     
     // If image is just a string URL
@@ -172,6 +198,52 @@ export interface Topic {
     }
     
     return null;
+  }
+  
+  // Helper to safely get machine details regardless of format
+  export function getMachineDetails(machine: any): { id: string, name: string | null } {
+    if (!machine) return { id: 'Unknown', name: null };
+    
+    // If machine is just a string ID
+    if (typeof machine === 'string') {
+      return { id: machine, name: null };
+    }
+    
+    // If machine is an object, extract ID and name
+    if (typeof machine === 'object') {
+      // Try different potential property names for machine ID
+      const id = machine.machine_id || machine.id || machine.machineId || 'Unknown';
+      
+      // Try different potential property names for machine name
+      const name = machine.name || machine.machine_name || machine.machineName || null;
+      
+      return { id, name };
+    }
+    
+    return { id: 'Unknown', name: null };
+  }
+  
+  // Helper to safely get property details regardless of format
+  export function getPropertyDetails(property: any): { id: string | null, name: string | null } {
+    if (!property) return { id: null, name: null };
+    
+    // If property is just a string ID
+    if (typeof property === 'string') {
+      return { id: property, name: null };
+    }
+    
+    // If property is an object, extract ID and name
+    if (typeof property === 'object') {
+      // Try different potential property names for property ID
+      const id = property.property_id || property.id || property.propertyId || null;
+      
+      // Try different potential property names for property name
+      const name = property.name || property.property_name || property.propertyName || null;
+      
+      return { id, name };
+    }
+    
+    return { id: null, name: null };
   }
   
   // Response format for PM list with included topics
