@@ -45,36 +45,32 @@ export interface Topic {
   
   // Machine details interface
   export interface MachineDetails {
-    id?: string;
-    machine_id?: string;
-    name?: string;
-    [key: string]: any; // Allow any other properties
+    machine_id: string;
+    name: string;
+    id?: number; // Optional
   }
-  
   // Preventive Maintenance main interface
   export interface PreventiveMaintenance {
     pm_id: string;
     pmtitle?: string;
-    
-    // Machine relationship fields
-    machine_id?: string;  // Added field to link to specific machine
-    name?: string;        // Added machine name for display purposes
-    machines?: Array<MachineDetails | string> | null;
+    machine_id?: string; // Optional, may be missing
+    name?: string; // Optional, machine name for display
+    machines?: Array<MachineDetails | string> | null; // Uses MachineDetails
     topics?: Topic[] | number[] | null;
-    scheduled_date: string; 
+    scheduled_date: string;
     completed_date?: string | null;
     frequency: FrequencyType;
     custom_days?: number | null;
     next_due_date?: string | null;
-    before_image?: MaintenanceImage | null;
-    after_image?: MaintenanceImage | null;
+    before_image?: MaintenanceImage | string | null; // Allow string for URLs
+    after_image?: MaintenanceImage | string | null; // Allow string for URLs
     before_image_url?: string | null;
     after_image_url?: string | null;
-    notes?: string;
+    notes?: string | null;
     status?: string;
-    property_id?: string | PropertyDetails | null;
+    property_id?: string | null; // Simplified to string | null
+    is_overdue?: boolean; // Added from backend response
   }
-  
   // Request structure for creating/updating maintenance
   export interface PreventiveMaintenanceRequest {
     pmtitle?: string;
