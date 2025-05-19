@@ -1,15 +1,16 @@
+// app/dashboard/preventive-maintenance/[pm_id]/PreventiveMaintenanceClient.tsx
+
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useSession } from "next-auth/react";
 import { 
   PreventiveMaintenance, 
-  getImageUrl,
-  getMachineDetails,
-  getPropertyDetails
+  getImageUrl 
 } from '@/app/lib/preventiveMaintenanceModels';
+// Modify the import statement to include Wrench instead of Tools
 import { AlertCircle, Calendar, Clipboard, Wrench, X, ZoomIn } from 'lucide-react';
 
 interface PreventiveMaintenanceClientProps {
@@ -24,14 +25,11 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [currentImageAlt, setCurrentImageAlt] = useState<string>('');
+  
+  // State for completion functionality (if needed)
   const [isCompleting, setIsCompleting] = useState(false);
 
-  // Log maintenanceData to debug
-  useEffect(() => {
-    console.log("Client component received data:", JSON.stringify(maintenanceData, null, 2));
-  }, [maintenanceData]);
-
-  // Function for confirming deletion
+  // ฟังก์ชันสำหรับการยืนยันการลบ
   const handleDelete = async () => {
     if (!window.confirm('Are you sure you want to delete this maintenance record?')) {
       return;
@@ -63,7 +61,7 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
     }
   };
   
-  // Function to mark maintenance as complete
+  // Function to mark maintenance as complete (if needed)
   const handleMarkComplete = async () => {
     if (!window.confirm('Mark this maintenance task as completed?')) {
       return;
@@ -98,14 +96,14 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
     }
   };
 
-  // Use getImageUrl from models
+  // ใช้ฟังก์ชัน getImageUrl จาก models
   const getBeforeImageUrl = (): string | null => {
-    // If there's a direct URL, use it
+    // ถ้ามี URL โดยตรงให้ใช้ URL นั้น
     if (maintenanceData.before_image_url) {
       return maintenanceData.before_image_url;
     }
     
-    // If no direct URL but there's a before_image object, use getImageUrl
+    // ถ้าไม่มี URL โดยตรงแต่มี object before_image ให้ใช้ฟังก์ชัน getImageUrl
     if (maintenanceData.before_image) {
       return getImageUrl(maintenanceData.before_image);
     }
@@ -114,12 +112,12 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
   };
 
   const getAfterImageUrl = (): string | null => {
-    // If there's a direct URL, use it
+    // ถ้ามี URL โดยตรงให้ใช้ URL นั้น
     if (maintenanceData.after_image_url) {
       return maintenanceData.after_image_url;
     }
     
-    // If no direct URL but there's an after_image object, use getImageUrl
+    // ถ้าไม่มี URL โดยตรงแต่มี object after_image ให้ใช้ฟังก์ชัน getImageUrl
     if (maintenanceData.after_image) {
       return getImageUrl(maintenanceData.after_image);
     }
@@ -141,7 +139,7 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
     setCurrentImage(null);
   };
 
-  // Variables for image URLs
+  // ตัวแปรสำหรับ URL รูปภาพ
   const beforeImageUrl = getBeforeImageUrl();
   const afterImageUrl = getAfterImageUrl();
   
@@ -172,52 +170,33 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
   
   const statusInfo = getStatusText();
 
-  // Improved render machine list helper function
-  const renderMachines = () => {
-    if (!maintenanceData.machines || maintenanceData.machines.length === 0) {
-      return <p className="text-gray-500 italic">No machines assigned</p>;
-    }
-    
-    // Debug log machines data
-    console.log("Client rendering machines:", JSON.stringify(maintenanceData.machines, null, 2));
+  // Render machine list helper function
+// Render machine list helper function
+const renderMachines = () => {
+  if (!maintenanceData.machines || maintenanceData.machines.length === 0) {
+    return <p className="text-gray-500 italic">No machines assigned</p>;
+  }
 
-    return (
-      <div className="flex flex-wrap gap-2">
-        {maintenanceData.machines.map((machine, index) => {
-          // Use helper function to get consistent machine details
-          const { id: machineId, name: machineName } = getMachineDetails(machine);
-          
-          return (
-            <div 
-              key={index} 
-              className="flex items-center px-3 py-2 bg-gray-100 text-gray-800 text-sm rounded-lg"
-            >
-              <Wrench className="h-4 w-4 mr-2 text-gray-600" />
-              {machineName ? `${machineName} (${machineId})` : machineId}
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  // Helper function for property ID display - FIXED
-  const renderPropertyId = () => {
-    if (!maintenanceData.property_id) {
-      return <span className="font-medium">Not assigned</span>;
-    }
-    
-    // Use helper function for consistent property details
-    const { id: propId, name: propName } = getPropertyDetails(maintenanceData.property_id);
-    
-    if (propName && propId) {
-      return <span className="font-medium">{`${propName} (${propId})`}</span>;
-    } else if (propId) {
-      return <span className="font-medium">{propId}</span>;
-    } else {
-      return <span className="font-medium">Unknown Property</span>;
-    }
-  };
+  return (
+    <div className="flex flex-wrap gap-2">
+      {maintenanceData.machines.map((machine, index) => {
+        // Handle different machine data formats
+        const machineId = typeof machine === 'object' ? machine.machine_id : machine;
+        const machineName = typeof machine === 'object' ? machine.name : null;
+        
+        return (
+          <div 
+            key={index} 
+            className="flex items-center px-3 py-2 bg-gray-100 text-gray-800 text-sm rounded-lg"
+          >
+            <Wrench className="h-4 w-4 mr-2 text-gray-600" /> {/* Changed from Tools to Wrench */}
+            {machineName ? `${machineName} (${machineId})` : machineId}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
 
   return (
     <>
@@ -238,12 +217,13 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
               <span className="font-medium">{maintenanceData.pm_id}</span>
             </div>
             
-            {/* FIXED: Property ID display */}
-            <div className="flex items-center">
-              <Clipboard className="h-4 w-4 mr-2 text-gray-600" />
-              <span className="text-gray-600 mr-2">Property ID:</span>
-              {renderPropertyId()}
-            </div>
+            {maintenanceData.property_id && (
+              <div className="flex items-center">
+                <Clipboard className="h-4 w-4 mr-2 text-gray-600" />
+                <span className="text-gray-600 mr-2">Property ID:</span>
+                <span className="font-medium">{maintenanceData.property_id}</span>
+              </div>
+            )}
             
             {/* Scheduled and Completed Date row */}
             <div className="flex items-center">
@@ -271,15 +251,9 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
           </div>
         </div>
         
-        {/* Associated Machines Section - FIXED */}
+        {/* Associated Machines Section */}
         <div className="mb-6">
           <h3 className="text-lg font-semibold mb-3">Associated Machines</h3>
-          {/* Debug info - will be visible in the UI */}
-          <div className="text-xs text-gray-400 mb-2">
-            {maintenanceData.machines ? 
-              `Debug - Found ${maintenanceData.machines.length} machines` : 
-              'Debug - No machines data found'}
-          </div>
           {renderMachines()}
         </div>
         
