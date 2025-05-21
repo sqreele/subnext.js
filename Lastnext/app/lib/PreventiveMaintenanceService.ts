@@ -382,9 +382,22 @@ class PreventiveMaintenanceService {
     }
 
     try {
+      console.log(`Attempting to delete preventive maintenance with ID: ${id}`);
       await apiClient.delete(`${this.baseUrl}/${id}/`);
       return { success: true, data: null, message: 'Maintenance deleted successfully' };
     } catch (error: any) {
+      console.error(`Service error deleting maintenance ${id}:`, error);
+      
+      // Check if it's an authentication error (401)
+      if (error.response?.status === 401) {
+        console.warn('Authentication failed when deleting maintenance. User may need to log in again.');
+        return { 
+          success: false, 
+          message: 'You don\'t have permission to delete this record or your session has expired.' 
+        };
+      }
+      
+      // Use the existing error handler for other errors
       console.error('Service error deleting maintenance:', error);
       throw handleApiError(error);
     }
