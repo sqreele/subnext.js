@@ -380,7 +380,7 @@ class PreventiveMaintenanceService {
       console.error('Cannot delete: PM ID is undefined or empty');
       return { success: false, message: 'PM ID is required for deletion' };
     }
-
+  
     try {
       console.log(`Attempting to delete preventive maintenance with ID: ${id}`);
       await apiClient.delete(`${this.baseUrl}/${id}/`);
@@ -398,7 +398,6 @@ class PreventiveMaintenanceService {
       }
       
       // Use the existing error handler for other errors
-      console.error('Service error deleting maintenance:', error);
       throw handleApiError(error);
     }
   }
