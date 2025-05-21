@@ -3,7 +3,7 @@ import { Property } from "@/app/lib/types";
 
 /**
  * Fetch user's properties directly from the database using the many-to-many relationship
- * This handles both direct properties relation and through UserProperty join table
+ * This handles properties through UserProperty join table
  */
 export async function getUserProperties(userId: string): Promise<Property[]> {
   try {
@@ -54,31 +54,6 @@ export async function getUserProperties(userId: string): Promise<Property[]> {
             : (prop.created_at || new Date().toISOString()),
         };
       });
-    }
-    
-    // Last fallback attempt - only if User has a direct properties relation
-    // The error message suggests this might be the case in your schema
-    try {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        include: { properties: true },
-      });
-  
-      if (user?.properties && Array.isArray(user.properties)) {
-        return user.properties.map((prop: any) => ({
-          id: prop.id, 
-          property_id: String(prop.id),
-          name: prop.name || `Property ${prop.id}`,
-          description: prop.description || "",
-          created_at: typeof prop.created_at === 'object' && prop.created_at !== null 
-            ? prop.created_at.toISOString() 
-            : (prop.created_at || new Date().toISOString()),
-        }));
-      }
-    } catch (includeError) {
-      // This error is expected if the 'properties' relation doesn't exist
-      // Just log and continue to return empty array
-      console.error("Error with properties include:", includeError);
     }
     
     // Return empty array if all methods fail

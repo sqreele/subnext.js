@@ -56,7 +56,6 @@ export const authOptions: NextAuthOptions = {
           /** 🔹 Step 3: Fetch user from Prisma database */
           let user = await prisma.user.findUnique({
             where: { id: userId },
-            include: { properties: true },
           });
 
           /** 🔹 Step 4: Fetch user profile from API */
@@ -90,7 +89,6 @@ export const authOptions: NextAuthOptions = {
                 positions: profileData.positions || "User",
                 created_at: profileData.created_at ? new Date(profileData.created_at) : new Date(),
               },
-              include: { properties: true },
             });
           }
 
@@ -105,15 +103,6 @@ export const authOptions: NextAuthOptions = {
               description: prop.description || "",
               created_at: prop.created_at || new Date().toISOString(),
               users: prop.users || [],
-            }));
-          } else if (user?.properties?.length > 0) {
-            normalizedProperties = user.properties.map((prop: any) => ({
-              id: String(prop.id),
-              property_id: String(prop.id),
-              name: prop.name || `Property ${prop.id}`,
-              description: prop.description || "",
-              created_at: prop.created_at.toISOString(),
-              users: [],
             }));
           } else {
             try {
