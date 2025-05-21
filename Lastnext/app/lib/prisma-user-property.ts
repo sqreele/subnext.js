@@ -7,7 +7,7 @@ import { Property } from "@/app/lib/types";
  */
 export async function getUserProperties(userId: string): Promise<Property[]> {
   try {
-    // Attempt to get properties through direct relationship
+    // Attempt to get properties through raw SQL query first
     const result = await prisma.$queryRaw`
       SELECT 
         p.id, 
@@ -25,7 +25,7 @@ export async function getUserProperties(userId: string): Promise<Property[]> {
     // The result is an array of raw DB objects
     if (Array.isArray(result) && result.length > 0) {
       return result.map((prop: any) => ({
-        id: prop.id, // Add the id field required by Property type
+        id: prop.id,
         property_id: String(prop.id),
         name: prop.name || `Property ${prop.id}`,
         description: prop.description || "",
@@ -35,27 +35,54 @@ export async function getUserProperties(userId: string): Promise<Property[]> {
       }));
     }
     
-    // Fallback to direct properties if the raw query didn't work
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        properties: true,
-      },
+    // Fallback: Query through the join table directly
+    const propertiesFromJoin = await prisma.userProperty.findMany({
+      where: { userId: userId },
+      include: { property: true },
     });
 
-    if (!user || !user.properties || !Array.isArray(user.properties)) {
-      return [];
+    if (Array.isArray(propertiesFromJoin) && propertiesFromJoin.length > 0) {
+      return propertiesFromJoin.map((relation) => {
+        const prop = relation.property;
+        return {
+          id: prop.id, 
+          property_id: String(prop.id),
+          name: prop.name || `Property ${prop.id}`,
+          description: prop.description || "",
+          created_at: typeof prop.created_at === 'object' && prop.created_at !== null 
+            ? prop.created_at.toISOString() 
+            : (prop.created_at || new Date().toISOString()),
+        };
+      });
     }
-
-    return user.properties.map((prop: any) => ({
-      id: prop.id, // Add the id field required by Property type
-      property_id: String(prop.id),
-      name: prop.name || `Property ${prop.id}`,
-      description: prop.description || "",
-      created_at: typeof prop.created_at === 'object' && prop.created_at !== null 
-        ? prop.created_at.toISOString() 
-        : (prop.created_at || new Date().toISOString()),
-    }));
+    
+    // Last fallback attempt - only if User has a direct properties relation
+    // The error message suggests this might be the case in your schema
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { properties: true },
+      });
+  
+      if (user?.properties && Array.isArray(user.properties)) {
+        return user.properties.map((prop: any) => ({
+          id: prop.id, 
+          property_id: String(prop.id),
+          name: prop.name || `Property ${prop.id}`,
+          description: prop.description || "",
+          created_at: typeof prop.created_at === 'object' && prop.created_at !== null 
+            ? prop.created_at.toISOString() 
+            : (prop.created_at || new Date().toISOString()),
+        }));
+      }
+    } catch (includeError) {
+      // This error is expected if the 'properties' relation doesn't exist
+      // Just log and continue to return empty array
+      console.error("Error with properties include:", includeError);
+    }
+    
+    // Return empty array if all methods fail
+    return [];
   } catch (error) {
     console.error("Error fetching user properties:", error);
     return [];
@@ -100,19 +127,29 @@ export async function createPropertyForUser(
     data: {
       name: propertyData.name,
       description: propertyData.description || null,
+      // Try to use the connect pattern if your schema supports it
+      users: {
+        create: {
+          userId: userId
+        }
+      }
     },
   });
 
-  // Create the relationship manually
-  await prisma.userProperty.create({
-    data: {
-      userId: userId,
-      propertyId: newProperty.id
-    }
-  });
+  // If the above creation with relationship fails, create the relationship manually
+  try {
+    await prisma.userProperty.create({
+      data: {
+        userId: userId,
+        propertyId: newProperty.id
+      }
+    });
+  } catch (error) {
+    console.error("Error creating relationship, may already exist:", error);
+  }
 
   return {
-    id: newProperty.id, // Add the id field required by Property type
+    id: newProperty.id,
     property_id: newProperty.id,
     name: newProperty.name || `Property ${newProperty.id}`,
     description: newProperty.description || "",
@@ -180,7 +217,7 @@ export async function syncUserProperties(
   
   // Convert to our application Property type
   return results.map(prop => ({
-    id: prop.id, // Add the id field required by Property type
+    id: prop.id,
     property_id: prop.id,
     name: prop.name || `Property ${prop.id}`,
     description: prop.description || "",
