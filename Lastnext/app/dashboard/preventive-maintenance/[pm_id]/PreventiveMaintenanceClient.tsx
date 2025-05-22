@@ -5,11 +5,12 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { 
   PreventiveMaintenance, 
   getImageUrl 
 } from '@/app/lib/preventiveMaintenanceModels';
+import preventiveMaintenanceService from '@/app/lib/PreventiveMaintenanceService';
 // Modify the import statement to include Wrench instead of Tools
 import { AlertCircle, Calendar, Clipboard, Wrench, X, ZoomIn } from 'lucide-react';
 
@@ -29,9 +30,33 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
   // State for completion functionality (if needed)
   const [isCompleting, setIsCompleting] = useState(false);
 
-  // ฟังก์ชันสำหรับการยืนยันการลบ
+  // Helper function to handle authentication errors
+  const handleAuthError = (errorMessage: string) => {
+    setError(errorMessage);
+    
+    // If the error is about session expiry, optionally sign out and redirect
+    if (errorMessage.includes('session has expired') || errorMessage.includes('log in again')) {
+      // Option 1: Automatically sign out and redirect to login
+      setTimeout(() => {
+        signOut({ callbackUrl: '/auth/signin' });
+      }, 3000); // Give user 3 seconds to read the error message
+      
+      // Option 2: Just redirect to login page without signing out
+      // setTimeout(() => {
+      //   router.push('/auth/signin');
+      // }, 3000);
+    }
+  };
+
+  // ฟังก์ชันสำหรับการยืนยันการลบ - Updated to use service
   const handleDelete = async () => {
     if (!window.confirm('Are you sure you want to delete this maintenance record?')) {
+      return;
+    }
+
+    // Check authentication status first
+    if (status !== "authenticated" || !session?.user?.accessToken) {
+      setError('You need to log in to perform this action');
       return;
     }
 
@@ -39,31 +64,32 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
     setError(null);
 
     try {
-      const response = await fetch(`/api/preventive-maintenance/${maintenanceData.pm_id}/`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.message || 'Failed to delete maintenance record');
+      const result = await preventiveMaintenanceService.deletePreventiveMaintenance(maintenanceData.pm_id);
+      
+      if (result.success) {
+        router.push('/dashboard/preventive-maintenance');
+        router.refresh(); // Refresh the Next.js cache
+      } else {
+        // Handle service-level errors (including 401)
+        handleAuthError(result.message || 'Failed to delete maintenance record');
       }
-
-      router.push('/dashboard/preventive-maintenance');
-      router.refresh(); // Refresh the Next.js cache
     } catch (err: any) {
       console.error('Error deleting maintenance:', err);
-      setError(err.message || 'An error occurred while deleting');
+      setError(err.message || 'An unexpected error occurred while deleting');
     } finally {
       setIsLoading(false);
     }
   };
   
-  // Function to mark maintenance as complete (if needed)
+  // Function to mark maintenance as complete - Updated with proper auth
   const handleMarkComplete = async () => {
     if (!window.confirm('Mark this maintenance task as completed?')) {
+      return;
+    }
+
+    // Check authentication status first
+    if (status !== "authenticated" || !session?.user?.accessToken) {
+      setError('You need to log in to perform this action');
       return;
     }
 
@@ -75,6 +101,7 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.user.accessToken}`, // Add Authorization header
         },
         body: JSON.stringify({
           completed_date: new Date().toISOString()
@@ -82,6 +109,11 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          handleAuthError('You don\'t have permission to complete this record or your session has expired. Please log in again.');
+          return;
+        }
+        
         const errorData = await response.json().catch(() => null);
         throw new Error(errorData?.message || 'Failed to complete maintenance record');
       }
@@ -91,6 +123,36 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
     } catch (err: any) {
       console.error('Error completing maintenance:', err);
       setError(err.message || 'An error occurred while marking as complete');
+    } finally {
+      setIsCompleting(false);
+    }
+  };
+
+  // Alternative handleMarkComplete using service class
+  const handleMarkCompleteWithService = async () => {
+    if (!window.confirm('Mark this maintenance task as completed?')) {
+      return;
+    }
+
+    setIsCompleting(true);
+    setError(null);
+
+    try {
+      const result = await preventiveMaintenanceService.completePreventiveMaintenance(
+        maintenanceData.pm_id,
+        {
+          completion_notes: 'Marked as complete from detail view'
+        }
+      );
+      
+      if (result.success) {
+        router.refresh(); // Refresh the page to show updated data
+      } else {
+        handleAuthError(result.message || 'Failed to complete maintenance record');
+      }
+    } catch (err: any) {
+      console.error('Error completing maintenance:', err);
+      setError(err.message || 'An unexpected error occurred while completing');
     } finally {
       setIsCompleting(false);
     }
@@ -171,32 +233,34 @@ export default function PreventiveMaintenanceClient({ maintenanceData }: Prevent
   const statusInfo = getStatusText();
 
   // Render machine list helper function
-// Render machine list helper function
-const renderMachines = () => {
-  if (!maintenanceData.machines || maintenanceData.machines.length === 0) {
-    return <p className="text-gray-500 italic">No machines assigned</p>;
-  }
+  const renderMachines = () => {
+    if (!maintenanceData.machines || maintenanceData.machines.length === 0) {
+      return <p className="text-gray-500 italic">No machines assigned</p>;
+    }
 
-  return (
-    <div className="flex flex-wrap gap-2">
-      {maintenanceData.machines.map((machine, index) => {
-        // Handle different machine data formats
-        const machineId = typeof machine === 'object' ? machine.machine_id : machine;
-        const machineName = typeof machine === 'object' ? machine.name : null;
-        
-        return (
-          <div 
-            key={index} 
-            className="flex items-center px-3 py-2 bg-gray-100 text-gray-800 text-sm rounded-lg"
-          >
-            <Wrench className="h-4 w-4 mr-2 text-gray-600" /> {/* Changed from Tools to Wrench */}
-            {machineName ? `${machineName} (${machineId})` : machineId}
-          </div>
-        );
-      })}
-    </div>
-  );
-};
+    return (
+      <div className="flex flex-wrap gap-2">
+        {maintenanceData.machines.map((machine, index) => {
+          // Handle different machine data formats
+          const machineId = typeof machine === 'object' ? machine.machine_id : machine;
+          const machineName = typeof machine === 'object' ? machine.name : null;
+          
+          return (
+            <div 
+              key={index} 
+              className="flex items-center px-3 py-2 bg-gray-100 text-gray-800 text-sm rounded-lg"
+            >
+              <Wrench className="h-4 w-4 mr-2 text-gray-600" /> {/* Changed from Tools to Wrench */}
+              {machineName ? `${machineName} (${machineId})` : machineId}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // Check if user is authenticated before showing action buttons
+  const isAuthenticated = status === "authenticated" && session?.user?.accessToken;
 
   return (
     <>
@@ -314,7 +378,20 @@ const renderMachines = () => {
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4 flex items-center">
             <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" />
-            <span>{error}</span>
+            <div className="flex-1">
+              <span>{error}</span>
+              {error.includes('session has expired') && (
+                <p className="text-sm mt-1">You will be redirected to the login page in a few seconds...</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Show authentication warning if not authenticated */}
+        {!isAuthenticated && (
+          <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4 flex items-center">
+            <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" />
+            <span>You need to be logged in to perform actions on this maintenance record.</span>
           </div>
         )}
 
@@ -327,8 +404,8 @@ const renderMachines = () => {
           </Link>
 
           <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-            {/* Complete button - show only if not already completed */}
-            {!maintenanceData.completed_date && (
+            {/* Complete button - show only if not already completed and user is authenticated */}
+            {!maintenanceData.completed_date && isAuthenticated && (
               <button
                 onClick={handleMarkComplete}
                 disabled={isCompleting}
@@ -340,21 +417,43 @@ const renderMachines = () => {
               </button>
             )}
             
-            <Link
-              href={`/dashboard/preventive-maintenance/edit/${maintenanceData.pm_id}`}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-center"
-            >
-              Edit
-            </Link>
-            <button
-              onClick={handleDelete}
-              disabled={isLoading}
-              className={`px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 ${
-                isLoading ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-            >
-              {isLoading ? 'Deleting...' : 'Delete'}
-            </button>
+            {/* Show Edit and Delete buttons only if authenticated */}
+            {isAuthenticated ? (
+              <>
+                <Link
+                  href={`/dashboard/preventive-maintenance/edit/${maintenanceData.pm_id}`}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-center"
+                >
+                  Edit
+                </Link>
+                <button
+                  onClick={handleDelete}
+                  disabled={isLoading}
+                  className={`px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 ${
+                    isLoading ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  {isLoading ? 'Deleting...' : 'Delete'}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  disabled
+                  className="px-4 py-2 bg-gray-400 text-gray-600 rounded-md cursor-not-allowed"
+                  title="Please log in to edit"
+                >
+                  Edit
+                </button>
+                <button
+                  disabled
+                  className="px-4 py-2 bg-gray-400 text-gray-600 rounded-md cursor-not-allowed"
+                  title="Please log in to delete"
+                >
+                  Delete
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
