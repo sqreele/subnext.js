@@ -8,8 +8,12 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json* ./
+# The 'npm install' here might be redundant if 'npm ci' is used correctly,
+# but it doesn't hurt functionality significantly, just build time slightly.
+# It's generally recommended to use 'npm ci' for cleaner, more reproducible builds in CI/CD.
 RUN npm install
-RUN npm ci --omit=dev --legacy-peer-deps
+# MODIFIED LINE: Removed --omit=dev to ensure all dependencies (including devDependencies like tailwindcss) are installed
+RUN npm ci --legacy-peer-deps
 
 # Builder stage
 FROM base AS builder
