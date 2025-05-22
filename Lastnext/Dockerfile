@@ -1,4 +1,4 @@
-# Use a Node.js version compatible with npm@11.2.0 Dockerfile
+# Use a Node.js version compatible with npm@11.2.0
 FROM node:20.17.0-alpine AS base
 RUN npm install -g npm@11.2.0
 RUN npm config set legacy-peer-deps true
@@ -8,18 +8,17 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json* ./
-# The 'npm install' here might be redundant if 'npm ci' is used correctly,
-# but it doesn't hurt functionality significantly, just build time slightly.
-# It's generally recommended to use 'npm ci' for cleaner, more reproducible builds in CI/CD.
+
+# Fix SWC dependency issues by removing lockfile and reinstalling
+RUN rm -f package-lock.json
 RUN npm install
-# MODIFIED LINE: Removed --omit=dev to ensure all dependencies (including devDependencies like tailwindcss) are installed
-RUN npm ci --legacy-peer-deps
 
 # Builder stage
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PRIVATE_API_URL
 ARG API_URL
@@ -28,6 +27,7 @@ ARG NEXTAUTH_SECRET
 ARG JWT_SECRET
 ARG GOOGLE_CLIENT_ID
 ARG GOOGLE_CLIENT_SECRET
+
 ENV NEXT_TELEMETRY_DISABLED=1 \
     NODE_ENV=production \
     NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://pmcs.site} \
@@ -38,18 +38,23 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     JWT_SECRET=${JWT_SECRET} \
     GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID} \
     GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+
 RUN npm run build
 
 # Runner stage
 FROM base AS runner
 WORKDIR /app
+
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
+
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+
 RUN mkdir -p /app/.npm && chown -R nextjs:nodejs /app
+
 ENV PORT=3000 \
     NODE_ENV=production \
     HOSTNAME="0.0.0.0" \
@@ -61,6 +66,7 @@ ENV PORT=3000 \
     JWT_SECRET=${JWT_SECRET} \
     GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID} \
     GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+
 USER nextjs
 EXPOSE 3000
 CMD ["npm", "start"]
