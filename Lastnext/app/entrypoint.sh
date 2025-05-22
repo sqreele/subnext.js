@@ -169,10 +169,469 @@ update_binary_targets() {
 echo "📦 Installing dependencies..."
 npm install
 
+# Check and install missing dependencies
+echo "🔍 Checking for missing dependencies..."
+
+# Function to install dependency if not present
+install_if_missing() {
+    local package="$1"
+    local dev="$2"
+    
+    if ! npm list "$package" > /dev/null 2>&1; then
+        echo "📦 Installing missing dependency: $package"
+        if [ "$dev" = "dev" ]; then
+            npm install --save-dev "$package"
+        else
+            npm install "$package"
+        fi
+    else
+        echo "✅ $package already installed"
+    fi
+}
+
+# Install essential dependencies
+install_if_missing "tailwindcss" "dev"
+install_if_missing "autoprefixer" "dev"
+install_if_missing "postcss" "dev"
+install_if_missing "@types/node" "dev"
+install_if_missing "@types/react" "dev"
+install_if_missing "@types/react-dom" "dev"
+install_if_missing "typescript" "dev"
+
+# Install runtime dependencies if missing
+install_if_missing "next"
+install_if_missing "react"
+install_if_missing "react-dom"
+install_if_missing "@prisma/client"
+install_if_missing "prisma" "dev"
+install_if_missing "next-auth"
+
+# Create missing config files
+create_config_files() {
+    echo "📝 Creating missing configuration files..."
+    
+    # Create tailwind.config.js
+    if [ ! -f "tailwind.config.js" ] && [ ! -f "tailwind.config.ts" ]; then
+        echo "📝 Creating tailwind.config.js..."
+        cat > tailwind.config.js << 'EOF'
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    './pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './components/**/*.{js,ts,jsx,tsx,mdx}',
+    './app/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {
+      colors: {
+        background: "var(--background)",
+        foreground: "var(--foreground)",
+      },
+    },
+  },
+  plugins: [],
+}
+EOF
+        echo "✅ tailwind.config.js created"
+    fi
+    
+    # Create postcss.config.js
+    if [ ! -f "postcss.config.js" ] && [ ! -f "postcss.config.mjs" ]; then
+        echo "📝 Creating postcss.config.js..."
+        cat > postcss.config.js << 'EOF'
+module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+EOF
+        echo "✅ postcss.config.js created"
+    fi
+    
+    # Create tsconfig.json if missing
+    if [ ! -f "tsconfig.json" ]; then
+        echo "📝 Creating tsconfig.json..."
+        cat > tsconfig.json << 'EOF'
+{
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "es6"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+EOF
+        echo "✅ tsconfig.json created"
+    fi
+    
+    # Create next.config.js if missing
+    if [ ! -f "next.config.js" ] && [ ! -f "next.config.mjs" ]; then
+        echo "📝 Creating next.config.js..."
+        cat > next.config.js << 'EOF'
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  experimental: {
+    appDir: true,
+  },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**',
+      },
+    ],
+  },
+}
+
+module.exports = nextConfig
+EOF
+        echo "✅ next.config.js created"
+    fi
+}
+
+create_config_files
+
+# Create missing directory structure and placeholder files
+create_missing_structure() {
+    echo "📂 Creating missing directory structure..."
+    
+    # Create essential directories
+    mkdir -p app/components/profile
+    mkdir -p app/lib
+    mkdir -p app/dashboard/Preventive_maintenance
+    mkdir -p app/dashboard/preventive-maintenance
+    mkdir -p app/api/health
+    mkdir -p app/auth/register
+    
+    # Create missing context files
+    if [ ! -f "app/lib/PropertyContext.tsx" ] && [ ! -f "app/lib/PropertyContext.js" ]; then
+        echo "📝 Creating PropertyContext..."
+        cat > app/lib/PropertyContext.tsx << 'EOF'
+'use client';
+
+import React, { createContext, useContext, useState, useEffect } from 'react';
+
+interface Property {
+  id: string;
+  property_id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+}
+
+interface PropertyContextType {
+  selectedProperty: string | null;
+  userProperties: Property[];
+  setSelectedProperty: (propertyId: string | null) => void;
+  setUserProperties: (properties: Property[]) => void;
+}
+
+const PropertyContext = createContext<PropertyContextType | undefined>(undefined);
+
+export function PropertyProvider({ children }: { children: React.ReactNode }) {
+  const [selectedProperty, setSelectedProperty] = useState<string | null>(null);
+  const [userProperties, setUserProperties] = useState<Property[]>([]);
+
+  return (
+    <PropertyContext.Provider
+      value={{
+        selectedProperty,
+        userProperties,
+        setSelectedProperty,
+        setUserProperties,
+      }}
+    >
+      {children}
+    </PropertyContext.Provider>
+  );
+}
+
+export function useProperty() {
+  const context = useContext(PropertyContext);
+  if (context === undefined) {
+    throw new Error('useProperty must be used within a PropertyProvider');
+  }
+  return context;
+}
+EOF
+        echo "✅ PropertyContext created"
+    fi
+    
+    # Create missing user-context
+    if [ ! -f "app/lib/user-context.tsx" ] && [ ! -f "app/lib/user-context.js" ]; then
+        echo "📝 Creating user-context..."
+        cat > app/lib/user-context.tsx << 'EOF'
+'use client';
+
+import React, { createContext, useContext, useState } from 'react';
+
+interface User {
+  id: string;
+  username: string;
+  email?: string;
+  name?: string;
+}
+
+interface UserContextType {
+  user: User | null;
+  setUser: (user: User | null) => void;
+}
+
+const UserContext = createContext<UserContextType | undefined>(undefined);
+
+export function UserProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+
+  return (
+    <UserContext.Provider value={{ user, setUser }}>
+      {children}
+    </UserContext.Provider>
+  );
+}
+
+export function useUser() {
+  const context = useContext(UserContext);
+  if (context === undefined) {
+    throw new Error('useUser must be used within a UserProvider');
+  }
+  return context;
+}
+EOF
+        echo "✅ user-context created"
+    fi
+    
+    # Create missing RegisterForm component
+    if [ ! -f "app/components/profile/RegisterForm.tsx" ] && [ ! -f "app/components/profile/RegisterForm.js" ]; then
+        echo "📝 Creating RegisterForm component..."
+        cat > app/components/profile/RegisterForm.tsx << 'EOF'
+'use client';
+
+import { useState } from 'react';
+
+interface RegisterFormProps {
+  onSubmit?: (data: any) => void;
+}
+
+export default function RegisterForm({ onSubmit }: RegisterFormProps) {
+  const [formData, setFormData] = useState({
+    username: '',
+    email: '',
+    password: '',
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (onSubmit) {
+      onSubmit(formData);
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({
+      ...prev,
+      [e.target.name]: e.target.value
+    }));
+  };
+
+  return (
+    <div className="max-w-md mx-auto">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label htmlFor="username" className="block text-sm font-medium text-gray-700">
+            Username
+          </label>
+          <input
+            type="text"
+            id="username"
+            name="username"
+            value={formData.username}
+            onChange={handleChange}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+            required
+          />
+        </div>
+        
+        <div>
+          <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+            Email
+          </label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+            required
+          />
+        </div>
+        
+        <div>
+          <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+            Password
+          </label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+            required
+          />
+        </div>
+        
+        <button
+          type="submit"
+          className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+        >
+          Register
+        </button>
+      </form>
+    </div>
+  );
+}
+EOF
+        echo "✅ RegisterForm component created"
+    fi
+    
+    # Create missing PreventiveMaintenanceDashboard
+    if [ ! -f "app/dashboard/Preventive_maintenance/PreventiveMaintenanceDashboard.tsx" ] && [ ! -f "app/dashboard/Preventive_maintenance/PreventiveMaintenanceDashboard.js" ]; then
+        echo "📝 Creating PreventiveMaintenanceDashboard..."
+        cat > app/dashboard/Preventive_maintenance/PreventiveMaintenanceDashboard.tsx << 'EOF'
+'use client';
+
+import { useEffect, useState } from 'react';
+
+interface MaintenanceItem {
+  id: string;
+  title: string;
+  scheduled_date: string;
+  status: string;
+}
+
+export default function PreventiveMaintenanceDashboard() {
+  const [maintenanceItems, setMaintenanceItems] = useState<MaintenanceItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Simulate data loading
+    setTimeout(() => {
+      setMaintenanceItems([
+        {
+          id: '1',
+          title: 'Sample Maintenance Task',
+          scheduled_date: new Date().toISOString(),
+          status: 'pending'
+        }
+      ]);
+      setLoading(false);
+    }, 1000);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-lg">Loading preventive maintenance dashboard...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-6">Preventive Maintenance Dashboard</h1>
+      
+      <div className="grid gap-4">
+        {maintenanceItems.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            No maintenance items found
+          </div>
+        ) : (
+          maintenanceItems.map(item => (
+            <div key={item.id} className="border rounded-lg p-4 shadow-sm">
+              <h3 className="font-semibold">{item.title}</h3>
+              <p className="text-sm text-gray-600">
+                Scheduled: {new Date(item.scheduled_date).toLocaleDateString()}
+              </p>
+              <span className={`inline-block px-2 py-1 rounded text-xs ${
+                item.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
+              }`}>
+                {item.status}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+EOF
+        echo "✅ PreventiveMaintenanceDashboard component created"
+    fi
+    
+    # Create globals.css if missing
+    if [ ! -f "app/globals.css" ]; then
+        echo "📝 Creating globals.css..."
+        cat > app/globals.css << 'EOF'
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+EOF
+        echo "✅ globals.css created"
+    fi
+}
+
 # Clean old generated files
 echo "🧹 Cleaning old generated files..."
 rm -rf node_modules/.prisma
 rm -rf .next
+
+# Create missing structure before Prisma operations
+create_missing_structure
 
 # Handle schema files intelligently
 if [ -f "./prisma/auth.prisma" ] && [ ! -f "./prisma/schema.prisma" ]; then
