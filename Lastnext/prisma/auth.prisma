@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x", "linux-arm64-openssl-3.0.x"]
 }
 
 datasource db {
@@ -7,50 +8,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id            String     @id @default(uuid())
-  username      String     @unique
-  email         String?    @unique
-  profile_image String?
-  positions     String     @default("User")
-  created_at    DateTime   @default(now())
-  accessToken   String?
-  refreshToken  String?
-  sessionToken  String?
-  
-  // Relations
-  accounts       Account[]
-  sessions       Session[]
-  userProperties UserProperty[] // Explicit many-to-many through join table
-  
-  @@map("users") // Optional: maps to snake_case table name
-}
-
-model Property {
-  id            String     @id @default(uuid())
-  name          String
-  description   String?
-  created_at    DateTime   @default(now())
-  
-  // Relations
-  userProperties UserProperty[]
-  
-  @@map("properties") // Optional: maps to snake_case table name
-}
-
-model UserProperty {
-  userId     String
-  propertyId String
-  createdAt  DateTime @default(now()) // Optional: track when relationship was created
-  
-  // Relations
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  property   Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-
-  @@id([userId, propertyId])
-  @@map("user_properties") // Optional: maps to snake_case table name
-}
-
+// NextAuth.js Models
 model Account {
   id                 String   @id @default(uuid())
   userId             String
@@ -65,11 +23,10 @@ model Account {
   id_token           String?  @db.Text
   session_state      String?
   
-  // Relations
   user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   @@unique([provider, providerAccountId])
-  @@map("accounts") // Optional: maps to snake_case table name
+  @@map("accounts")
 }
 
 model Session {
@@ -78,8 +35,64 @@ model Session {
   userId       String
   expires      DateTime
   
-  // Relations
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  @@map("sessions") // Optional: maps to snake_case table name
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// Application Models
+model User {
+  id            String     @id @default(uuid())
+  username      String     @unique
+  email         String?    @unique
+  emailVerified DateTime?  @map("email_verified")
+  name          String?
+  image         String?
+  profile_image String?
+  positions     String     @default("User")
+  created_at    DateTime   @default(now())
+  accessToken   String?
+  refreshToken  String?
+  sessionToken  String?
+  
+  // NextAuth Relations
+  accounts       Account[]
+  sessions       Session[]
+  
+  // Application Relations
+  userProperties UserProperty[]
+  
+  @@map("users")
+}
+
+model Property {
+  id            String     @id @default(uuid())
+  name          String
+  description   String?
+  created_at    DateTime   @default(now())
+  
+  userProperties UserProperty[]
+  
+  @@map("properties")
+}
+
+model UserProperty {
+  userId     String
+  propertyId String
+  createdAt  DateTime @default(now())
+  
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property   Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([userId, propertyId])
+  @@map("user_properties")
 }

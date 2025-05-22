@@ -1,4 +1,4 @@
-# Use a Node.js version compatible with npm@11.2.0
+# Use a Node.js version compatible with npm@11.2.0 Dockerfile
 FROM node:20.17.0-alpine AS base
 RUN npm install -g npm@11.2.0
 RUN npm config set legacy-peer-deps true
