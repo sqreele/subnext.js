@@ -17,10 +17,13 @@ model User {
   accessToken   String?
   refreshToken  String?
   sessionToken  String?
-  accounts      Account[]
-  sessions      Session[]
-  properties    Property[] @relation("UserProperties") // Direct relation to Property
-  userProperties UserProperty[] // Keep join table for explicit control
+  
+  // Relations
+  accounts       Account[]
+  sessions       Session[]
+  userProperties UserProperty[] // Explicit many-to-many through join table
+  
+  @@map("users") // Optional: maps to snake_case table name
 }
 
 model Property {
@@ -28,17 +31,24 @@ model Property {
   name          String
   description   String?
   created_at    DateTime   @default(now())
-  users         User[]     @relation("UserProperties") // Direct relation to User
+  
+  // Relations
   userProperties UserProperty[]
+  
+  @@map("properties") // Optional: maps to snake_case table name
 }
 
 model UserProperty {
   userId     String
   propertyId String
+  createdAt  DateTime @default(now()) // Optional: track when relationship was created
+  
+  // Relations
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   property   Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
   @@id([userId, propertyId])
+  @@map("user_properties") // Optional: maps to snake_case table name
 }
 
 model Account {
@@ -54,8 +64,12 @@ model Account {
   scope              String?
   id_token           String?  @db.Text
   session_state      String?
+  
+  // Relations
   user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
   @@unique([provider, providerAccountId])
+  @@map("accounts") // Optional: maps to snake_case table name
 }
 
 model Session {
@@ -63,5 +77,9 @@ model Session {
   sessionToken String   @unique
   userId       String
   expires      DateTime
+  
+  // Relations
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions") // Optional: maps to snake_case table name
 }

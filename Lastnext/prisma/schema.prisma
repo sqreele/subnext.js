@@ -4,39 +4,51 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")  // Ensure this points to your PostgreSQL database in .env
+  url      = env("DATABASE_URL")
 }
 
 model User {
-  id         String     @id @default(uuid())  // Unique identifier
-  username   String     @unique
-  email      String?    @unique
+  id            String     @id @default(uuid())
+  username      String     @unique
+  email         String?    @unique
   profile_image String?
-  positions  String     @default("User")
-  created_at DateTime   @default(now())
+  positions     String     @default("User")
+  created_at    DateTime   @default(now())
   accessToken   String?
   refreshToken  String?
   sessionToken  String?
-  accounts   Account[]
-  sessions   Session[]
-  properties UserProperty[] // New relation table for many-to-many properties
+  
+  // Relations
+  accounts       Account[]
+  sessions       Session[]
+  userProperties UserProperty[] // Explicit many-to-many through join table
+  
+  @@map("users") // Optional: maps to snake_case table name
 }
 
 model Property {
-  id          String     @id @default(uuid())  
-  name        String
-  description String?
-  created_at  DateTime   @default(now())
-  users       UserProperty[]
+  id            String     @id @default(uuid())
+  name          String
+  description   String?
+  created_at    DateTime   @default(now())
+  
+  // Relations
+  userProperties UserProperty[]
+  
+  @@map("properties") // Optional: maps to snake_case table name
 }
 
-model UserProperty {  // Join table for User <-> Property many-to-many relation
+model UserProperty {
   userId     String
   propertyId String
+  createdAt  DateTime @default(now()) // Optional: track when relationship was created
+  
+  // Relations
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   property   Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
-  @@id([userId, propertyId])  // Composite primary key
+  @@id([userId, propertyId])
+  @@map("user_properties") // Optional: maps to snake_case table name
 }
 
 model Account {
@@ -52,8 +64,12 @@ model Account {
   scope              String?
   id_token           String?  @db.Text
   session_state      String?
+  
+  // Relations
   user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
   @@unique([provider, providerAccountId])
+  @@map("accounts") // Optional: maps to snake_case table name
 }
 
 model Session {
@@ -61,5 +77,9 @@ model Session {
   sessionToken String   @unique
   userId       String
   expires      DateTime
+  
+  // Relations
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions") // Optional: maps to snake_case table name
 }
