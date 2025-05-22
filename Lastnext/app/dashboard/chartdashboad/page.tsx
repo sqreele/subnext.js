@@ -1,9 +1,9 @@
 // ./app/dashboard/chartdashboard/page.tsx
 import { Suspense } from 'react';
-import { fetchJobs } from '@/app/lib/data.server'; // Import from server file
-import PropertyJobsDashboard from '@/app/components/jobs/PropertyJobsDashboard';
+import { fetchJobs } from '@/lib/data.server'; // Import from server file
+import PropertyJobsDashboard from '@/components/jobs/PropertyJobsDashboard';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/lib/auth';
+import { authOptions } from '@/lib/auth';
 
 export default async function ChartdashboardPage() {
   // Fetch session on the server

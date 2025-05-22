@@ -5,8 +5,8 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger
-} from '@/app/components/ui/tooltip';
-import { cn } from '@/app/lib/utils'; // Using cn instead of clsx for consistency
+} from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils'; // Using cn instead of clsx for consistency
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';

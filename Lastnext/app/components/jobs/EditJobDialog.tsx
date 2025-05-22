@@ -3,9 +3,9 @@
 
 import React, { FC, useEffect } from "react";
 import { Loader } from "lucide-react";
-import { Job } from "@/app/lib/types"; // Adjusted path
-import { Button } from "@/app/components/ui/button"; // Adjusted path
-import { Checkbox } from "@/app/components/ui/checkbox"; // Adjusted path
+import { Job } from "@/lib/types"; // Adjusted path
+import { Button } from "@/components/ui/button"; // Adjusted path
+import { Checkbox } from "@/components/ui/checkbox"; // Adjusted path
 import {
   Dialog,
   DialogContent,
@@ -13,16 +13,16 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter, // Import Footer
-} from "@/app/components/ui/dialog"; // Adjusted path
+} from "@/components/ui/dialog"; // Adjusted path
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/app/components/ui/select"; // Adjusted path
-import { Textarea } from "@/app/components/ui/textarea"; // Adjusted path
-import { Label } from "@/app/components/ui/label"; // Import Label for better accessibility
+} from "@/components/ui/select"; // Adjusted path
+import { Textarea } from "@/components/ui/textarea"; // Adjusted path
+import { Label } from "@/components/ui/label"; // Import Label for better accessibility
 
 // Define priority constants to use as values
 const JOB_PRIORITY = {

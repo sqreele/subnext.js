@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { useProperty } from '@/app/lib/PropertyContext';
-import { JobCard } from '@/app/components/jobs/JobCard';
-import Pagination from '@/app/components/jobs/Pagination';
-import JobActions from '@/app/components/jobs/JobActions';
-import { Job, TabValue, Property, SortOrder } from '@/app/lib/types';
+import { useProperty } from '@/lib/PropertyContext';
+import { JobCard } from '@/components/jobs/JobCard';
+import Pagination from '@/components/jobs/Pagination';
+import JobActions from '@/components/jobs/JobActions';
+import { Job, TabValue, Property, SortOrder } from '@/lib/types';
 import { Loader2 } from 'lucide-react';
 import {
   startOfDay, endOfDay, subDays,

@@ -1,9 +1,9 @@
 // app/dashboard/rooms/[room_id]/page.tsx
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
-import { fetchRoom, fetchProperties, fetchJobsForRoom } from '@/app/lib/data.server';
+import { fetchRoom, fetchProperties, fetchJobsForRoom } from '@/lib/data.server';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/lib/auth';
+import { authOptions } from '@/lib/auth';
 import RoomDetailContent from './RoomDetailContent';
 
 type Props = {

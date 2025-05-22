@@ -3,10 +3,10 @@
 import React, { useState, useCallback, useEffect, ChangeEventHandler } from "react";
 import Image from "next/image";
 import { Upload, X, AlertCircle } from "lucide-react";
-import { Button } from "@/app/components/ui/button";
-import { Progress } from "@/app/components/ui/progress";
-import { Alert, AlertDescription } from "@/app/components/ui/alert";
-import { cn } from "@/app/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { cn } from "@/lib/utils";
 
 export interface FileUploadProps {
   onFileSelect: (files: File[]) => void;

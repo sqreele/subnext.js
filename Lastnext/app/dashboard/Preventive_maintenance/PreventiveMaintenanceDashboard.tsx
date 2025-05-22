@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { usePreventiveMaintenanceJobs } from '@/app/lib/hooks/usePreventiveMaintenanceJobs';
-import { Job } from '@/app/lib/types';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/app/components/ui/card';
-import { Button } from '@/app/components/ui/button';
-import { Badge } from '@/app/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
+import { usePreventiveMaintenanceJobs } from '@/lib/hooks/usePreventiveMaintenanceJobs';
+import { Job, Room, Topic } from '@/lib/types';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Calendar,
   CheckCircle,
@@ -21,7 +21,7 @@ import {
   ChevronDown,
   Bell
 } from 'lucide-react';
-import { cn } from '@/app/lib/utils';
+import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import {
   DropdownMenu,
@@ -29,20 +29,20 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger
-} from '@/app/components/ui/dropdown-menu';
+} from '@/components/ui/dropdown-menu';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/app/components/ui/select";
+} from "@/components/ui/select";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/app/components/ui/tooltip";
+} from "@/components/ui/tooltip";
 import {
   Pagination,
   PaginationContent,
@@ -50,7 +50,7 @@ import {
   PaginationLink,
   PaginationNext,
   PaginationPrevious,
-} from "@/app/components/ui/pagination";
+} from "@/components/ui/pagination";
 
 interface PreventiveMaintenanceDashboardProps {
   propertyId: string;
@@ -99,7 +99,7 @@ export default function PreventiveMaintenanceDashboard({
 
   // Apply filters to the jobs
   const filteredJobs = useMemo(() => {
-    return jobs.filter(job => {
+    return jobs.filter((job) => {
       // Filter by status
       if (statusFilter !== 'all' && job.status !== statusFilter) {
         return false;
@@ -137,18 +137,18 @@ export default function PreventiveMaintenanceDashboard({
 
   // Group jobs by status for tab filtering
   const jobsByStatus = useMemo(() => ({
-    pending: filteredJobs.filter(job => job.status === 'pending'),
-    in_progress: filteredJobs.filter(job => job.status === 'in_progress'),
-    completed: filteredJobs.filter(job => job.status === 'completed'),
-    waiting_sparepart: filteredJobs.filter(job => job.status === 'waiting_sparepart'),
-    cancelled: filteredJobs.filter(job => job.status === 'cancelled'),
-    is_PM: filteredJobs.filter(job => job.is_preventivemaintenance === true)
+    pending: filteredJobs.filter((job) => job.status === 'pending'),
+    in_progress: filteredJobs.filter((job) => job.status === 'in_progress'),
+    completed: filteredJobs.filter((job) => job.status === 'completed'),
+    waiting_sparepart: filteredJobs.filter((job) => job.status === 'waiting_sparepart'),
+    cancelled: filteredJobs.filter((job) => job.status === 'cancelled'),
+    is_PM: filteredJobs.filter((job) => job.is_preventivemaintenance === true)
   }), [filteredJobs]);
 
   // Calculate upcoming maintenance in the next 30 days
   const upcomingMaintenance = useMemo(() => {
     // Filter jobs in pending state - these are considered "upcoming"
-    return jobs.filter(job => job.status === 'pending');
+    return jobs.filter((job) => job.status === 'pending');
   }, [jobs]);
 
   // Reset filters function
@@ -160,12 +160,12 @@ export default function PreventiveMaintenanceDashboard({
 
   // Get available statuses and priorities from jobs
   const availableStatuses = useMemo(() =>
-    Array.from(new Set(jobs.map(job => job.status))),
+    Array.from(new Set(jobs.map((job) => job.status))),
     [jobs]
   );
 
   const availablePriorities = useMemo(() =>
-    Array.from(new Set(jobs.filter(job => job.priority).map(job => job.priority))),
+    Array.from(new Set(jobs.filter((job) => job.priority).map((job) => job.priority))),
     [jobs]
   );
 
@@ -314,7 +314,7 @@ export default function PreventiveMaintenanceDashboard({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Statuses</SelectItem>
-                    {availableStatuses.map(status => (
+                    {availableStatuses.map((status) => (
                       <SelectItem key={status} value={status}>
                         {status.replace('_', ' ')}
                       </SelectItem>
@@ -334,7 +334,7 @@ export default function PreventiveMaintenanceDashboard({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Priorities</SelectItem>
-                    {availablePriorities.map(priority => (
+                    {availablePriorities.map((priority) => (
                       <SelectItem key={priority} value={priority}>
                         {priority}
                       </SelectItem>
@@ -484,7 +484,7 @@ export default function PreventiveMaintenanceDashboard({
                     <JobCard key={job.job_id} job={job} />
                   ))}
                   
-                  {/* Pagination */}
+                  {/* Fixed Pagination */}
                   {totalPages > 1 && (
                     <Pagination className="mt-6">
                       <PaginationContent>
@@ -492,6 +492,7 @@ export default function PreventiveMaintenanceDashboard({
                           <PaginationPrevious 
                             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                             className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                            size="default"
                           />
                         </PaginationItem>
                         
@@ -515,6 +516,7 @@ export default function PreventiveMaintenanceDashboard({
                                 <PaginationLink
                                   onClick={() => setCurrentPage(pageNumber)}
                                   isActive={currentPage === pageNumber}
+                                  size="default"
                                 >
                                   {pageNumber}
                                 </PaginationLink>
@@ -528,6 +530,7 @@ export default function PreventiveMaintenanceDashboard({
                           <PaginationNext 
                             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                             className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                            size="default"
                           />
                         </PaginationItem>
                       </PaginationContent>
@@ -596,7 +599,7 @@ function JobCard({ job }: { job: Job }) {
 
   // Format room names if available
   const roomNames = job.rooms && job.rooms.length > 0
-    ? job.rooms.map(room => room.name).join(', ')
+    ? job.rooms.map((room: Room) => room.name).join(', ')
     : 'No room specified';
 
   return (

@@ -3,9 +3,9 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
-import { useUser } from '@/app/lib/user-context';
-import { useProperty } from '@/app/lib/PropertyContext';
-import { Property, Job } from '@/app/lib/types';
+import { useUser } from '@/lib/user-context';
+import { useProperty } from '@/lib/PropertyContext';
+import { Property, Job } from '@/lib/types';
 
 /**
  * Custom hook for enhanced property selection and filtering

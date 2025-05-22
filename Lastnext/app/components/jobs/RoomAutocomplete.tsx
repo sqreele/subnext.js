@@ -2,13 +2,13 @@
 "use client";
 
 import React, { useState, useCallback, useEffect, useMemo } from "react";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/app/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/app/components/ui/popover";
-import { Button } from "@/app/components/ui/button";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 import { Check, ChevronsUpDown, Building } from "lucide-react";
-import { cn } from "@/app/lib/utils";
-import { useProperty } from "@/app/lib/PropertyContext";
-import { Room } from "@/app/lib/types";
+import { cn } from "@/lib/utils";
+import { useProperty } from "@/lib/PropertyContext";
+import { Room } from "@/lib/types";
 
 interface RoomAutocompleteProps {
   rooms: Room[];

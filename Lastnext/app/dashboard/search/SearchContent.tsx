@@ -5,13 +5,13 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Package, Search, CalendarClock, Home, MapPin, AlertCircle } from 'lucide-react';
-import {CardFooter, Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/app/components/ui/card';
-import { Badge } from '@/app/components/ui/badge';
-import { Button } from '@/app/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
-import { Job, Property, JobStatus, STATUS_VARIANTS, Room } from '@/app/lib/types';
+import {CardFooter, Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Job, Property, JobStatus, STATUS_VARIANTS, Room } from '@/lib/types';
 import { useRouter } from 'next/navigation';
-import { useProperty } from '@/app/lib/PropertyContext';
+import { useProperty } from '@/lib/PropertyContext';
 import { useSession } from 'next-auth/react';
 
 export default function SearchContent() {

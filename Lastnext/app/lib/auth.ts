@@ -2,8 +2,8 @@ import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import { NextAuthOptions } from "next-auth";
-import { prisma } from "@/app/lib/prisma";
-import { UserProfile, Property } from "@/app/lib/types"; // Import your types
+import { prisma } from "@/lib/prisma";
+import { UserProfile, Property } from "@/lib/types"; // Import your types
 import { getUserProperties } from "./prisma-user-property";
 import { refreshAccessToken } from "./auth-helpers";
 

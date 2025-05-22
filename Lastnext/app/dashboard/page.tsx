@@ -1,9 +1,9 @@
 // ./app/dashboard/page.tsx
 import { Suspense } from 'react';
-import { fetchJobsForProperty, fetchProperties } from '@/app/lib/data.server';
-import JobsContent from '@/app/dashboard/JobsContent';
+import { fetchJobsForProperty, fetchProperties } from '@/lib/data.server';
+import JobsContent from '@/dashboard/JobsContent';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/lib/auth';
+import { authOptions } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic'; // Ensure dynamic rendering

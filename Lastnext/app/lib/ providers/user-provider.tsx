@@ -4,7 +4,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, Dispatch, SetStateAction } from 'react'; // Import Dispatch, SetStateAction
 import { useSession } from 'next-auth/react';
-import { type UserProfile, type UserContextType, type Property } from '@/app/lib/types'; // Import Property if needed for profile structure
+import { type UserProfile, type UserContextType, type Property } from '@/lib/types'; // Import Property if needed for profile structure
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes

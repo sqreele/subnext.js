@@ -2,13 +2,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useProperty } from '@/app/lib/PropertyContext';
-import { useUser } from '@/app/lib/user-context';
+import { useProperty } from '@/lib/PropertyContext';
+import { useUser } from '@/lib/user-context';
 import { useSession } from 'next-auth/react';
 import { redirect } from 'next/navigation';
-import PreventiveMaintenanceDashboard from '@/app/dashboard/Preventive_maintenance/PreventiveMaintenanceDashboard';
-import { Badge } from '@/app/components/ui/badge';
-import { Button } from '@/app/components/ui/button';
+import PreventiveMaintenanceDashboard from '@/dashboard/Preventive_maintenance/PreventiveMaintenanceDashboard';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Wrench, AlertTriangle, Building } from 'lucide-react';
 

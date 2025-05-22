@@ -4,7 +4,7 @@ import React, { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { User2, Mail, Calendar, Shield, Pencil, Building2, Plus, AlertCircle } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/app/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -12,12 +12,12 @@ import {
   CardHeader,
   CardTitle,
   CardFooter,
-} from "@/app/components/ui/card";
-import { Badge } from "@/app/components/ui/badge";
-import { ProfileImage } from "@/app/components/profile/ProfileImage";
-import { useUser } from "@/app/lib/user-context";
-import { Property, UserProfile } from "@/app/lib/types";
-import { cn } from "@/app/lib/utils";
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ProfileImage } from "@/components/profile/ProfileImage";
+import { useUser } from "@/lib/user-context";
+import { Property, UserProfile } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 // Define PropertyCardProps
 interface PropertyCardProps {

@@ -1,11 +1,11 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/app/components/ui/card';
-import { Badge } from '@/app/components/ui/badge';
-import { Button } from '@/app/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { CalendarClock, Home, MapPin } from 'lucide-react';
-import { Room, Property, Job } from '@/app/lib/types';
-import { cn } from '@/app/lib/utils';
+import { Room, Property, Job } from '@/lib/types';
+import { cn } from '@/lib/utils';
 import Link from 'next/link';
 
 type RoomDetailContentProps = {

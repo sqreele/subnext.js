@@ -1,12 +1,12 @@
 import { notFound } from 'next/navigation';
-import { fetchJob, fetchProperties } from '@/app/lib/data.server';
+import { fetchJob, fetchProperties } from '@/lib/data.server';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/lib/auth';
+import { authOptions } from '@/lib/auth';
 import type { Metadata, ResolvingMetadata } from 'next';
 import { MapPin, Clock, Calendar, User, CheckCircle2, MessageSquare, StickyNote, AlertTriangle } from 'lucide-react';
-import { Badge } from '@/app/components/ui/badge';
-import { cn } from '@/app/lib/utils';
-import { Job, Property, JobStatus, JobPriority } from '@/app/lib/types';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { Job, Property, JobStatus, JobPriority } from '@/lib/types';
 
 type Props = {
   params: Promise<{ jobId: string }>;

@@ -1,7 +1,7 @@
 // ./app/components/document/JobsPDFGenerator.tsx
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image, Font } from '@react-pdf/renderer';
-import { Job, TabValue, FILTER_TITLES } from '@/app/lib/types';
+import { Job, TabValue, FILTER_TITLES } from '@/lib/types';
 
 // ✅ Register Thai font (Sarabun)
 Font.register({

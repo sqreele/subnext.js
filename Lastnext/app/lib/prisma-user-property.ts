@@ -1,5 +1,5 @@
-import { prisma } from "@/app/lib/prisma";
-import { Property } from "@/app/lib/types";
+import { prisma } from "@/lib/prisma";
+import { Property } from "@/lib/types";
 
 /**
  * Custom error class for property-related database operations

@@ -1,20 +1,20 @@
 "use client";
 
 import React, { useState, useCallback, useMemo, MouseEvent } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UpdateStatusModal } from "./UpdateStatusModal";
-import { Job, JobStatus, Property } from "@/app/lib/types";
-import { LazyImage } from "@/app/components/jobs/LazyImage";
+import { Job, JobStatus, Property } from "@/lib/types";
+import { LazyImage } from "@/components/jobs/LazyImage";
 import { 
   Clock, Calendar, User, MapPin, MessageSquare, CheckCircle2, 
   AlertCircle, ClipboardList, StickyNote, AlertTriangle, 
   ChevronDown, ChevronUp 
 } from "lucide-react";
-import { cn } from "@/app/lib/utils";
-import { Badge } from "@/app/components/ui/badge";
-import { Button } from "@/app/components/ui/button";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
-import { useProperty } from "@/app/lib/PropertyContext";
+import { useProperty } from "@/lib/PropertyContext";
 
 interface JobCardProps {
   job: Job;

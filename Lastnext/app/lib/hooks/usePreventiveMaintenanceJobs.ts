@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Job, JobStatus } from '@/app/lib/types';
-import { fetchData } from '@/app/lib/api-client';
+import { Job, JobStatus } from '@/lib/types';
+import { fetchData } from '@/lib/api-client';
 
 interface UsePreventiveMaintenanceJobsOptions {
   propertyId?: string;

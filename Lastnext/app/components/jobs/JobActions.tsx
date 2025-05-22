@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, FileDown, Filter, SortAsc, SortDesc, Building, Calendar } from "lucide-react";
-import { Button } from "@/app/components/ui/button";
-import CreateJobButton from "@/app/components/jobs/CreateJobButton";
+import { Button } from "@/components/ui/button";
+import CreateJobButton from "@/components/jobs/CreateJobButton";
 import { pdf } from "@react-pdf/renderer";
 import { saveAs } from "file-saver";
-import JobsPDFDocument from "@/app/components/ducument/JobsPDFGenerator";
-import { useProperty } from "@/app/lib/PropertyContext";
+import JobsPDFDocument from "@/components/ducument/JobsPDFGenerator";
+import { useProperty } from "@/lib/PropertyContext";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,8 +16,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
   DropdownMenuLabel,
-} from "@/app/components/ui/dropdown-menu";
-import { SortOrder, Job, Property, TabValue } from "@/app/lib/types";
+} from "@/components/ui/dropdown-menu";
+import { SortOrder, Job, Property, TabValue } from "@/lib/types";
 import { format } from "date-fns";
 
 type DateFilter = "all" | "today" | "yesterday" | "thisWeek" | "thisMonth" | "custom";

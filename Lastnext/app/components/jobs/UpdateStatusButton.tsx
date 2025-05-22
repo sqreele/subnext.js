@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Button } from "@/app/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { ClipboardEdit, Loader } from "lucide-react";
 import {
   Dialog,
@@ -11,18 +11,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/app/components/ui/dialog";
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/app/components/ui/select";
-import { Label } from "@/app/components/ui/label";
-import { Job, JobStatus } from "@/app/lib/types";
-import { updateJob as apiUpdateJob } from "@/app/lib/data";
-import { useToast } from "@/app/components/ui/use-toast";
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Job, JobStatus } from "@/lib/types";
+import { updateJob as apiUpdateJob } from "@/lib/data";
+import { useToast } from "@/components/ui/use-toast";
 
 // Define status constants
 const JOB_STATUS = {

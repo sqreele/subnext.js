@@ -2,7 +2,7 @@
 "use client";
 
 import React from 'react';
-import { Button } from '@/app/components/ui/button';
+import { Button } from '@/components/ui/button';
 import {
     Dialog,
     DialogContent,
@@ -11,7 +11,7 @@ import {
     DialogTitle,
     DialogFooter,
     DialogClose, // Import DialogClose
-} from '@/app/components/ui/dialog';
+} from '@/components/ui/dialog';
 import { Loader, AlertTriangle } from 'lucide-react';
 
 interface DeleteDialogProps {

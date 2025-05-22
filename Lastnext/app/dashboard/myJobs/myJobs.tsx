@@ -1,4 +1,4 @@
-// MyJobs.js - Updated with Status Update functionality
+// MyJobs.tsx - Updated with Status Update functionality and TypeScript fixes
 "use client";
 
 import React from "react";
@@ -10,34 +10,34 @@ import {
 // --- UI Imports ---
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/app/components/ui/table";
+} from "@/components/ui/table";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from "@/app/components/ui/dialog";
+} from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/app/components/ui/alert-dialog";
-import { Textarea } from "@/app/components/ui/textarea";
-import { Checkbox } from "@/app/components/ui/checkbox";
+} from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/app/components/ui/select";
-import { Badge } from "@/app/components/ui/badge";
-import { Button } from "@/app/components/ui/button";
-import { useToast } from "@/app/components/ui/use-toast";
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
 // --- Lib/Hook Imports ---
-import { useUser } from "@/app/lib/user-context";
-import { updateJob as apiUpdateJob, deleteJob as apiDeleteJob } from "@/app/lib/data";
-import { useJobsData } from "@/app/lib/hooks/useJobsData";
-import { Job, JobStatus, JobPriority } from "@/app/lib/types";
+import { useUser } from "@/lib/user-context";
+import { updateJob as apiUpdateJob, deleteJob as apiDeleteJob } from "@/lib/data";
+import { useJobsData } from "@/lib/hooks/useJobsData";
+import { Job, JobStatus, JobPriority, Topic, Room } from "@/lib/types";
 // --- Component Imports ---
-import CreateJobButton from "@/app/components/jobs/CreateJobButton";
-import JobFilters, { FilterState } from "@/app/components/jobs/JobFilters";
-import Pagination from "@/app/components/jobs/Pagination";
-import UpdateStatusButton from "@/app/components/jobs/UpdateStatusButton"; // Import the new component
+import CreateJobButton from "@/components/jobs/CreateJobButton";
+import JobFilters, { FilterState } from "@/components/jobs/JobFilters";
+import Pagination from "@/components/jobs/Pagination";
+import UpdateStatusButton from "@/components/jobs/UpdateStatusButton"; // Import the new component
 
-// Constants
-const ITEMS_PER_PAGE = 5;
+// Constants - Renamed to avoid conflict with imported ITEMS_PER_PAGE
+const JOBS_PER_PAGE = 5;
 
 // Tailwind-based styles (Keep as they are)
 const PRIORITY_STYLES: Record<JobPriority | 'default', string> = {
@@ -97,7 +97,7 @@ const JobTableRow: React.FC<JobTableRowProps> = React.memo(
         <TableCell className="py-3 max-w-sm">
           <p className="text-sm text-gray-700 truncate mb-1">{job.description}</p>
           <div className="flex flex-wrap gap-1">
-            {job.topics?.map((topic) => (
+            {job.topics?.map((topic: Topic) => (
               <Badge
                 key={topic.id ?? topic.title} // Use unique key
                 variant="outline"
@@ -110,7 +110,7 @@ const JobTableRow: React.FC<JobTableRowProps> = React.memo(
         </TableCell>
         <TableCell className="py-3">
           <div className="flex flex-col gap-1">
-            {job.rooms?.map((room) => (
+            {job.rooms?.map((room: Room) => (
               <div key={room.room_id} className="flex items-center gap-1.5 text-sm text-gray-600">
                 <Home className="h-3.5 w-3.5 flex-shrink-0" />
                 <span className="truncate">{room.name}</span>
@@ -199,7 +199,7 @@ const JobTableRow: React.FC<JobTableRowProps> = React.memo(
             <p className="text-sm font-medium text-gray-700">Description:</p>
             <p className="text-sm text-gray-600 break-words">{job.description}</p>
             <div className="flex flex-wrap gap-1 mt-1">
-              {job.topics?.map((topic) => (
+              {job.topics?.map((topic: Topic) => (
                 <Badge
                   key={topic.id ?? topic.title}
                   variant="outline"
@@ -213,7 +213,7 @@ const JobTableRow: React.FC<JobTableRowProps> = React.memo(
           <div className="space-y-1">
             <p className="text-sm font-medium text-gray-700">Location:</p>
             <div className="flex flex-col gap-1">
-              {job.rooms?.map((room) => (
+              {job.rooms?.map((room: Room) => (
                 <div key={room.room_id} className="flex items-center gap-2 text-sm text-gray-600">
                   <Home className="h-4 w-4 flex-shrink-0" />
                   <span>{room.name}</span>
@@ -416,8 +416,8 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
       const searchLower = filters.search.toLowerCase();
       const descMatch = job.description?.toLowerCase().includes(searchLower);
       const idMatch = job.job_id?.toString().includes(searchLower);
-      const roomMatch = job.rooms?.some(room => room.name?.toLowerCase().includes(searchLower));
-      const topicMatch = job.topics?.some(topic => topic.title?.toLowerCase().includes(searchLower));
+      const roomMatch = job.rooms?.some((room: Room) => room.name?.toLowerCase().includes(searchLower));
+      const topicMatch = job.topics?.some((topic: Topic) => topic.title?.toLowerCase().includes(searchLower));
 
       const matchesSearch = filters.search === "" || descMatch || idMatch || roomMatch || topicMatch;
       const matchesStatus = filters.status === "all" || job.status === filters.status;
@@ -428,9 +428,9 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
   }, [jobs, filters]);
 
   // Calculate pagination details
-  const totalPages = Math.ceil(filteredJobs.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, filteredJobs.length);
+  const totalPages = Math.ceil(filteredJobs.length / JOBS_PER_PAGE);
+  const startIndex = (currentPage - 1) * JOBS_PER_PAGE;
+  const endIndex = Math.min(startIndex + JOBS_PER_PAGE, filteredJobs.length);
   const currentJobs = filteredJobs.slice(startIndex, endIndex);
 
   // Reset page number when filters or property change
@@ -549,6 +549,11 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
 
   const handleManualRefresh = async () => {
     await refreshJobs(true);
+  };
+
+  // Helper function to check if any filters are active
+  const filtersApplied = () => {
+    return filters.search !== "" || filters.status !== "all" || filters.priority !== "all";
   };
 
   // --- Render Logic ---
@@ -724,11 +729,6 @@ const MyJobs: React.FC<{ activePropertyId?: string }> = ({ activePropertyId }) =
       />
     </div>
   );
-
-  // Helper function to check if any filters are active
-  function filtersApplied() {
-    return filters.search !== "" || filters.status !== "all" || filters.priority !== "all";
-  }
 };
 
 export default MyJobs;

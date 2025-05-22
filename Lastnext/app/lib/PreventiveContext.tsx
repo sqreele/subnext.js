@@ -1,16 +1,16 @@
 'use client';
 
 import React, { createContext, useState, useContext, ReactNode, useCallback, useEffect } from 'react';
-import { PreventiveMaintenance, FrequencyType, ServiceResponse } from '@/app/lib/preventiveMaintenanceModels';
+import { PreventiveMaintenance, FrequencyType, ServiceResponse } from '@/lib/preventiveMaintenanceModels';
 import preventiveMaintenanceService, { 
   CreatePreventiveMaintenanceData, 
   UpdatePreventiveMaintenanceData,
   CompletePreventiveMaintenanceData,
   DashboardStats
-} from '@/app/lib/PreventiveMaintenanceService';
-import TopicService from '@/app/lib/TopicService';
+} from '@/lib/PreventiveMaintenanceService';
+import TopicService from '@/lib/TopicService';
 // Import Topic from the same place as TopicService to avoid type conflicts
-import { Topic } from '@/app/lib/TopicService';
+import { Topic } from '@/lib/TopicService';
 
 export interface SearchParams {
   status?: string;

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import FormField from './FormField';
-import { RegisterFormData, ErrorState,} from '@/app/lib/types';
+import { RegisterFormData, ErrorState,} from '@/lib/types';
 import axios from 'axios';
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 

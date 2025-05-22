@@ -1,17 +1,17 @@
 // PreventiveMaintenanceDetailPage.tsx (Server Component)
 
 import { Suspense } from 'react';
-import PreventiveMaintenanceClient from '@/app/dashboard/preventive-maintenance/[pm_id]/PreventiveMaintenanceClient'; // Ensure this path is correct
+import PreventiveMaintenanceClient from '@/dashboard/preventive-maintenance/[pm_id]/PreventiveMaintenanceClient'; // Ensure this path is correct
 import { notFound } from 'next/navigation';
-import { Topic } from '@/app/lib/types'; // Ensure this path is correct
+import { Topic } from '@/lib/types'; // Ensure this path is correct
 import {
   PreventiveMaintenance,
   getMachineDetails
-} from '@/app/lib/preventiveMaintenanceModels'; // Ensure this path is correct
+} from '@/lib/preventiveMaintenanceModels'; // Ensure this path is correct
 
 // Import NextAuth.js utilities for server-side session
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/lib/auth"
+import { authOptions } from "@/lib/auth"
 
 // Function to check if topics is a Topic[]
 function isTopicArray(topics: Topic[] | number[]): topics is Topic[] {

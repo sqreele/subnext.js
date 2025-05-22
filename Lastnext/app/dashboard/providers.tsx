@@ -1,6 +1,6 @@
 'use client';
 
-import { TooltipProvider } from '@/app/components/ui/tooltip';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return <TooltipProvider>{children}</TooltipProvider>;

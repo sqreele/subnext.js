@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState } from 'react';
-import { usePreventiveMaintenanceJobs } from '@/app/lib/hooks/usePreventiveMaintenanceJobs';
-import { Job } from '@/app/lib/types';
+import { usePreventiveMaintenanceJobs } from '@/lib/hooks/usePreventiveMaintenanceJobs';
+import { Job } from '@/lib/types';
 import Link from 'next/link';
 
 interface PreventiveMaintenanceListProps {

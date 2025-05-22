@@ -1,10 +1,10 @@
 // /app/dashboard/createJob/page.tsx
 import { Suspense } from 'react';
 import { Metadata } from 'next';
-import CreateJobForm from '@/app/components/jobs/CreateJobForm';
+import CreateJobForm from '@/components/jobs/CreateJobForm';
 import { redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/lib/auth'; // Correct path to your authOptions
+import { authOptions } from '@/lib/auth'; // Correct path to your authOptions
 
 export const dynamic = 'force-dynamic';
 

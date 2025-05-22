@@ -9,8 +9,8 @@ import { useSession, signOut } from "next-auth/react";
 import { 
   PreventiveMaintenance, 
   getImageUrl 
-} from '@/app/lib/preventiveMaintenanceModels';
-import preventiveMaintenanceService from '@/app/lib/PreventiveMaintenanceService';
+} from '@/lib/preventiveMaintenanceModels';
+import preventiveMaintenanceService from '@/lib/PreventiveMaintenanceService';
 // Modify the import statement to include Wrench instead of Tools
 import { AlertCircle, Calendar, Clipboard, Wrench, X, ZoomIn } from 'lucide-react';
 

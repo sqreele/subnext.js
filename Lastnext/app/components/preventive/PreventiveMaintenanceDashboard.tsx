@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePreventiveMaintenance } from '@/app/lib/PreventiveContext'; // Fixed import path
-import { PreventiveMaintenance } from '@/app/lib/preventiveMaintenanceModels';
+import { usePreventiveMaintenance } from '@/lib/PreventiveContext'; // Fixed import path
+import { PreventiveMaintenance } from '@/lib/preventiveMaintenanceModels';
 
 // Define interface for frequency distribution item
 interface FrequencyDistributionItem {

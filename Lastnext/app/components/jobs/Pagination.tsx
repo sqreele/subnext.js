@@ -2,8 +2,8 @@
 
 "use client";
 
-import { Button } from '@/app/components/ui/button';
-import { PaginationProps } from '@/app/lib/types';
+import { Button } from '@/components/ui/button';
+import { PaginationProps } from '@/lib/types';
 
 export default function Pagination({ totalPages, currentPage, onPageChange }: PaginationProps) {
   return (

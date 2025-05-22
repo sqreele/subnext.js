@@ -28,19 +28,19 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from '@/app/components/ui/breadcrumb';
-import { Button } from '@/app/components/ui/button';
-import HeaderPropertyList from '@/app/components/jobs/HeaderPropertyList';
-import User from '@/app/dashboard/user';
-import { Sheet, SheetContent, SheetTrigger } from '@/app/components/ui/sheet';
-import { Input } from '@/app/components/ui/input';
-import { cn } from '@/app/lib/utils';
+} from '@/components/ui/breadcrumb';
+import { Button } from '@/components/ui/button';
+import HeaderPropertyList from '@/components/jobs/HeaderPropertyList';
+import User from '@/dashboard/user';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/app/components/ui/dropdown-menu';
+} from '@/components/ui/dropdown-menu';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Home },

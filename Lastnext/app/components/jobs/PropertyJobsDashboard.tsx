@@ -6,7 +6,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-} from "@/app/components/ui/card";
+} from "@/components/ui/card";
 import {
   PieChart,
   Pie,
@@ -21,14 +21,14 @@ import {
   CartesianGrid,
 } from "recharts";
 import _ from "lodash";
-import { Job, JobStatus, STATUS_COLORS } from "@/app/lib/types";
-import { useProperty } from "@/app/lib/PropertyContext";
+import { Job, JobStatus, STATUS_COLORS } from "@/lib/types";
+import { useProperty } from "@/lib/PropertyContext";
 import { useSession, signOut } from "next-auth/react";
 import { Session } from "next-auth";
-import { fetchJobs } from "@/app/lib/data";
-import { Button } from "@/app/components/ui/button";
+import { fetchJobs } from "@/lib/data";
+import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { useJob } from "@/app/lib/JobContext";
+import { useJob } from "@/lib/JobContext";
 import { AlertCircle, RefreshCw } from "lucide-react";
 
 interface PropertyJobsDashboardProps {

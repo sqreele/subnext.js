@@ -1,9 +1,9 @@
 // ./app/components/JobTableRow.tsx
 import React from 'react';
-import { Badge } from '@/app/components/ui/badge';
-import { Button } from '@/app/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Pencil, Trash2, Home } from 'lucide-react';
-import { Job,PRIORITY_VARIANTS, STATUS_VARIANTS } from '@/app/lib/types';
+import { Job,PRIORITY_VARIANTS, STATUS_VARIANTS } from '@/lib/types';
 
 
 interface JobTableRowProps {

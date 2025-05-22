@@ -5,30 +5,30 @@ import React, { useState, useEffect } from 'react';
 import { Formik, Form, Field } from 'formik';
 import * as Yup from 'yup';
 import axios from 'axios';
-import { Button } from "@/app/components/ui/button";
-import { Textarea } from "@/app/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Plus, ChevronDown, ChevronUp, Loader } from "lucide-react";
-import { Checkbox } from "@/app/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/app/components/ui/dialog";
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/app/components/ui/select";
-import { Alert, AlertDescription } from "@/app/components/ui/alert";
+} from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useSession, signIn } from 'next-auth/react';
-import { Label } from "@/app/components/ui/label";
+import { Label } from "@/components/ui/label";
 import RoomAutocomplete from './RoomAutocomplete';
 import FileUpload from './FileUpload';
-import { Room, TopicFromAPI } from '@/app/lib/types'; // Ensure types path is correct
+import { Room, TopicFromAPI } from '@/lib/types'; // Ensure types path is correct
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB

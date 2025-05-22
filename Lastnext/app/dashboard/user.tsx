@@ -8,10 +8,10 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/app/components/ui/dropdown-menu';
-import { Button } from '@/app/components/ui/button';
+} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
 import { User2, LogOut, Settings, ChevronDown } from 'lucide-react';
-import { cn } from '@/app/lib/utils';
+import { cn } from '@/lib/utils';
 import Link from 'next/link';
 
 const User: React.FC = () => {

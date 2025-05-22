@@ -2,8 +2,8 @@
 
 import { useState, ReactNode, MouseEvent } from 'react';
 import { useSession } from 'next-auth/react';
-import { Job, JobStatus } from '@/app/lib/types';
-import { fetchWithToken } from '@/app/lib/data.server'; // Correct: named import
+import { Job, JobStatus } from '@/lib/types';
+import { fetchWithToken } from '@/lib/data.server'; // Correct: named import
 import {
   Dialog,
   DialogContent,
@@ -11,9 +11,9 @@ import {
   DialogTitle,
   DialogFooter,
   DialogTrigger,
-} from "@/app/components/ui/dialog";
-import { Button } from "@/app/components/ui/button";
-import { Label } from "@/app/components/ui/label";
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Circle, Loader2 } from 'lucide-react';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 

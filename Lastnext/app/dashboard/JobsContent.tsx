@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useProperty } from "@/app/lib/PropertyContext";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
-import JobList from "@/app/components/jobs/jobList";
-import { Job, Property, TabValue } from "@/app/lib/types";
+import { useProperty } from "@/lib/PropertyContext";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import JobList from "@/components/jobs/jobList";
+import { Job, Property, TabValue } from "@/lib/types";
 import {
   Inbox, Clock, PlayCircle, CheckCircle2, XCircle,
   AlertTriangle, Filter, ChevronDown, Wrench,
@@ -12,9 +12,9 @@ import {
 import {
   DropdownMenu, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuTrigger,
-} from "@/app/components/ui/dropdown-menu";
-import { Button } from "@/app/components/ui/button";
-import { cn } from "@/app/lib/utils";
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface JobsContentProps {
   jobs: Job[];
