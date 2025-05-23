@@ -1,12 +1,12 @@
 import { type Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/react';
-import { AuthProvider } from '@/app/providers';
-import { Toaster } from '@/app/components/ui/toaster';
-import { UserProvider } from '@/app/lib/user-context';
+import { AuthProvider } from '@/providers';
+import { Toaster } from '@/components/ui/toaster';
+import { UserProvider } from '@/lib/user-context';
 import { PropertyProvider } from './lib/PropertyContext';
 import './globals.css';
-import { JobProvider } from '@/app/lib/JobContext';
+import { JobProvider } from '@/lib/JobContext';
 // Initialize Inter font
 const inter = Inter({
   subsets: ['latin'],
