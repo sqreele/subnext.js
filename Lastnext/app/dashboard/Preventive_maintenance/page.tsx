@@ -6,7 +6,7 @@ import { useProperty } from '@/lib/PropertyContext';
 import { useUser } from '@/lib/user-context';
 import { useSession } from 'next-auth/react';
 import { redirect } from 'next/navigation';
-import PreventiveMaintenanceDashboard from '@/dashboard/Preventive_maintenance/PreventiveMaintenanceDashboard';
+import PreventiveMaintenanceDashboard from './PreventiveMaintenanceDashboard'
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
