@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { PreventiveMaintenanceProvider } from '@/app/lib/PreventiveContext';
-import PreventiveMaintenanceForm from '@/app/components/preventive/PreventiveMaintenanceForm';
-import { PreventiveMaintenance } from '@/app/lib/preventiveMaintenanceModels';
+import { PreventiveMaintenanceProvider } from '@/lib/PreventiveContext';
+import PreventiveMaintenanceForm from '@/components/preventive/PreventiveMaintenanceForm';
+import { PreventiveMaintenance } from '@/lib/preventiveMaintenanceModels';
 
 // Create page content component that doesn't require context
 function CreatePageContent() {

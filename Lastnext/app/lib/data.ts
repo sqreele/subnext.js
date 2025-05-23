@@ -3,7 +3,7 @@
 
 import axios, { AxiosError } from 'axios';
 // Assuming apiClient handles auth headers automatically
-import apiClient, { fetchData, postData, updateData, deleteData, patchData } from '@/app/lib/api-client';
+import apiClient, { fetchData, postData, updateData, deleteData, patchData } from '@/lib/api-client';
 import {
   Job,
   JobStatus,
