@@ -4,9 +4,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 // Import specific functions needed from the updated data.ts
-import { fetchJobs, fetchJobsForProperty } from "@/app/lib/data";
-import { useUser } from "@/app/lib/user-context";
-import { Job } from "@/app/lib/types";
+import { fetchJobs, fetchJobsForProperty } from "@/lib/data";
+import { useUser } from "@/lib/user-context";
+import { Job } from "@/lib/types";
 
 interface UseJobsDataOptions {
   propertyId?: string | null;
