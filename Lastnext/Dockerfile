@@ -24,6 +24,11 @@ RUN apk add --no-cache openssl
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Add shadcn/ui components before building
+RUN npx shadcn-ui@latest add card --yes
+RUN npx shadcn-ui@latest add button --yes
+RUN npx shadcn-ui@latest add badge --yes
+
 # Generate Prisma client
 RUN npx prisma generate
 
