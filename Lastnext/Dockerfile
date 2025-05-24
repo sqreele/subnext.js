@@ -15,9 +15,9 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Initialize shadcn and add all components
-RUN npx shadcn@latest init --yes
-RUN npx shadcn@latest add accordion alert alert-dialog avatar badge breadcrumb button calendar card carousel checkbox collapsible command context-menu data-table date-picker dialog drawer dropdown-menu form hover-card input input-otp label menubar navigation-menu pagination popover progress radio-group resizable scroll-area select separator sheet skeleton slider sonner switch table tabs textarea toast toggle toggle-group tooltip --yes
+# Initialize shadcn with pinned version for reproducible builds
+RUN npx shadcn@0.9.5 init --yes
+RUN npx shadcn@0.9.5 add accordion alert alert-dialog avatar badge breadcrumb button calendar card carousel checkbox collapsible command context-menu data-table date-picker dialog drawer dropdown-menu form hover-card input input-otp label menubar navigation-menu pagination popover progress radio-group resizable scroll-area select separator sheet skeleton slider sonner switch table tabs textarea toast toggle toggle-group tooltip --yes
 
 # Generate Prisma client (without database connection)
 RUN npx prisma generate
@@ -61,8 +61,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=builder --chown=nextjs:nodejs /app/components.json* ./
-COPY --from=builder --chown=nextjs:nodejs /app/components ./components
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+
+# Create necessary directories and set permissions
 RUN mkdir -p /app/.npm && chown -R nextjs:nodejs /app
 
 # Runtime environment variables
