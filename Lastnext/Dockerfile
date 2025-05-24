@@ -44,8 +44,10 @@ RUN npm run build
 # Runner stage
 FROM base AS runner
 WORKDIR /app
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+
+# Use UID and GID within SYS_UID_MAX to suppress warnings
+RUN addgroup --system --gid 999 nodejs && \
+    adduser --system --uid 999 --ingroup nodejs nextjs
 
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
