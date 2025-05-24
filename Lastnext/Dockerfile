@@ -18,7 +18,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Run `shadcn-ui init` (skip failure if already initialized)
-RUN npm run shadcn init || true
+RUN npx shadcn@latest init
 
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PRIVATE_API_URL
