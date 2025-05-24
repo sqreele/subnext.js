@@ -16,6 +16,10 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# Run `shadcn-ui init` (skip failure if already initialized)
+RUN npm run shadcn init || true
+
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PRIVATE_API_URL
 ARG API_URL
@@ -34,6 +38,7 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     JWT_SECRET=${JWT_SECRET} \
     GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID} \
     GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+
 RUN npm run build
 
 # Runner stage
@@ -41,11 +46,13 @@ FROM base AS runner
 WORKDIR /app
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
+
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 RUN mkdir -p /app/.npm && chown -R nextjs:nodejs /app
+
 ENV PORT=3000 \
     NODE_ENV=production \
     HOSTNAME="0.0.0.0" \
@@ -57,6 +64,7 @@ ENV PORT=3000 \
     JWT_SECRET=${JWT_SECRET} \
     GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID} \
     GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+
 USER nextjs
 EXPOSE 3000
 CMD ["npm", "start"]
