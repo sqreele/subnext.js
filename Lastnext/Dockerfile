@@ -57,6 +57,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=builder --chown=nextjs:nodejs /app/components.json* ./
+COPY --from=builder --chown=nextjs:nodejs /app/components ./components
 RUN mkdir -p /app/.npm && chown -R nextjs:nodejs /app
 
 # Runtime environment variables (you'll need to pass these when running the container)
