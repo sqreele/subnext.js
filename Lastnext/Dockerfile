@@ -19,6 +19,9 @@ COPY . .
 RUN npx shadcn@latest init --yes
 RUN npx shadcn@latest add accordion alert alert-dialog avatar badge breadcrumb button calendar card carousel checkbox collapsible command context-menu data-table date-picker dialog drawer dropdown-menu form hover-card input input-otp label menubar navigation-menu pagination popover progress radio-group resizable scroll-area select separator sheet skeleton slider sonner switch table tabs textarea toast toggle toggle-group tooltip --yes
 
+# Generate Prisma client (without database connection)
+RUN npx prisma generate
+
 # Build arguments
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PRIVATE_API_URL
@@ -39,7 +42,8 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     NEXTAUTH_SECRET=${NEXTAUTH_SECRET} \
     JWT_SECRET=${JWT_SECRET} \
     GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID} \
-    GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+    GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET} \
+    SKIP_ENV_VALIDATION=true
 
 RUN npm run build
 
@@ -58,9 +62,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=builder --chown=nextjs:nodejs /app/components.json* ./
 COPY --from=builder --chown=nextjs:nodejs /app/components ./components
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 RUN mkdir -p /app/.npm && chown -R nextjs:nodejs /app
 
-# Runtime environment variables (you'll need to pass these when running the container)
+# Runtime environment variables
 ENV PORT=3000 \
     NODE_ENV=production \
     HOSTNAME="0.0.0.0"
