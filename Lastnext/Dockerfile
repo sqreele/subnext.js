@@ -17,8 +17,9 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Run `shadcn-ui init` (skip failure if already initialized)
-RUN npx shadcn@latest init
+# Clear npm cache and run shadcn init with proper flags
+RUN npm cache clean --force
+RUN npx shadcn@latest init --yes
 
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PRIVATE_API_URL
